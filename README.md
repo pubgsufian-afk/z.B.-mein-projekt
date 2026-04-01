@@ -1,71 +1,41 @@
-# Mein Behördenhub
+# Mitarbeiter-Zeiterfassung
 
-> Private Android-App (Flutter) zur Verwaltung eigener Behördenportale in einem Dashboard.  
-> **Wichtig:** Keine offizielle App einer Behörde, keine Umgehung von Login-, CAPTCHA- oder 2FA-Schutz.
+## Pflicht-Umgebungsvariablen
 
-## Projektarchitektur
+Lege eine `.env` im Projektroot an (wird von `docker compose` genutzt):
 
-```text
-lib/
-  app/
-    mein_behoerdenhub_app.dart
-  core/
-    errors/
-    notifications/
-    router/
-    security/
-    storage/
-    theme/
-  features/
-    onboarding/presentation/
-    dashboard/presentation/
-    portals/
-      domain/
-      application/
-      presentation/
-    notes/domain/
-    reminders/domain/
-    settings/presentation/
-  shared/widgets/
+```env
+SECRET_KEY=bitte-einen-langen-zufallswert-setzen
+DATABASE_URL=sqlite:////data/time_tracking.db
+ALLOWED_ORIGINS=http://localhost:5173
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=BitteSicheresPasswort123!
+ADMIN_FULL_NAME=System Admin
+VITE_API_BASE=http://localhost:8000
 ```
 
-## Enthaltene erste Version (MVP)
+Hinweise:
+- `SECRET_KEY` ist verpflichtend. Ohne diese Variable startet das Backend nicht.
+- `DATABASE_URL` nutzt standardmäßig `sqlite:////data/time_tracking.db` (persistentes Docker-Volume).
+- Alternativ zu `ALLOWED_ORIGINS` kann `FRONTEND_URL` genutzt werden, falls kein Origins-CSV verwendet wird.
 
-- Onboarding mit Hinweis „nicht offiziell“ und PIN-Eingabe-Start.
-- Dashboard mit Suchfeld und Portalkarten.
-- Portal hinzufügen (manuell) inkl. URL-Validierung.
-- Portal-Detailseite mit Status-Aktionen.
-- In-App WebView + Fallback auf Systembrowser.
-- Einstellungsseite (Dark Mode, Biometrie-Flag, Privacy Mode).
-- Sicherheits- und Reminder-Services als Basis.
-- Datenmodelle für Portal, Notizen, Erinnerungen, App-Settings.
+## Erster Admin
 
-## Setup
+Beim Backend-Start wird automatisch ein Admin mit `ADMIN_EMAIL`, `ADMIN_PASSWORD` und `ADMIN_FULL_NAME` angelegt, falls dieser noch nicht existiert.
 
-1. Flutter installieren (stable Channel).
-2. Abhängigkeiten holen:
+## Lokal starten
 
 ```bash
-flutter pub get
+docker compose up --build
 ```
 
-3. Android starten:
+Danach:
+- Frontend: http://localhost:5173
+- Backend: http://localhost:8000/docs
 
-```bash
-flutter run
-```
+## Live-Deployment
 
-## Sicherheitshinweise
-
-- Keine Klartext-Passwörter speichern.
-- Standardmäßig direkt auf den offiziellen Seiten anmelden.
-- Sensible App-Daten über `flutter_secure_storage` schützen.
-- Für produktive Nutzung: Drift/Hive-Verschlüsselung vollständig implementieren.
-
-## Nächste Schritte (Roadmap)
-
-1. Drift/Hive mit echter Verschlüsselung und Migrationen.
-2. PIN/Biometrie-Flow mit Inaktivitäts-Auto-Lock.
-3. Notizen/Reminder CRUD inkl. lokaler Benachrichtigungsplanung.
-4. Import/Export (nur Metadaten), Session-Cleanup, Mehrsprachigkeit (de/en).
-5. Saubere Tests (`flutter test`, Widget Tests, Repository Tests).
+1. Gleiche Container-Konfiguration (Docker Compose) auf dem Server nutzen.
+2. `.env` mit produktiven Werten setzen (insbesondere `SECRET_KEY`, `ADMIN_*`, `ALLOWED_ORIGINS`, `VITE_API_BASE`).
+3. Mit `docker compose up -d --build` deployen.
+4. Reverse-Proxy (z. B. Nginx/Caddy) + HTTPS (Let's Encrypt) vorschalten.
