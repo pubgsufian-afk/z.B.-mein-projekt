@@ -10,10 +10,17 @@ from sqlalchemy.orm import Session
 from .database import get_db
 from .models import User
 
-SECRET_KEY = os.getenv("SECRET_KEY")
-if not SECRET_KEY:
-    raise RuntimeError("SECRET_KEY Umgebungsvariable fehlt. Bitte SECRET_KEY setzen, bevor die App gestartet wird.")
 
+def _load_secret_key() -> str:
+    secret = os.getenv("SECRET_KEY", "").strip()
+    if not secret:
+        raise RuntimeError(
+            "SECRET_KEY Umgebungsvariable fehlt. Bitte SECRET_KEY setzen, bevor die App gestartet wird."
+        )
+    return secret
+
+
+SECRET_KEY = _load_secret_key()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 12
 

@@ -27,6 +27,7 @@ Beim Backend-Start wird automatisch ein Admin mit `ADMIN_EMAIL`, `ADMIN_PASSWORD
 
 ```bash
 docker compose up --build
+# SQLite bleibt im Docker-Volume "db_data" persistent gespeichert
 ```
 
 Danach:

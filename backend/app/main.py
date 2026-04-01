@@ -33,8 +33,10 @@ def _resolve_allowed_origins() -> list[str]:
     frontend_url = os.getenv("FRONTEND_URL")
 
     if allowed_origins:
-        return [origin.strip() for origin in allowed_origins.split(",") if origin.strip()]
-    if frontend_url:
+        origins = [origin.strip() for origin in allowed_origins.split(",") if origin.strip()]
+        if origins:
+            return origins
+    if frontend_url and frontend_url.strip():
         return [frontend_url.strip()]
 
     raise RuntimeError("CORS-Konfiguration fehlt. Bitte ALLOWED_ORIGINS oder FRONTEND_URL setzen.")
