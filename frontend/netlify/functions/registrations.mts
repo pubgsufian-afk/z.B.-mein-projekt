@@ -1,12 +1,12 @@
 import type { Config, Context } from "@netlify/functions";
-import { admin, verifyRequestOrigin } from "@netlify/identity";
+import { verifyRequestOrigin } from "@netlify/identity";
 import {
   error,
   getPortalStore,
   json,
-  publicUser,
   readAll,
   requireManagement,
+  type AccessRecord,
   type PortalRole,
   type Registration,
 } from "./_shared/portal.mts";
@@ -45,7 +45,18 @@ export default async function registrations(request: Request, _context: Context)
       registration.decidedAt = new Date().toISOString();
       registration.decidedBy = current.user.id;
       await store.setJSON(key, registration);
-      await admin.deleteUser(body.id);
+      const rejectedAccess: AccessRecord = {
+        userId: registration.id,
+        role: "pending",
+        status: "rejected",
+        fullName: registration.fullName,
+        employeeId: registration.employeeId,
+        company: registration.company,
+        location: registration.location,
+        grantedAt: registration.decidedAt,
+        grantedBy: current.user.id,
+      };
+      await getPortalStore("portal-access").setJSON(`access/${registration.id}`, rejectedAccess);
       return json({ ok: true });
     }
 
@@ -55,25 +66,27 @@ export default async function registrations(request: Request, _context: Context)
       return error("Nur der Hauptadmin darf weitere Admins bestimmen.", 403);
     }
 
-    const target = await admin.getUser(body.id);
-    await admin.updateUser(body.id, {
-      confirm: true,
-      role,
-      app_metadata: {
-        ...(target.appMetadata || {}),
-        roles: [role],
-        approved_by: current.user.id,
-        approved_at: new Date().toISOString(),
-      },
-    });
-
     registration.status = "approved";
     registration.role = role;
     registration.decidedAt = new Date().toISOString();
     registration.decidedBy = current.user.id;
-    await store.setJSON(key, registration);
+    const access: AccessRecord = {
+      userId: registration.id,
+      role,
+      status: "active",
+      fullName: registration.fullName,
+      employeeId: registration.employeeId,
+      company: registration.company,
+      location: registration.location,
+      grantedAt: registration.decidedAt,
+      grantedBy: current.user.id,
+    };
+    await Promise.all([
+      store.setJSON(key, registration),
+      getPortalStore("portal-access").setJSON(`access/${registration.id}`, access),
+    ]);
 
-    return json({ ok: true, employee: publicUser(target), role });
+    return json({ ok: true, employee: access, role });
   } catch (caught) {
     if (caught instanceof Response) return caught;
     return error("Registrierungsanfrage konnte nicht verarbeitet werden.", 500);
