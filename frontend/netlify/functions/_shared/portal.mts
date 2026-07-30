@@ -1,7 +1,19 @@
 import { getDeployStore, getStore } from "@netlify/blobs";
-import { admin, getUser } from "@netlify/identity";
+import { getUser } from "@netlify/identity";
 
 export type PortalRole = "owner" | "admin" | "manager" | "employee" | "pending";
+
+export interface AccessRecord {
+  userId: string;
+  role: PortalRole;
+  status: "active" | "rejected";
+  fullName: string;
+  employeeId: string;
+  company: string;
+  location: string;
+  grantedAt: string;
+  grantedBy: string;
+}
 
 export interface Registration {
   id: string;
@@ -62,37 +74,16 @@ export async function currentPortalUser() {
     ? [(user as { role: string }).role]
     : [];
   const roles = [...new Set([...(user.roles || []), ...metadataRoles, ...directRole])];
-  let role = configuredOwner
+  const access = await getPortalStore("portal-access").get(`access/${user.id}`, {
+    type: "json",
+  }) as AccessRecord | null;
+  const role = configuredOwner
     ? "owner"
-    : ((roles.find((item) =>
-        ["owner", "admin", "manager", "employee", "pending"].includes(item),
-      ) || "pending") as PortalRole);
-
-  if (role === "pending") {
-    try {
-      const users = await admin.listUsers({ page: 1, perPage: 2 });
-      const isOnlyIdentityUser = users.length === 1 && users[0]?.id === user.id;
-      if (isOnlyIdentityUser) role = "owner";
-    } catch {
-      // A missing operator token must never prevent an authenticated user
-      // from loading the portal.
-    }
-  }
-
-  if (role === "owner" && !roles.includes("owner")) {
-    try {
-      await admin.updateUser(user.id, {
-        role: "owner",
-        app_metadata: {
-          ...(user.appMetadata || {}),
-          roles: ["owner"],
-        },
-      });
-    } catch {
-      // The configured owner still receives owner access for this request.
-      // Persisting the role is best-effort only.
-    }
-  }
+    : access?.status === "active"
+      ? access.role
+      : ((roles.find((item) =>
+          ["owner", "admin", "manager", "employee", "pending"].includes(item),
+        ) || "pending") as PortalRole);
 
   return { user, role };
 }
