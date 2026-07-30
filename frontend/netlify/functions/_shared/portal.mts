@@ -34,8 +34,13 @@ export function error(message: string, status = 400) {
 }
 
 export function ownerEmails() {
+  const configuredEmails =
+    Netlify.env.get("PORTAL_OWNER_EMAILS") ||
+    process.env.PORTAL_OWNER_EMAILS ||
+    "";
+
   return new Set(
-    (Netlify.env.get("PORTAL_OWNER_EMAILS") || "")
+    configuredEmails
       .split(",")
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean),
@@ -64,6 +69,7 @@ export async function currentPortalUser() {
 
   if (configuredOwner && !roles.includes("owner")) {
     await admin.updateUser(user.id, {
+      role: "owner",
       app_metadata: {
         ...(user.appMetadata || {}),
         roles: ["owner"],
