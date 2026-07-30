@@ -20,10 +20,15 @@ export default async function session(_request: Request, _context: Context) {
 
     let employeeCount = 0;
     if (["owner", "admin", "manager"].includes(role)) {
-      const users = await admin.listUsers({ page: 1, perPage: 1000 });
-      employeeCount = users.filter((item) =>
-        item.roles?.some((assignedRole) => ["employee", "manager", "admin", "owner"].includes(assignedRole))
-      ).length;
+      try {
+        const users = await admin.listUsers({ page: 1, perPage: 1000 });
+        employeeCount = users.filter((item) =>
+          item.roles?.some((assignedRole) => ["employee", "manager", "admin", "owner"].includes(assignedRole))
+        ).length;
+      } catch {
+        // The dashboard must remain available if Identity's admin listing
+        // is temporarily unavailable.
+      }
     }
 
     let todayShift = null;
