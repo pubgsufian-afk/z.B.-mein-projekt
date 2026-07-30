@@ -62,13 +62,19 @@ export async function currentPortalUser() {
     ? [(user as { role: string }).role]
     : [];
   const roles = [...new Set([...(user.roles || []), ...metadataRoles, ...directRole])];
-  const role = configuredOwner
+  let role = configuredOwner
     ? "owner"
     : ((roles.find((item) =>
         ["owner", "admin", "manager", "employee", "pending"].includes(item),
       ) || "pending") as PortalRole);
 
-  if (configuredOwner && !roles.includes("owner")) {
+  if (role === "pending") {
+    const users = await admin.listUsers({ page: 1, perPage: 2 });
+    const isOnlyIdentityUser = users.length === 1 && users[0]?.id === user.id;
+    if (isOnlyIdentityUser) role = "owner";
+  }
+
+  if (role === "owner" && !roles.includes("owner")) {
     await admin.updateUser(user.id, {
       role: "owner",
       app_metadata: {
