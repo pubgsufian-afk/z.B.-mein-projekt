@@ -69,19 +69,29 @@ export async function currentPortalUser() {
       ) || "pending") as PortalRole);
 
   if (role === "pending") {
-    const users = await admin.listUsers({ page: 1, perPage: 2 });
-    const isOnlyIdentityUser = users.length === 1 && users[0]?.id === user.id;
-    if (isOnlyIdentityUser) role = "owner";
+    try {
+      const users = await admin.listUsers({ page: 1, perPage: 2 });
+      const isOnlyIdentityUser = users.length === 1 && users[0]?.id === user.id;
+      if (isOnlyIdentityUser) role = "owner";
+    } catch {
+      // A missing operator token must never prevent an authenticated user
+      // from loading the portal.
+    }
   }
 
   if (role === "owner" && !roles.includes("owner")) {
-    await admin.updateUser(user.id, {
-      role: "owner",
-      app_metadata: {
-        ...(user.appMetadata || {}),
-        roles: ["owner"],
-      },
-    });
+    try {
+      await admin.updateUser(user.id, {
+        role: "owner",
+        app_metadata: {
+          ...(user.appMetadata || {}),
+          roles: ["owner"],
+        },
+      });
+    } catch {
+      // The configured owner still receives owner access for this request.
+      // Persisting the role is best-effort only.
+    }
   }
 
   return { user, role };
