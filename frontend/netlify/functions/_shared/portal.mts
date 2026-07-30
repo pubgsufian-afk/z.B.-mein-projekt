@@ -55,7 +55,13 @@ export async function currentPortalUser() {
 
   const email = user.email?.toLowerCase() || "";
   const configuredOwner = ownerEmails().has(email);
-  const roles = user.roles || [];
+  const metadataRoles = Array.isArray(user.appMetadata?.roles)
+    ? user.appMetadata.roles.filter((item): item is string => typeof item === "string")
+    : [];
+  const directRole = typeof (user as { role?: unknown }).role === "string"
+    ? [(user as { role: string }).role]
+    : [];
+  const roles = [...new Set([...(user.roles || []), ...metadataRoles, ...directRole])];
   const role = configuredOwner
     ? "owner"
     : ((roles.find((item) =>
