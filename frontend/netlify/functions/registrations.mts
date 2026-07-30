@@ -58,6 +58,7 @@ export default async function registrations(request: Request, _context: Context)
     const target = await admin.getUser(body.id);
     await admin.updateUser(body.id, {
       confirm: true,
+      role,
       app_metadata: {
         ...(target.appMetadata || {}),
         roles: [role],
