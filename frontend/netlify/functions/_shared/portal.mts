@@ -34,13 +34,8 @@ export function error(message: string, status = 400) {
 }
 
 export function ownerEmails() {
-  const configuredEmails =
-    Netlify.env.get("PORTAL_OWNER_EMAILS") ||
-    process.env.PORTAL_OWNER_EMAILS ||
-    "";
-
   return new Set(
-    configuredEmails
+    (Netlify.env.get("PORTAL_OWNER_EMAILS") || "")
       .split(",")
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean),
