@@ -1,5 +1,4 @@
 import type { Config, Context } from "@netlify/functions";
-import { admin } from "@netlify/identity";
 import {
   error,
   getPortalStore,
@@ -7,6 +6,7 @@ import {
   publicUser,
   readAll,
   requireUser,
+  type AccessRecord,
   type Registration,
 } from "./_shared/portal.mts";
 
@@ -20,15 +20,10 @@ export default async function session(_request: Request, _context: Context) {
 
     let employeeCount = 0;
     if (["owner", "admin", "manager"].includes(role)) {
-      try {
-        const users = await admin.listUsers({ page: 1, perPage: 1000 });
-        employeeCount = users.filter((item) =>
-          item.roles?.some((assignedRole) => ["employee", "manager", "admin", "owner"].includes(assignedRole))
-        ).length;
-      } catch {
-        // The dashboard must remain available if Identity's admin listing
-        // is temporarily unavailable.
-      }
+      const access = await readAll<AccessRecord>("portal-access", "access/");
+      employeeCount = access.filter((item) =>
+        item.status === "active" && ["employee", "manager", "admin", "owner"].includes(item.role)
+      ).length;
     }
 
     let todayShift = null;
