@@ -6,11 +6,6 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-
 [[headers]]
   for = "/*"
   [headers.values]
@@ -24,12 +19,27 @@
     X-Frame-Options = "DENY"
     X-Permitted-Cross-Domain-Policies = "none"
     X-Robots-Tag = "noindex, nofollow, noarchive, nosnippet"
-    X-Habun-Release = "20260731-3"
+    X-Habun-Release = "20260731-4"
 
 [[headers]]
   for = "/assets/*"
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
+    X-Content-Type-Options = "nosniff"
+
+[[headers]]
+  for = "/export-core.js"
+  [headers.values]
+    Content-Type = "application/javascript; charset=utf-8"
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    X-Content-Type-Options = "nosniff"
+
+[[headers]]
+  for = "/export-fix.js"
+  [headers.values]
+    Content-Type = "application/javascript; charset=utf-8"
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    X-Content-Type-Options = "nosniff"
 
 [[headers]]
   for = "/index.html"
@@ -40,7 +50,7 @@
   for = "/manifest.webmanifest"
   [headers.values]
     Content-Type = "application/manifest+json; charset=utf-8"
-    Cache-Control = "public, max-age=3600, must-revalidate"
+    Cache-Control = "no-cache, no-store, must-revalidate"
 
 [[headers]]
   for = "/robots.txt"
