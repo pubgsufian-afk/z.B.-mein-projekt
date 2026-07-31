@@ -1,6 +1,7 @@
 import { access, readFile } from "node:fs/promises";
 
-const release = "20260731-3";
+const uiRelease = "20260731-4";
+const bundleRelease = "20260731-3";
 const required = [
   "public/index.html",
   "public/robots.txt",
@@ -8,8 +9,10 @@ const required = [
   "public/improvements.js",
   "public/premium.css",
   "public/premium.js",
+  "public/export-core.js",
+  "public/export-fix.js",
   "public/assets/index-anSa7LUY.js",
-  `public/assets/index-habun-main-${release}.js`,
+  `public/assets/index-habun-main-${bundleRelease}.js`,
   "public/assets/index-CBs7FW29.js",
   "public/assets/browser-BeRsew1z.js",
   "public/assets/jspdf.es.min-Dqzj63rK.js",
@@ -22,17 +25,20 @@ const required = [
 
 await Promise.all(required.map((file) => access(file)));
 const index = await readFile("public/index.html", "utf8");
-const bundle = await readFile("public/assets/index-anSa7LUY.js", "utf8");
-const pdf = await readFile("public/assets/jspdf.es.min-Dqzj63rK.js", "utf8");
-const zip = await readFile("public/assets/browser-BeRsew1z.js", "utf8");
+const netlify = await readFile("netlify.toml", "utf8");
+const core = await readFile("public/export-core.js", "utf8");
+const fix = await readFile("public/export-fix.js", "utf8");
+
 if (!index.includes("noindex,nofollow")) throw new Error("noindex fehlt");
-if (!index.includes("improvements.js")) throw new Error("Verbesserungs-Skript fehlt");
-if (!index.includes("premium.js")) throw new Error("Premium-Skript fehlt");
-if (!index.includes(release)) throw new Error("Release-Marker fehlt");
+if (!index.includes("export-fix.js")) throw new Error("Unabhängige Export-Engine fehlt");
+if (!index.includes(uiRelease)) throw new Error("UI-Release-Marker fehlt");
 if (index.includes("TESTPORTAL")) throw new Error("Testhinweis in Hauptversion gefunden");
-if (!bundle.includes("async function habunSaveBlob")) throw new Error("Universeller Datei-Download fehlt");
-if ((bundle.match(/toBlob\(\);await habunSaveBlob/g) || []).length !== 2) throw new Error("Excel-Downloads sind nicht auf Blob-Speicherung umgestellt");
-if (bundle.includes(".toFile(")) throw new Error("Alter Excel-Download ist noch aktiv");
-if (!pdf.includes(`index-habun-main-${release}.js`)) throw new Error("jsPDF lädt das falsche Haupt-Bundle");
-if (!zip.includes("O<1e9")) throw new Error("Safari-kompatible Excel-Komprimierung fehlt");
-console.log(`Prüfung erfolgreich · ${required.length} Kerndateien vorhanden · Export-Release ${release}`);
+if (netlify.includes('from = "/*"')) throw new Error("Gefährliche HTML-Fallback-Weiterleitung ist noch aktiv");
+if (!core.includes("createSingleReportPdf") || !core.includes("createSingleReportXlsx")) {
+  throw new Error("Export-Kern ist unvollständig");
+}
+if (!fix.includes("stopImmediatePropagation") || !fix.includes("__HABUN_EXPORT_RELEASE__")) {
+  throw new Error("Export-Übernahme ist nicht aktiv");
+}
+
+console.log(`Prüfung erfolgreich · ${required.length} Kerndateien · UI ${uiRelease} · Bundle ${bundleRelease}`);
