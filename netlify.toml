@@ -24,12 +24,12 @@
     X-Frame-Options = "DENY"
     X-Permitted-Cross-Domain-Policies = "none"
     X-Robots-Tag = "noindex, nofollow, noarchive, nosnippet"
-    X-Habun-Release = "20260731-2"
+    X-Habun-Release = "20260731-3"
 
 [[headers]]
   for = "/assets/*"
   [headers.values]
-    Cache-Control = "public, max-age=3600, must-revalidate"
+    Cache-Control = "no-cache, no-store, must-revalidate"
 
 [[headers]]
   for = "/index.html"
