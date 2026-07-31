@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "prepare:exports": "node scripts/install-export-fix.mjs",
-    "verify": "node --check public/improvements.js && node --check public/premium.js && node --check public/export-core.js && node --check public/export-fix.js && node scripts/export-test.mjs && node scripts/check.mjs",
+    "verify": "node --check public/improvements.js && node --check public/premium.js && node --check public/export-core.js && node --check public/export-fix.js && node --check public/admin-time-fix.js && node scripts/admin-time-test.mjs && node scripts/export-test.mjs && node scripts/check.mjs",
     "build": "npm run prepare:exports && node scripts/patch-production-bundle.mjs && npm run verify && node scripts/build.mjs",
     "check": "npm run prepare:exports && node scripts/patch-production-bundle.mjs && npm run verify"
   }
