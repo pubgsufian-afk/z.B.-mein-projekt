@@ -1,0 +1,23 @@
+{
+  "name": "Habun Security Mitarbeiterportal",
+  "short_name": "Habun Portal",
+  "description": "Geschütztes Mitarbeiterportal für Dienstpläne und Arbeitszeiten.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07090a",
+  "theme_color": "#07090a",
+  "icons": [
+    {
+      "src": "/app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
