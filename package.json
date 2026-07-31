@@ -4,7 +4,8 @@
   "version": "2026.7.31",
   "type": "module",
   "scripts": {
-    "build": "node scripts/patch-production-bundle.mjs && node scripts/build.mjs",
-    "check": "node --check public/improvements.js && node --check public/premium.js && node scripts/check.mjs"
+    "prepare:exports": "node scripts/install-export-fix.mjs",
+    "build": "npm run prepare:exports && node scripts/patch-production-bundle.mjs && node scripts/build.mjs",
+    "check": "npm run prepare:exports && node --check public/improvements.js && node --check public/premium.js && node --check public/export-core.js && node --check public/export-fix.js && node scripts/export-test.mjs && node scripts/check.mjs"
   }
 }
