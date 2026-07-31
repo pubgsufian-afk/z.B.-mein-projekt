@@ -19,7 +19,7 @@
     X-Frame-Options = "DENY"
     X-Permitted-Cross-Domain-Policies = "none"
     X-Robots-Tag = "noindex, nofollow, noarchive, nosnippet"
-    X-Habun-Release = "20260731-4"
+    X-Habun-Release = "20260731-5"
 
 [[headers]]
   for = "/assets/*"
@@ -36,6 +36,13 @@
 
 [[headers]]
   for = "/export-fix.js"
+  [headers.values]
+    Content-Type = "application/javascript; charset=utf-8"
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    X-Content-Type-Options = "nosniff"
+
+[[headers]]
+  for = "/admin-time-fix.js"
   [headers.values]
     Content-Type = "application/javascript; charset=utf-8"
     Cache-Control = "no-cache, no-store, must-revalidate"
