@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const requiredFiles = [
-  'netlify/functions/_shared/attendance-domain.mts',
+  'netlify/functions/_shared/attendance-domain.mjs',
   'netlify/functions/attendance.mts',
   'public/attendance-core.js',
   'public/attendance-v2.js',
