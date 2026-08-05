@@ -16,6 +16,23 @@ const AUDIT_KEYS = new Set([
   'held',
 ])
 
+export function distanceMetersBetween(latitudeA, longitudeA, latitudeB, longitudeB) {
+  const values = [latitudeA, longitudeA, latitudeB, longitudeB].map(Number)
+  if (!values.every(Number.isFinite)) throw new TypeError('Koordinaten müssen gültige Zahlen sein.')
+  const [latA, lonA, latB, lonB] = values
+  if (Math.abs(latA) > 90 || Math.abs(latB) > 90 || Math.abs(lonA) > 180 || Math.abs(lonB) > 180) {
+    throw new RangeError('Koordinaten liegen außerhalb des gültigen Bereichs.')
+  }
+  if (latA === latB && lonA === lonB) return 0
+  const radians = (degrees) => degrees * Math.PI / 180
+  const earthRadiusMeters = 6371000
+  const deltaLatitude = radians(latB - latA)
+  const deltaLongitude = radians(lonB - lonA)
+  const a = Math.sin(deltaLatitude / 2) ** 2
+    + Math.cos(radians(latA)) * Math.cos(radians(latB)) * Math.sin(deltaLongitude / 2) ** 2
+  return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
 export function classifyLocation(distanceMeters, configured, available, radiusMeters = 500) {
   const radius = Number.isFinite(Number(radiusMeters)) && Number(radiusMeters) >= 0
     ? Number(radiusMeters)
