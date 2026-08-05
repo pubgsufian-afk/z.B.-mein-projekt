@@ -13,6 +13,7 @@ type AccessRecord = { role?: PortalRole; status?: string } | null
 type ScheduleEntry = {
   id?: string
   employeeUserId?: string
+  employeeName?: string
   date?: string
   start?: string
   end?: string
@@ -51,7 +52,7 @@ export function selectPlannedSchedule(
   requestedScheduleId: string | null,
 ) {
   const candidates = (Array.isArray(entries) ? entries : [])
-    .filter((entry) => String(entry.employeeUserId || '') === userId && entry.date === date)
+    .filter((entry) => String(entry.employeeUserId || '') === userId && entry.date === date && entry.status !== 'draft')
     .sort((left, right) => String(left.start || '').localeCompare(String(right.start || '')))
   if (requestedScheduleId) {
     const requested = candidates.find((entry) => String(entry.id || '') === requestedScheduleId)
@@ -66,6 +67,7 @@ export function attendanceFunctionMarkers() {
     bindsScheduleServerSide: true,
     employeeSelfScope: true,
     liveManagementOnly: true,
+    scheduleV2First: true,
   }
 }
 
@@ -119,26 +121,33 @@ async function currentPortalActor() {
   return { userId: user.id, email, role }
 }
 
-async function loadSchedules(request: Request): Promise<ScheduleEntry[]> {
+async function fetchScheduleEndpoint(request: Request, path: string) {
   try {
-    const url = new URL('/api/work?resource=schedule', request.url)
-    const scheduleResponse = await fetch(url, {
-      method: 'GET',
-      headers: request.headers,
-      redirect: 'manual',
-    })
-    if (!scheduleResponse.ok) return []
-    const payload = await scheduleResponse.json().catch(() => ({})) as { entries?: ScheduleEntry[] }
+    const url = new URL(path, request.url)
+    const result = await fetch(url, { method: 'GET', headers: request.headers, redirect: 'manual', cache: 'no-store' })
+    if (!result.ok) return []
+    const payload = await result.json().catch(() => ({})) as { entries?: ScheduleEntry[] }
     return Array.isArray(payload.entries) ? payload.entries : []
-  } catch {
-    return []
-  }
+  } catch { return [] }
+}
+
+async function loadSchedules(request: Request): Promise<ScheduleEntry[]> {
+  const [v2, legacy] = await Promise.all([
+    fetchScheduleEndpoint(request, '/api/schedule-v2?resource=entries'),
+    fetchScheduleEndpoint(request, '/api/work?resource=schedule'),
+  ])
+  const merged = [...v2, ...legacy]
+  return merged.filter((entry, index, values) => {
+    const key = entry.id || `${entry.employeeUserId}:${entry.date}:${entry.start}:${entry.location}`
+    return values.findIndex((candidate) => (candidate.id || `${candidate.employeeUserId}:${candidate.date}:${candidate.start}:${candidate.location}`) === key) === index
+  })
 }
 
 function schedulePayload(entry: ScheduleEntry | null) {
   if (!entry) return null
   return {
     id: entry.id || null,
+    employeeName: entry.employeeName || '',
     date: entry.date || null,
     start: entry.start || null,
     end: entry.end || null,
@@ -150,6 +159,26 @@ function schedulePayload(entry: ScheduleEntry | null) {
   }
 }
 
+function enrichLiveEntries(entries: Array<Record<string, unknown>>, schedules: ScheduleEntry[]) {
+  return entries.map((entry) => {
+    const schedule = selectPlannedSchedule(
+      schedules,
+      String(entry.userId || ''),
+      String(entry.eventDate || ''),
+      String(entry.scheduleId || '') || null,
+    )
+    return {
+      ...entry,
+      employeeName: schedule?.employeeName || String(entry.userId || ''),
+      workSiteName: schedule?.location || '',
+      workArea: schedule?.workArea || '',
+      pauseMinutes: Number(schedule?.pauseMinutes || 0),
+      plannedStart: schedule?.start || null,
+      plannedEnd: schedule?.end || null,
+    }
+  })
+}
+
 export default async function attendance(request: Request, _context: Context) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204 })
   if (!['GET', 'POST'].includes(request.method)) return response({ message: 'Methode nicht erlaubt.' }, 405)
@@ -157,14 +186,10 @@ export default async function attendance(request: Request, _context: Context) {
   try {
     const actor = await currentPortalActor()
     if (!actor) return response({ message: 'Nicht angemeldet.', code: 'UNAUTHENTICATED' }, 401)
-    if (actor.role === 'pending') {
-      return response({ message: 'Das Konto ist noch nicht freigeschaltet.', code: 'ACCOUNT_PENDING' }, 403)
-    }
+    if (actor.role === 'pending') return response({ message: 'Das Konto ist noch nicht freigeschaltet.', code: 'ACCOUNT_PENDING' }, 403)
 
     const connectionString = databaseUrl()
-    if (!connectionString) {
-      return response({ message: 'Die Zeiterfassungsdatenbank ist noch nicht verbunden.', code: 'DATABASE_NOT_CONFIGURED' }, 503)
-    }
+    if (!connectionString) return response({ message: 'Die Zeiterfassungsdatenbank ist noch nicht verbunden.', code: 'DATABASE_NOT_CONFIGURED' }, 503)
     const repository = await createAttendanceRepository(connectionString)
     const service = createAttendanceService({ repository })
     const url = new URL(request.url)
@@ -187,22 +212,20 @@ export default async function attendance(request: Request, _context: Context) {
         }))
       }
       if (resource === 'live') {
-        return response(await service.getLive(actor, {
+        const result = await service.getLive(actor, {
           date: url.searchParams.get('date'),
           objectId: url.searchParams.get('objectId'),
           userId: url.searchParams.get('userId'),
           status: url.searchParams.get('status'),
-        }))
+        })
+        const schedules = await loadSchedules(request)
+        return response({ entries: enrichLiveEntries(result.entries, schedules) })
       }
       return response({ message: 'Unbekannter Zeiterfassungsbereich.' }, 400)
     }
 
     const { verifyRequestOrigin } = await import('@netlify/identity')
-    try {
-      verifyRequestOrigin(request)
-    } catch {
-      return response({ message: 'Ungültige Anfragequelle.', code: 'INVALID_ORIGIN' }, 403)
-    }
+    try { verifyRequestOrigin(request) } catch { return response({ message: 'Ungültige Anfragequelle.', code: 'INVALID_ORIGIN' }, 403) }
 
     const body = await request.json().catch(() => null) as Record<string, unknown> | null
     if (!body) return response({ message: 'Ungültige Anfrage.' }, 400)
@@ -211,25 +234,12 @@ export default async function attendance(request: Request, _context: Context) {
     const normalized = normalizeClockRequest(body)
     const eventDate = eventDateInBerlin(normalized.clientOccurredAt)
     const schedules = await loadSchedules(request)
-    const schedule = selectPlannedSchedule(
-      schedules,
-      actor.userId,
-      eventDate,
-      normalized.scheduleId,
-    )
-    const safeBody = {
-      ...body,
-      scheduleId: schedule?.id || null,
-      objectId: schedule?.objectId || null,
-    }
+    const schedule = selectPlannedSchedule(schedules, actor.userId, eventDate, normalized.scheduleId)
+    const safeBody = { ...body, scheduleId: schedule?.id || null, objectId: schedule?.objectId || null }
     return response(await service.record(actor, safeBody), 201)
   } catch (error) {
-    if (error instanceof AttendanceServiceError) {
-      return response({ message: error.message, code: error.code }, error.status)
-    }
-    if (error instanceof TypeError || error instanceof RangeError) {
-      return response({ message: error.message, code: 'INVALID_INPUT' }, 400)
-    }
+    if (error instanceof AttendanceServiceError) return response({ message: error.message, code: error.code }, error.status)
+    if (error instanceof TypeError || error instanceof RangeError) return response({ message: error.message, code: 'INVALID_INPUT' }, 400)
     console.error('Habun Attendance V2', error)
     return response({ message: 'Die Zeiterfassung konnte nicht verarbeitet werden.' }, 500)
   }
