@@ -3,6 +3,7 @@ import {
   buildIdempotencyKey,
   calculateNetMinutes,
   classifyLocation,
+  distanceMetersBetween,
   sanitizeAttendanceAuditPayload,
   validateAttendanceTransition,
 } from '../netlify/functions/_shared/attendance-domain.mjs'
@@ -18,6 +19,9 @@ assert.deepEqual(classifyLocation(500, true, true, 500), {
 assert.equal(classifyLocation(500.01, true, true, 500).status, 'outside')
 assert.equal(classifyLocation(null, true, false, 500).status, 'unavailable')
 assert.equal(classifyLocation(null, false, true, 500).status, 'unavailable')
+assert.equal(distanceMetersBetween(52.375, 9.732, 52.375, 9.732), 0)
+const oneLatitudeMillidegree = distanceMetersBetween(52.375, 9.732, 52.376, 9.732)
+assert.ok(oneLatitudeMillidegree > 110 && oneLatitudeMillidegree < 112)
 
 assert.deepEqual(validateAttendanceTransition([], 'clock-in'), { ok: true })
 assert.deepEqual(validateAttendanceTransition([], 'clock-out'), {
@@ -65,4 +69,4 @@ assert.deepEqual(
   },
 )
 
-console.log('Attendance domain tests passed · 15 assertions')
+console.log('Attendance domain tests passed · 17 assertions')
