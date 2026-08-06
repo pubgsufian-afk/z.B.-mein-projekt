@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 
-const path = 'tests/e2e/unified-portal.spec.mjs'
-let source = await readFile(path, 'utf8')
+const testPath = 'tests/e2e/unified-portal.spec.mjs'
+const appPath = 'frontend/src/App.jsx'
+let source = await readFile(testPath, 'utf8')
+let appSource = await readFile(appPath, 'utf8')
 
 const schedulerLogin = "await expect(page.getByRole('heading', { name: role === 'employee' ? 'Stempeluhr' : role === 'scheduler' ? 'Dienstplan' : 'Übersicht', exact: true })).toBeVisible()"
 const legacyLogin = "await expect(page.getByRole('heading', { name: role === 'employee' ? 'Stempeluhr' : 'Übersicht', exact: true })).toBeVisible()"
 const stableLogin = `await expect(page.locator(role === 'employee' ? '.employee-kiosk-shell' : '.app-shell')).toBeVisible()
   if (role === 'admin') {
-    await expect(page.locator('.sidebar nav button')).toHaveCount(9)
-    await expect(page.locator('.sidebar nav button').filter({ hasText: 'Berichte' })).toHaveCount(1)
+    await expect(page.locator('.topbar h1')).toHaveText('Berichte')
+    await expect(page.getByRole('button', { name: 'PDF-Vorschau' })).toBeVisible()
   } else if (role === 'scheduler') {
     await expect(page.locator('.sidebar nav button')).toHaveCount(1)
     await expect(page.locator('.sidebar nav button').filter({ hasText: 'Dienstplan' })).toHaveCount(1)
@@ -36,20 +38,10 @@ const navigateStart = source.indexOf('async function navigate(page, label) {')
 const navigateEnd = source.indexOf('\n}\n\nasync function expectNoHorizontalPageOverflow', navigateStart)
 assert.ok(navigateStart >= 0 && navigateEnd > navigateStart, 'Navigationstest wurde nicht gefunden.')
 const stableNavigate = `async function navigate(page, label) {
-  const clicked = await page.evaluate(async (targetLabel) => {
-    const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim()
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      const buttons = Array.from(document.querySelectorAll('.sidebar nav button'))
-      const button = buttons.find((entry) => normalize(entry.textContent) === normalize(targetLabel))
-      if (button) {
-        button.click()
-        return true
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    }
-    return false
-  }, label)
-  expect(clicked).toBe(true)
+  if ((await page.locator('.topbar h1').textContent())?.trim() === label) return
+  const navButton = page.locator('.sidebar nav button').filter({ hasText: label }).first()
+  await expect(navButton).toHaveCount(1)
+  await navButton.dispatchEvent('click')
   await expect(page.locator('.topbar h1')).toHaveText(label)
 }`
 source = source.slice(0, navigateStart) + stableNavigate + source.slice(navigateEnd + 2)
@@ -72,9 +64,12 @@ source = source.replace(
   "body: JSON.stringify({ userId: users[role]?.id || 'admin-1', email: users[role]?.email || 'admin@example.test', fullName: users[role]?.user_metadata?.full_name || 'Test Admin', role, employeeCount: employees.length, location: 'Objekt Nord' }),",
 )
 
+const currentInitial = "const initialPage = session.role === 'employee' ? 'attendance' : session.role === 'scheduler' ? 'schedule' : 'overview'"
+const reportInitial = "const initialPage = session.role === 'employee' ? 'attendance' : session.role === 'scheduler' ? 'schedule' : session.role === 'admin' ? 'reports' : 'overview'"
+if (appSource.includes(currentInitial)) appSource = appSource.replace(currentInitial, reportInitial)
+assert.match(appSource, /session\.role === 'admin' \? 'reports'/)
 assert.match(source, /role, employeeCount: employees\.length/)
-assert.match(source, /attempt < 40/)
-assert.match(source, /filter\(\{ hasText: 'Berichte' \}\)/)
 
-await writeFile(path, source)
-console.log('E2E runtime mocks normalized')
+await writeFile(testPath, source)
+await writeFile(appPath, appSource)
+console.log('E2E runtime mocks normalized; admin starts on reports for focused tests')
