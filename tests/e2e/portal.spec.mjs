@@ -36,10 +36,16 @@ function collectConsoleErrors(page) {
 async function mockLoggedOutIdentity(page, { signupSucceeds = false } = {}) {
   await page.route('**/.netlify/identity**', async (route) => {
     const request = route.request(); const url = new URL(request.url())
-    if (url.pathname.endsWith('/settings')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ disable_signup: false, autoconfirm: true, external: {} }) })
+    if (url.pathname.endsWith('/settings')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ disable_signup: false, autoconfirm: false, external: {} }) })
     if (url.pathname.endsWith('/signup') && request.method() === 'POST' && signupSucceeds) {
-      const user = { ...identityUser, id: 'new-user', email: 'mitarbeiter@example.test', app_metadata: { provider: 'email', roles: [] }, user_metadata: { full_name: 'Test Mitarbeiter' } }
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tokenResponse(user)) })
+      const user = {
+        id: 'new-user', aud: '', role: '', email: 'mitarbeiter@example.test',
+        app_metadata: { provider: 'email', roles: [] },
+        user_metadata: { full_name: 'Test Mitarbeiter' },
+        created_at: '2026-08-06T00:00:00.000Z', updated_at: '2026-08-06T00:00:00.000Z',
+        confirmation_sent_at: '2026-08-06T00:00:00.000Z', confirmed_at: null,
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(user) })
     }
     if (url.pathname.endsWith('/user')) return route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'invalid_token', error_description: 'Not logged in' }) })
     return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'invalid_request' }) })
@@ -96,7 +102,6 @@ async function openReports(page) {
 test('public portal loads, registration works and Mitarbeiter-ID is absent', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await mockLoggedOutIdentity(page, { signupSucceeds: true })
-  await page.route('**/api/registrations', (route) => route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ message: 'Registrierungsanfrage gesendet.', requestId: 'request-new' }) }))
   await page.goto('/')
   await expect(page).toHaveTitle(/Habun Security Mitarbeiterportal/)
   await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
