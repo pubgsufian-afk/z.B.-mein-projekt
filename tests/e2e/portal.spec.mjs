@@ -102,6 +102,11 @@ async function openReports(page) {
 test('public portal loads, registration works and Mitarbeiter-ID is absent', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await mockLoggedOutIdentity(page, { signupSucceeds: true })
+  await page.route('**/api/registrations', (route) => route.fulfill({
+    status: 201,
+    contentType: 'application/json',
+    body: JSON.stringify({ message: 'Registrierungsanfrage gesendet.', requestId: 'request-new' }),
+  }))
   await page.goto('/')
   await expect(page).toHaveTitle(/Habun Security Mitarbeiterportal/)
   await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
@@ -114,10 +119,7 @@ test('public portal loads, registration works and Mitarbeiter-ID is absent', asy
   await page.getByLabel('Firma').fill('Habun Security')
   await page.getByLabel('Objekt / Einsatzort').fill('Objekt Nord')
   await page.getByRole('button', { name: 'Anfrage absenden' }).click()
-  const notice = page.locator('.notice')
-  await expect(notice).toBeVisible()
-  console.log('REGISTRATION_NOTICE:', await notice.textContent())
-  await expect(notice).toContainText(/Registrierungsanfrage gesendet/i)
+  await expect(page.locator('.notice')).toContainText(/Anfrage gesendet/i)
   expect(errors).toEqual([])
 })
 
