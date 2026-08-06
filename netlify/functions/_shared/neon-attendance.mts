@@ -52,12 +52,7 @@ export function mapAttendanceEventRow(row: Record<string, unknown>) {
     locationStatus: String(row.location_status),
     offlineCaptured: Boolean(row.offline_captured),
     location: latitude !== null && longitude !== null && accuracyMeters !== null
-      ? {
-          latitude,
-          longitude,
-          accuracyMeters,
-          distanceMeters: numberOrNull(row.distance_meters),
-        }
+      ? { latitude, longitude, accuracyMeters, distanceMeters: numberOrNull(row.distance_meters) }
       : null,
   }
 }
@@ -72,24 +67,14 @@ export function normalizeAttendanceFilters(filters: Record<string, unknown> = {}
     status: textOrNull(filters.status),
   }
   for (const key of ['from', 'to', 'date'] as const) {
-    if (result[key] && !ISO_DATE.test(result[key])) {
-      throw new TypeError(`${key} muss ein ISO-Datum im Format JJJJ-MM-TT sein.`)
-    }
+    if (result[key] && !ISO_DATE.test(result[key])) throw new TypeError(`${key} muss ein ISO-Datum im Format JJJJ-MM-TT sein.`)
   }
-  if (result.status && !LOCATION_STATUSES.has(result.status)) {
-    throw new TypeError('Der Standortstatus ist ungültig.')
-  }
+  if (result.status && !LOCATION_STATUSES.has(result.status)) throw new TypeError('Der Standortstatus ist ungültig.')
   return result
 }
 
 export function repositorySafetyMarkers() {
-  return {
-    advisoryLock: true,
-    idempotency: true,
-    auditTrail: true,
-    locationExpiryMonths: 6,
-    attendanceExpiryMonths: 24,
-  }
+  return { advisoryLock: true, idempotency: true, auditTrail: true, locationExpiryMonths: 6, attendanceExpiryMonths: 24, pauseEvents: true }
 }
 
 const EVENT_SELECT = `
@@ -108,41 +93,23 @@ export async function createAttendanceRepository(connectionString: string) {
   const sql = neon(databaseUrl)
 
   async function findIdempotency(userId: string, clientEventId: string) {
-    const rows = await sql(
-      `SELECT request_hash, response_data
-       FROM attendance_idempotency
-       WHERE user_id = $1 AND client_event_id = $2`,
-      [userId, clientEventId],
-    )
+    const rows = await sql(`SELECT request_hash, response_data FROM attendance_idempotency WHERE user_id = $1 AND client_event_id = $2`, [userId, clientEventId])
     const row = rows[0]
     return row ? { requestHash: row.request_hash, response: row.response_data } : null
   }
 
   async function listEvents(userId: string) {
-    const rows = await sql(
-      `${EVENT_SELECT}
-       WHERE e.user_id = $1
-       ORDER BY e.client_occurred_at, e.server_occurred_at, e.id`,
-      [userId],
-    )
+    const rows = await sql(`${EVENT_SELECT} WHERE e.user_id = $1 ORDER BY e.client_occurred_at, e.server_occurred_at, e.id`, [userId])
     return rows.map(mapAttendanceEventRow)
   }
 
   async function findObject(objectId: string) {
-    const rows = await sql(
-      `SELECT id, latitude, longitude, accuracy_meters, radius_meters
-       FROM attendance_objects WHERE id = $1`,
-      [objectId],
-    )
+    const rows = await sql(`SELECT id, latitude, longitude, accuracy_meters, radius_meters FROM attendance_objects WHERE id = $1`, [objectId])
     return mapAttendanceObjectRow(rows[0] || null)
   }
 
   async function commitClockEvent(record: Record<string, any>) {
-    const responseData = {
-      event: record.event,
-      location: record.location,
-      replayed: false,
-    }
+    const responseData = { event: record.event, location: record.location, replayed: false }
     const auditId = `attendance-audit:${crypto.randomUUID()}`
     const params = [
       record.userId,
@@ -189,12 +156,17 @@ export async function createAttendanceRepository(connectionString: string) {
            CASE
              WHEN EXISTS (SELECT 1 FROM latest WHERE client_occurred_at > $6::timestamptz) THEN false
              WHEN $4 = 'clock-in' AND COALESCE((SELECT action FROM latest), 'clock-out') = 'clock-out' THEN true
-             WHEN $4 = 'clock-out' AND (SELECT action FROM latest) = 'clock-in' THEN true
+             WHEN $4 = 'break-start' AND COALESCE((SELECT action FROM latest), '') IN ('clock-in', 'break-end') THEN true
+             WHEN $4 = 'break-end' AND (SELECT action FROM latest) = 'break-start' THEN true
+             WHEN $4 = 'clock-out' AND COALESCE((SELECT action FROM latest), '') IN ('clock-in', 'break-end') THEN true
              ELSE false
            END AS ok,
            CASE
              WHEN EXISTS (SELECT 1 FROM latest WHERE client_occurred_at > $6::timestamptz) THEN 'OUT_OF_ORDER_EVENT'
              WHEN $4 = 'clock-in' THEN 'CLOCK_IN_ALREADY_OPEN'
+             WHEN $4 = 'break-start' THEN 'BREAK_START_WITHOUT_WORK'
+             WHEN $4 = 'break-end' THEN 'BREAK_END_WITHOUT_BREAK'
+             WHEN $4 = 'clock-out' AND (SELECT action FROM latest) = 'break-start' THEN 'BREAK_MUST_END_FIRST'
              ELSE 'CLOCK_OUT_WITHOUT_CLOCK_IN'
            END AS code
        ),
@@ -264,16 +236,10 @@ export async function createAttendanceRepository(connectionString: string) {
     const result = rows[0] || { kind: 'conflict' }
     if (result.kind === 'conflict') {
       const afterRace = await findIdempotency(record.userId, record.clientEventId)
-      if (afterRace && afterRace.requestHash === record.requestHash) {
-        return { kind: 'replay', response: { ...afterRace.response, replayed: true } }
-      }
+      if (afterRace && afterRace.requestHash === record.requestHash) return { kind: 'replay', response: { ...afterRace.response, replayed: true } }
     }
-    if (result.kind === 'replay') {
-      return { kind: 'replay', response: { ...(result.response_data || {}), replayed: true } }
-    }
-    if (result.kind === 'invalid-transition') {
-      return { kind: 'invalid-transition', code: result.transition_code }
-    }
+    if (result.kind === 'replay') return { kind: 'replay', response: { ...(result.response_data || {}), replayed: true } }
+    if (result.kind === 'invalid-transition') return { kind: 'invalid-transition', code: result.transition_code }
     return { kind: result.kind, response: result.response_data }
   }
 
@@ -304,12 +270,5 @@ export async function createAttendanceRepository(connectionString: string) {
     return rows.map(mapAttendanceEventRow)
   }
 
-  return {
-    findIdempotency,
-    listEvents,
-    findObject,
-    commitClockEvent,
-    listHistory,
-    listLive,
-  }
+  return { findIdempotency, listEvents, findObject, commitClockEvent, listHistory, listLive }
 }
