@@ -40,10 +40,13 @@ for (const path of paths) {
     if (!source.includes(marker)) throw new Error(`Helper-Marker fehlt in ${path}`)
     source = source.replace(marker, marker + helper)
   }
-  source = source.replace(
-    /^\s*const placeholders = userIds\.map\(.*$/m,
-    "  const placeholders = userIds.map((_, index) => '$' + (index + 3)).join(', ')",
-  )
+
+  const lines = source.split('\n')
+  const placeholderLine = lines.findIndex((line) => line.includes('const placeholders = userIds.map'))
+  if (placeholderLine < 0) throw new Error(`Platzhalterzeile fehlt in ${path}`)
+  lines[placeholderLine] = "  const placeholders = userIds.map((_, index) => '$' + (index + 3)).join(', ')"
+  source = lines.join('\n')
+
   if (source.includes(oldQuery)) source = source.replace(oldQuery, newQuery)
   if (!source.includes('const employeeFilter = buildEmployeeFilter(userIds)')) throw new Error(`Neue Berichtsabfrage fehlt in ${path}`)
   if (!source.includes("'$' + (index + 3)")) throw new Error(`SQL-Platzhalter fehlen in ${path}`)
