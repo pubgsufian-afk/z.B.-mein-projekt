@@ -24,6 +24,16 @@ if (browserSource.includes(preparedTitle)) {
 }
 await writeFile(appPath, browserSource)
 
+const preparationPath = 'scripts/prepare-unified-e2e.mjs'
+let preparationSource = await readFile(preparationPath, 'utf8')
+const strictHelper = "function replaceOnce(before, after, label) {\n  const count = source.split(before).length - 1"
+const idempotentHelper = "function replaceOnce(before, after, label) {\n  if (source.includes(after)) return\n  const count = source.split(before).length - 1"
+if (!preparationSource.includes(idempotentHelper)) {
+  assert.ok(preparationSource.includes(strictHelper), 'Browser-Vorbereitungsfunktion wurde nicht gefunden.')
+  preparationSource = preparationSource.replace(strictHelper, idempotentHelper)
+  await writeFile(preparationPath, preparationSource)
+}
+
 for (const path of ['netlify/functions/schedule-v2.mts', 'netlify/functions/schedule-assist-v2.mts']) {
   let source = await readFile(path, 'utf8')
   const legacyGate = "if (!MANAGEMENT.has(current.role)) return json({ message: 'Keine Berechtigung.' }, 403)"
