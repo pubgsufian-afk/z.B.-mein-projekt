@@ -55,7 +55,7 @@ export function validateAttendanceTransition(events, action) {
     paused: ['break-end'],
     completed: ['clock-in'],
   }
-  if (valid[phase]?.includes(action)) return { ok: true, phase }
+  if (valid[phase]?.includes(action)) return { ok: true }
   if (action === 'clock-in') return { ok: false, code: 'CLOCK_IN_ALREADY_OPEN' }
   if (action === 'break-start') return { ok: false, code: 'BREAK_START_WITHOUT_WORK' }
   if (action === 'break-end') return { ok: false, code: 'BREAK_END_WITHOUT_BREAK' }
