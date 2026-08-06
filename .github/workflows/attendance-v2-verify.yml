@@ -23,22 +23,10 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
-      - name: Apply protected report query correction
-        run: node scripts/apply-report-query-fix.mjs
       - run: npm run verify
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
-      - name: Upload corrected report sources
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: corrected-report-sources
-          path: |
-            netlify/functions/unified-reports.mts
-            netlify/functions/reports-v2.mts
-          if-no-files-found: error
-          retention-days: 2
       - name: Upload unified portal preview
         if: always()
         uses: actions/upload-artifact@v4
