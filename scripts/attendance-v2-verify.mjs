@@ -18,6 +18,7 @@ const browserFiles = [
   'public/attendance-corrections.js',
   'public/reports-v2.js',
   'public/worksite-v2.js',
+  'public/remove-employee-id.js',
 ]
 const functionFiles = [
   'netlify/functions/attendance.mts',
@@ -42,7 +43,7 @@ await build({
 })
 
 const index = await readFile(path.join(root, 'public/index.html'), 'utf8')
-for (const file of ['attendance-v2.js', 'attendance-day-reset.js', 'attendance-corrections-tab.js', 'live-attendance.js', 'schedule-v2.js', 'schedule-assist-v2.js', 'attendance-corrections.js', 'reports-v2.js', 'worksite-v2.js']) {
+for (const file of ['attendance-v2.js', 'attendance-day-reset.js', 'attendance-corrections-tab.js', 'live-attendance.js', 'schedule-v2.js', 'schedule-assist-v2.js', 'attendance-corrections.js', 'reports-v2.js', 'worksite-v2.js', 'remove-employee-id.js']) {
   assert.match(index, new RegExp(file.replace('.', '\\.')), `${file} missing from index.html`)
 }
 assert.match(index, /habun-logo|apple-touch-icon|favicon/, 'Existing brand assets must remain installed')
@@ -63,6 +64,7 @@ const tests = [
   'scripts/attendance-corrections-test.mjs',
   'scripts/attendance-retention-test.mjs',
   'scripts/reports-v2-test.mjs',
+  'scripts/remove-employee-id-test.mjs',
 ]
 for (const test of tests) execFileSync(process.execPath, [path.join(root, test)], { stdio: 'inherit' })
 
