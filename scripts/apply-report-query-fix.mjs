@@ -7,7 +7,7 @@ const paths = [
 
 const helper = `function buildEmployeeFilter(userIds: string[]) {
   if (!userIds.length) return { clause: '', params: [] as string[] }
-  const placeholders = userIds.map((_, index) => \`$\${index + 3}\`).join(', ')
+  const placeholders = userIds.map((_, index) => '$' + (index + 3)).join(', ')
   return { clause: \`\n          AND user_id IN ($\{placeholders})\`, params: userIds }
 }
 
@@ -40,8 +40,13 @@ for (const path of paths) {
     if (!source.includes(marker)) throw new Error(`Helper-Marker fehlt in ${path}`)
     source = source.replace(marker, marker + helper)
   }
-  if (!source.includes(oldQuery)) throw new Error(`Alte Berichtsabfrage fehlt in ${path}`)
-  source = source.replace(oldQuery, newQuery)
+  source = source.replace(
+    "const placeholders = userIds.map((_, index) => `${index + 3}`).join(', ')",
+    "const placeholders = userIds.map((_, index) => '$' + (index + 3)).join(', ')",
+  )
+  if (source.includes(oldQuery)) source = source.replace(oldQuery, newQuery)
+  if (!source.includes('const employeeFilter = buildEmployeeFilter(userIds)')) throw new Error(`Neue Berichtsabfrage fehlt in ${path}`)
+  if (!source.includes("'$' + (index + 3)")) throw new Error(`SQL-Platzhalter fehlen in ${path}`)
   await writeFile(path, source)
 }
 
