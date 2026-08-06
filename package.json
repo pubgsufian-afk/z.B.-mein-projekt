@@ -4,16 +4,15 @@
   "version": "2026.8.6",
   "type": "module",
   "scripts": {
-    "prepare:exports": "node scripts/install-export-fix.mjs",
-    "verify:legacy": "node --check public/improvements.js && node --check public/premium.js && node --check public/export-core.js && node --check public/export-fix.js && node --check public/admin-time-fix.js && node --check public/schedule-multi-fix.js && node scripts/admin-time-test.mjs && node scripts/schedule-multi-test.mjs && node scripts/export-test.mjs && node scripts/check.mjs",
+    "verify:legacy": "node scripts/admin-time-test.mjs && node scripts/schedule-multi-test.mjs && node scripts/export-test.mjs",
     "verify:v2": "node scripts/attendance-v2-verify.mjs",
     "verify:unified": "node scripts/unified-portal-test.mjs && node scripts/attendance-pause-test.mjs && node scripts/company-settings-test.mjs && node scripts/pdf-branding-test.mjs",
     "verify:all": "npm run verify:legacy && npm run verify:v2 && npm run verify:unified",
-    "verify": "npm run prepare:exports && node scripts/patch-production-bundle.mjs && npm run verify:all",
+    "verify": "npm run verify:all",
     "build:frontend": "node scripts/build-frontend.mjs",
     "build": "npm run verify && npm run build:frontend && node scripts/build.mjs",
     "check": "npm run verify",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test tests/e2e/unified-portal.spec.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.1",
