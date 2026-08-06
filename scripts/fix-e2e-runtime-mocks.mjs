@@ -36,7 +36,7 @@ const previousNavigate = `async function navigate(page, label) {
   await navButton.click()
   await expect(page.locator('.topbar h1')).toHaveText(label)
 }`
-const stableNavigate = `async function navigate(page, label) {
+const currentNavigate = `async function navigate(page, label) {
   const sidebar = page.locator('.sidebar')
   const menu = page.getByRole('button', { name: 'Menü öffnen' })
   if (await menu.isVisible().catch(() => false)) {
@@ -46,7 +46,19 @@ const stableNavigate = `async function navigate(page, label) {
   await sidebar.getByRole('button', { name: label, exact: true }).click()
   await expect(page.locator('.topbar h1')).toHaveText(label)
 }`
-source = source.replace(preparedNavigate, stableNavigate).replace(previousNavigate, stableNavigate)
+const stableNavigate = `async function navigate(page, label) {
+  const sidebar = page.locator('.sidebar')
+  const menu = page.getByRole('button', { name: 'Menü öffnen' })
+  if (await menu.isVisible().catch(() => false)) {
+    await menu.click()
+    await expect(sidebar).toHaveClass(/open/)
+  }
+  const navButton = sidebar.locator('nav button').filter({ hasText: label }).first()
+  await expect(navButton).toHaveCount(1)
+  await navButton.click({ force: true })
+  await expect(page.locator('.topbar h1')).toHaveText(label)
+}`
+source = source.replace(preparedNavigate, stableNavigate).replace(previousNavigate, stableNavigate).replace(currentNavigate, stableNavigate)
 
 source = source.replaceAll("page.route('**/api/unified-reports'", "page.route('**/api/unified-reports**'")
 source = source.replaceAll("page.route('**/api/schedule-directory'", "page.route('**/api/schedule-directory**'")
