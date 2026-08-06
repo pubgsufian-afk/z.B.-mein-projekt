@@ -6,7 +6,7 @@
   "scripts": {
     "verify:legacy": "node scripts/admin-time-test.mjs && node scripts/schedule-multi-test.mjs",
     "verify:v2": "node scripts/attendance-v2-verify.mjs",
-    "verify:unified": "node scripts/apply-portal-audit-fixes.mjs && node scripts/apply-scheduler-support.mjs && node scripts/unified-portal-test.mjs && node scripts/employee-access-policy-test.mjs && node scripts/scheduler-support-test.mjs && node scripts/attendance-pause-test.mjs && node scripts/company-settings-test.mjs && node scripts/pdf-branding-test.mjs && node scripts/report-download-contract-test.mjs && node scripts/schedule-pdf-test.mjs && node scripts/employee-schedule-compact-test.mjs && node scripts/portal-audit-regression-test.mjs && node scripts/report-production-v2-test.mjs",
+    "verify:unified": "node scripts/apply-portal-audit-fixes.mjs && node scripts/apply-scheduler-support.mjs && node scripts/fix-scheduler-patch-regressions.mjs && node scripts/unified-portal-test.mjs && node scripts/employee-access-policy-test.mjs && node scripts/scheduler-support-test.mjs && node scripts/attendance-pause-test.mjs && node scripts/company-settings-test.mjs && node scripts/pdf-branding-test.mjs && node scripts/report-download-contract-test.mjs && node scripts/schedule-pdf-test.mjs && node scripts/employee-schedule-compact-test.mjs && node scripts/portal-audit-regression-test.mjs && node scripts/report-production-v2-test.mjs",
     "verify:database": "node scripts/netlify-database-config-test.mjs",
     "verify:all": "npm run verify:legacy && npm run verify:v2 && npm run verify:unified && npm run verify:database",
     "verify": "npm run verify:all",
