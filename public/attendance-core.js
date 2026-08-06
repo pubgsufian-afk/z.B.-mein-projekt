@@ -66,7 +66,10 @@ export function reduceAttendanceState(state, candidate) {
 
   if (event.action === 'clock-in') {
     if (current.phase === 'working') throw new Error('CLOCK_IN_ALREADY_OPEN')
-    if (current.phase === 'completed') throw new Error('SHIFT_ALREADY_COMPLETED')
+    if (current.phase === 'completed' && current.clockOutAt
+      && new Date(event.clientOccurredAt) <= new Date(current.clockOutAt)) {
+      throw new Error('CLOCK_IN_BEFORE_PREVIOUS_CLOCK_OUT')
+    }
     return {
       phase: 'working',
       clockInAt: event.clientOccurredAt,
@@ -89,7 +92,6 @@ export function reduceAttendanceState(state, candidate) {
 
 export function nextAllowedAction(state) {
   if (state?.phase === 'working') return 'clock-out'
-  if (state?.phase === 'completed') return null
   return 'clock-in'
 }
 
