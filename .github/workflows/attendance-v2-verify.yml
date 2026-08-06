@@ -27,3 +27,11 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      - name: Upload unified portal preview
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unified-portal-preview
+          path: artifacts/unified-preview
+          if-no-files-found: error
+          retention-days: 7
