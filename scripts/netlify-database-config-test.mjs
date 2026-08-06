@@ -32,4 +32,26 @@ if (!migration.includes("'break-start'") || !migration.includes("'break-end'")) 
   throw new Error('Pausenaktionen fehlen in der Netlify-Migration.')
 }
 
+const helperPath = 'netlify/functions/_shared/database-connection.mts'
+if (!fs.existsSync(helperPath)) {
+  throw new Error('Gemeinsame Laufzeit-Datenbankverbindung fehlt.')
+}
+const helper = fs.readFileSync(helperPath, 'utf8')
+if (!helper.includes("from '@netlify/database'") || !helper.includes('getConnectionString')) {
+  throw new Error('Die offizielle Netlify-Laufzeitverbindung wird nicht verwendet.')
+}
+
+for (const functionPath of [
+  'netlify/functions/attendance.mts',
+  'netlify/functions/attendance-maintenance.mts',
+  'netlify/functions/reports-v2.mts',
+  'netlify/functions/unified-reports.mts',
+  'netlify/functions/worksite-v2.mts',
+]) {
+  const source = fs.readFileSync(functionPath, 'utf8')
+  if (!source.includes("from './_shared/database-connection.mts'")) {
+    throw new Error(`${functionPath} nutzt die gemeinsame Netlify-Datenbankverbindung nicht.`)
+  }
+}
+
 console.log('Netlify database configuration test passed')
