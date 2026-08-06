@@ -17,71 +17,23 @@ source = source.replace(
   "await expect(page.locator('.topbar h1')).toHaveText('Dienstplan')",
 )
 
-const knownNavigateVariants = [
-`async function navigate(page, label) {
-  const menu = page.getByRole('button', { name: 'Menü öffnen' })
-  if (await menu.isVisible().catch(() => false)) {
-    await menu.click()
-    await expect(page.locator('.sidebar')).toHaveClass(/open/)
-  }
-  await page.getByRole('button', { name: label, exact: true }).click()
-  await expect(page.locator('.topbar h1')).toHaveText(label)
-}`,
-`async function navigate(page, label) {
-  const sidebar = page.locator('.sidebar')
-  const navButton = sidebar.getByRole('button', { name: label, exact: true })
-  if (!(await navButton.isVisible().catch(() => false))) {
-    await page.getByRole('button', { name: 'Menü öffnen' }).click()
-    await expect(sidebar).toHaveClass(/open/)
-  }
-  await navButton.click()
-  await expect(page.locator('.topbar h1')).toHaveText(label)
-}`,
-`async function navigate(page, label) {
-  const sidebar = page.locator('.sidebar')
-  const menu = page.getByRole('button', { name: 'Menü öffnen' })
-  if (await menu.isVisible().catch(() => false)) {
-    await menu.click()
-    await expect(sidebar).toHaveClass(/open/)
-  }
-  await sidebar.getByRole('button', { name: label, exact: true }).click()
-  await expect(page.locator('.topbar h1')).toHaveText(label)
-}`,
-`async function navigate(page, label) {
-  const sidebar = page.locator('.sidebar')
-  const menu = page.getByRole('button', { name: 'Menü öffnen' })
-  if (await menu.isVisible().catch(() => false)) {
-    await menu.click()
-    await expect(sidebar).toHaveClass(/open/)
-  }
-  const navButton = sidebar.locator('nav button').filter({ hasText: label }).first()
-  await expect(navButton).toHaveCount(1)
-  await navButton.click({ force: true })
-  await expect(page.locator('.topbar h1')).toHaveText(label)
-}`,
-`async function navigate(page, label) {
-  await page.evaluate((targetLabel) => {
+const navigateStart = source.indexOf('async function navigate(page, label) {')
+const navigateEnd = source.indexOf('\n}\n\nasync function expectNoHorizontalPageOverflow', navigateStart)
+if (navigateStart >= 0 && navigateEnd > navigateStart) {
+  const stableNavigate = `async function navigate(page, label) {
+  const result = await page.evaluate((targetLabel) => {
+    const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim()
     const buttons = Array.from(document.querySelectorAll('.sidebar nav button'))
-    const button = buttons.find((entry) => entry.textContent?.trim() === targetLabel)
-    if (!button) {
-      const available = buttons.map((entry) => entry.textContent?.trim()).filter(Boolean).join('|')
-      throw new Error('Navigation fehlt: ' + targetLabel + ' / ' + available)
-    }
+    const button = buttons.find((entry) => normalize(entry.textContent) === normalize(targetLabel))
+    if (!button) return { clicked: false, available: buttons.map((entry) => normalize(entry.textContent)).filter(Boolean) }
     button.click()
+    return { clicked: true, available: [] }
   }, label)
-  await expect(page.locator('.topbar h1')).toHaveText(label)
-}`,
-]
-const stableNavigate = `async function navigate(page, label) {
-  const buttons = page.locator('.sidebar nav button')
-  const labels = (await buttons.allTextContents()).map((value) => value.replace(/\\s+/g, ' ').trim())
-  const target = label.replace(/\\s+/g, ' ').trim()
-  const index = labels.findIndex((value) => value === target)
-  if (index < 0) throw new Error('NAVIGATION_FEHLT_' + target + '__VORHANDEN_' + labels.join('_'))
-  await buttons.nth(index).evaluate((button) => button.click())
+  if (!result.clicked) throw new Error('NAVIGATION_FEHLT_' + label + '__VORHANDEN_' + result.available.join('_'))
   await expect(page.locator('.topbar h1')).toHaveText(label)
 }`
-for (const variant of knownNavigateVariants) source = source.replace(variant, stableNavigate)
+  source = source.slice(0, navigateStart) + stableNavigate + source.slice(navigateEnd + 2)
+}
 
 source = source.replaceAll("page.route('**/api/unified-reports'", "page.route('**/api/unified-reports**'")
 source = source.replaceAll("page.route('**/api/schedule-directory'", "page.route('**/api/schedule-directory**'")
