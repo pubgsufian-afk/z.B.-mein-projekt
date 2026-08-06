@@ -10,7 +10,8 @@
     "verify:all": "npm run verify:legacy && npm run verify:v2",
     "verify": "npm run prepare:exports && node scripts/patch-production-bundle.mjs && npm run verify:all",
     "build": "npm run verify && node scripts/build.mjs",
-    "check": "npm run verify"
+    "check": "npm run verify",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.1",
@@ -18,5 +19,9 @@
     "@netlify/identity": "^1.2.0",
     "esbuild": "^0.25.5",
     "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.2",
+    "http-server": "^14.1.1"
   }
 }
