@@ -59,8 +59,7 @@ const knownNavigateVariants = [
   await navButton.click({ force: true })
   await expect(page.locator('.topbar h1')).toHaveText(label)
 }`,
-]
-const stableNavigate = `async function navigate(page, label) {
+`async function navigate(page, label) {
   await page.evaluate((targetLabel) => {
     const buttons = Array.from(document.querySelectorAll('.sidebar nav button'))
     const button = buttons.find((entry) => entry.textContent?.trim() === targetLabel)
@@ -70,6 +69,16 @@ const stableNavigate = `async function navigate(page, label) {
     }
     button.click()
   }, label)
+  await expect(page.locator('.topbar h1')).toHaveText(label)
+}`,
+]
+const stableNavigate = `async function navigate(page, label) {
+  const buttons = page.locator('.sidebar nav button')
+  const labels = (await buttons.allTextContents()).map((value) => value.replace(/\\s+/g, ' ').trim())
+  const target = label.replace(/\\s+/g, ' ').trim()
+  const index = labels.findIndex((value) => value === target)
+  if (index < 0) throw new Error('NAVIGATION_FEHLT_' + target + '__VORHANDEN_' + labels.join('_'))
+  await buttons.nth(index).evaluate((button) => button.click())
   await expect(page.locator('.topbar h1')).toHaveText(label)
 }`
 for (const variant of knownNavigateVariants) source = source.replace(variant, stableNavigate)
