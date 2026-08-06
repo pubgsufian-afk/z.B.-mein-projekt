@@ -2,8 +2,8 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './tests/e2e',
-  timeout: 30_000,
-  expect: { timeout: 7_000 },
+  timeout: 35_000,
+  expect: { timeout: 8_000 },
   fullyParallel: false,
   retries: 0,
   reporter: [['line']],
@@ -22,5 +22,6 @@ export default defineConfig({
   projects: [
     { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'iphone-chromium', use: { ...devices['iPhone 15'], browserName: 'chromium' } },
+    { name: 'android-chromium', use: { ...devices['Pixel 7'], browserName: 'chromium' } },
   ],
 })

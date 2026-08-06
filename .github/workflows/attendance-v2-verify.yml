@@ -1,9 +1,10 @@
-name: Attendance V2 verification
+name: Unified portal verification
 
 on:
   push:
     branches:
       - work/attendance-v2-complete
+      - fix/unified-portal-mobile-settings
   pull_request:
     branches:
       - main
@@ -15,7 +16,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,3 +27,11 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      - name: Upload unified portal preview
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unified-portal-preview
+          path: artifacts/unified-preview
+          if-no-files-found: error
+          retention-days: 7
