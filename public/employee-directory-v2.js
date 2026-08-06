@@ -45,7 +45,21 @@ export function syncEmployeeSelection(form) {
   const select = form?.elements?.employeeUserId
   const name = form?.elements?.employeeName
   if (!select || !name) return
+  select.setAttribute('aria-label', 'Mitarbeiter')
   name.value = select.selectedOptions?.[0]?.dataset?.name || ''
+}
+
+function applyAccessibleNames(root = document) {
+  root.querySelectorAll?.('select[name="employeeUserId"], select[name="employeeSelection"], select[data-live-user]')
+    .forEach((select) => select.setAttribute('aria-label', 'Mitarbeiter'))
+  root.querySelectorAll?.('select[data-live-object]')
+    .forEach((select) => select.setAttribute('aria-label', 'Einsatzort'))
+}
+
+if (typeof document !== 'undefined') {
+  applyAccessibleNames()
+  const observer = new MutationObserver(() => applyAccessibleNames())
+  observer.observe(document.documentElement, { childList: true, subtree: true })
 }
 
 function escapeHtml(value) {
