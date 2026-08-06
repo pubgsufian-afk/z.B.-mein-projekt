@@ -32,6 +32,7 @@ for (const file of browserFiles) execFileSync(process.execPath, ['--check', path
 
 await build({
   entryPoints: functionFiles.map((file) => path.join(root, file)),
+  outdir: path.join(root, '.attendance-v2-check'),
   bundle: true,
   platform: 'node',
   format: 'esm',
