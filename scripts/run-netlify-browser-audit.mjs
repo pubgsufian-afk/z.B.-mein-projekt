@@ -1,7 +1,8 @@
-import { readdir, rm, writeFile } from 'node:fs/promises'
+import { readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 
 const functionsDir = 'netlify/functions'
+const testPath = 'tests/e2e/unified-portal.spec.mjs'
 
 function run(command, args) {
   return spawnSync(command, args, {
@@ -48,25 +49,39 @@ function category(value) {
   if (title.includes('reports excel download')) return 'excel'
   if (title.includes('scheduler sees')) return 'support-access'
   if (title.includes('scheduler opens')) return 'support-editor'
+  if (title.includes('schedule') || title.includes('dienstplan')) return 'schedule'
   return 'other'
 }
 
-function reason(value) {
-  const text = String(value || '').toLowerCase()
-  if (text.includes('strict mode violation')) return 'duplicate'
-  if (text.includes('waitforevent') || text.includes('waiting for event')) return 'download'
-  if (text.includes('pdf-vorschau')) return 'preview'
-  if (text.includes('dienst erstellen')) return 'editor'
-  if (text.includes('dienstplan')) return 'schedule'
-  if (text.includes('tohavecount')) return 'count'
-  if (text.includes('tobevisible')) return 'visible'
-  if (text.includes('timed out')) return 'timeout'
-  const line = text.match(/unified-portal\.spec\.mjs:(\d+)/)?.[1]
-  return line ? `line-${line}` : 'assertion'
+function compact(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/\x1b\[[0-9;]*m/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 42) || 'unknown'
+}
+
+function failureLine(error, testLines) {
+  const lineNumber = Number(String(error || '').match(/unified-portal\.spec\.mjs:(\d+)/)?.[1] || 0)
+  const source = lineNumber ? testLines[lineNumber - 1] : ''
+  return { lineNumber, source }
+}
+
+function reason(error, source) {
+  const text = String(error || '').replace(/\x1b\[[0-9;]*m/g, '')
+  const lower = text.toLowerCase()
+  if (source) return compact(source)
+  if (lower.includes('strict mode violation')) return 'duplicate-locator'
+  if (lower.includes('waitforevent') || lower.includes('waiting for event')) return 'download-event'
+  if (lower.includes('timed out')) return 'timeout'
+  const first = text.split('\n').map((line) => line.trim()).find((line) => /^(error|typeerror|referenceerror|expect)/i.test(line))
+  return compact(first || text.slice(0, 120))
 }
 
 async function createMarker(name, payload) {
-  const safeName = name.replace(/[^a-z0-9-]/g, '-').slice(0, 100)
+  const safeName = name.replace(/[^a-z0-9-]/g, '-').slice(0, 115)
   const source = `import type { Config } from '@netlify/functions'\nexport default async () => Response.json(${JSON.stringify(payload)}, { headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' } })\nexport const config: Config = { path: '/api/${safeName}' }\n`
   await writeFile(`${functionsDir}/${safeName}.mts`, source)
 }
@@ -94,11 +109,12 @@ try {
 
   if (result.status === 0) {
     stage = 'tests'
-    result = run('npx', ['playwright', 'test', 'tests/e2e/unified-portal.spec.mjs', '--reporter=json'])
+    result = run('npx', ['playwright', 'test', testPath, '--reporter=json'])
     details = `${result.stdout || ''}\n${result.stderr || ''}`.trim()
     try { failures = collectFailures(JSON.parse(result.stdout || '{}')) } catch { failures = [] }
   }
 
+  const testLines = (await readFile(testPath, 'utf8')).split('\n')
   const success = result.status === 0
   const categories = [...new Set(failures.map((failure) => category(failure.title)))].slice(0, 6)
   await createMarker(success ? 'audit-browser-success-33' : `audit-browser-failed-${stage}-${failures.length || 'unknown'}-${categories.join('-') || 'unparsed'}`, {
@@ -106,8 +122,9 @@ try {
   })
 
   for (const failure of failures) {
-    const name = `audit-fail-${device(failure.project)}-${category(failure.title)}-${reason(failure.error)}`
-    await createMarker(name, { project: failure.project, title: failure.title, error: failure.error.slice(0, 4000) })
+    const at = failureLine(failure.error, testLines)
+    const name = `audit-fail-${device(failure.project)}-${category(failure.title)}-l${at.lineNumber || 0}-${reason(failure.error, at.source)}`
+    await createMarker(name, { project: failure.project, title: failure.title, line: at.lineNumber, source: at.source, error: failure.error.slice(0, 4000) })
   }
 } catch (error) {
   await createMarker('audit-browser-runner-crash', { success: false, stage: 'runner', error: String(error?.stack || error) })
