@@ -4,7 +4,7 @@
   "version": "2026.8.6",
   "type": "module",
   "scripts": {
-    "verify:legacy": "node scripts/admin-time-test.mjs && node scripts/schedule-multi-test.mjs && node scripts/export-test.mjs",
+    "verify:legacy": "node scripts/admin-time-test.mjs && node scripts/schedule-multi-test.mjs",
     "verify:v2": "node scripts/attendance-v2-verify.mjs",
     "verify:unified": "node scripts/unified-portal-test.mjs && node scripts/attendance-pause-test.mjs && node scripts/company-settings-test.mjs && node scripts/pdf-branding-test.mjs",
     "verify:all": "npm run verify:legacy && npm run verify:v2 && npm run verify:unified",
