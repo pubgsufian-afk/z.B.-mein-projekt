@@ -46,10 +46,12 @@ await build({
 })
 
 const index = await readFile(path.join(root, 'public/index.html'), 'utf8')
+const app = await readFile(path.join(root, 'frontend/src/App.jsx'), 'utf8')
 assert.match(index, /assets\/habun-portal\.js/, 'Unified portal bundle missing from index.html')
 assert.match(index, /assets\/habun-portal\.css/, 'Unified portal stylesheet missing from index.html')
 assert.doesNotMatch(index, /attendance-v2\.js|attendance-v2-compat\.js|Neue Zeiterfassung|Zeiterfassung und Planung/, 'Legacy second portal is still installed')
 assert.match(index, /habun-logo|apple-touch-icon|favicon/, 'Existing brand assets must remain installed')
+assert.doesNotMatch(app, /Mitarbeiter-ID|Personalnummer/i, 'Employee ID must not be rendered by the unified source')
 
 const tests = [
   'scripts/attendance-domain-test.mjs',
@@ -62,7 +64,6 @@ const tests = [
   'scripts/attendance-corrections-test.mjs',
   'scripts/attendance-retention-test.mjs',
   'scripts/reports-v2-test.mjs',
-  'scripts/remove-employee-id-test.mjs',
 ]
 for (const test of tests) execFileSync(process.execPath, [path.join(root, test)], { stdio: 'inherit' })
 
