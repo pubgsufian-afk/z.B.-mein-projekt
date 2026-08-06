@@ -115,7 +115,7 @@ AUDIT frontend-build: OK
 public/assets/habun-portal.js   258.0kb
   public/assets/habun-portal.css   28.7kb
 
-⚡ Done in 42ms
+⚡ Done in 40ms
 AUDIT dist-build: OK
 AUDIT browser: OK
 
@@ -130,5 +130,5 @@ Error: mobile navigation helper: erwartet 1 Treffer, gefunden 0
     at replaceOnce (file:///home/runner/work/z.B.-mein-projekt/z.B.-mein-projekt/scripts/prepare-unified-e2e.mjs:10:26)
     at file:///home/runner/work/z.B.-mein-projekt/z.B.-mein-projekt/scripts/prepare-unified-e2e.mjs:14:1
 
-Node.js v22.23.1
+Node.js v22.23.2
 ```
