@@ -38,23 +38,23 @@ function collectFailures(report) {
   return failures
 }
 
-function compactProject(value) {
-  if (value.includes('desktop')) return 'desktop'
-  if (value.includes('iphone')) return 'iphone'
-  if (value.includes('android')) return 'android'
-  return 'browser'
+function projectCode(value) {
+  if (value.includes('desktop')) return 'd'
+  if (value.includes('iphone')) return 'i'
+  if (value.includes('android')) return 'a'
+  return 'b'
 }
 
-function compactTest(value) {
+function testCode(value) {
   const title = value.toLowerCase()
-  if (title.includes('reports provide')) return 'reports-downloads'
-  if (title.includes('scheduler edits')) return 'scheduler-access'
-  if (title.includes('admin uses')) return 'admin-settings'
-  if (title.includes('digital attendance')) return 'attendance-flow'
-  if (title.includes('mobile schedule')) return 'schedule-editor'
-  if (title.includes('employee sees')) return 'employee-access'
-  if (title.includes('management records')) return 'management-times'
-  if (title.includes('login')) return 'login'
+  if (title.includes('reports provide')) return 'reports'
+  if (title.includes('scheduler edits')) return 'support'
+  if (title.includes('admin uses')) return 'settings'
+  if (title.includes('digital attendance')) return 'clock'
+  if (title.includes('mobile schedule')) return 'schedule'
+  if (title.includes('employee sees')) return 'employee'
+  if (title.includes('management records')) return 'times'
+  if (title.includes('registration')) return 'register'
   return 'other'
 }
 
@@ -81,7 +81,8 @@ if (result.status === 0) {
 }
 
 const success = result.status === 0
-const marker = success ? 'audit-browser-success-24' : `audit-browser-failed-${stage}-${failures.length || 'unknown'}`
+const failurePattern = [...new Set(failures.map((failure) => `${projectCode(failure.project)}-${testCode(failure.title)}`))].join('-') || 'unparsed'
+const marker = success ? 'audit-browser-success-24' : `audit-browser-failed-${stage}-${failures.length || 'unknown'}-${failurePattern}`
 const safeDetails = details.slice(-12000)
 const payload = {
   success,
@@ -93,13 +94,5 @@ const payload = {
   details: safeDetails,
 }
 
-const createMarker = async (name, data) => {
-  await writeFile(`${functionsDir}/${name}.mts`, `import type { Config } from '@netlify/functions'\n\nexport default async () => Response.json(${JSON.stringify(data)}, { headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' } })\n\nexport const config: Config = { path: '/api/${name}' }\n`)
-}
-
-await createMarker(marker, payload)
-for (const failure of failures) {
-  const name = `audit-fail-${compactProject(failure.project)}-${compactTest(failure.title)}`
-  await createMarker(name, failure)
-}
+await writeFile(`${functionsDir}/${marker}.mts`, `import type { Config } from '@netlify/functions'\n\nexport default async () => Response.json(${JSON.stringify(payload)}, { headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' } })\n\nexport const config: Config = { path: '/api/${marker}' }\n`)
 console.log(`Browser audit marker: ${marker}`)
