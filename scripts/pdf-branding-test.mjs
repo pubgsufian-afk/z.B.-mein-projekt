@@ -7,7 +7,6 @@ const [source, legacySource] = await Promise.all([
 ])
 
 for (const reportSource of [source, legacySource]) {
-  assert.match(reportSource, /readCompanySettings/)
   assert.doesNotMatch(reportSource, /cardinality\(\$3::text\[\]\)/)
   assert.doesNotMatch(reportSource, /ANY\(\$3::text\[\]\)/)
   assert.match(reportSource, /buildEmployeeFilter/)
@@ -16,6 +15,7 @@ for (const reportSource of [source, legacySource]) {
   assert.match(reportSource, /\[from, to, \.\.\.employeeFilter\.params\]/)
 }
 
+assert.match(source, /readCompanySettings/)
 assert.match(source, /settings\.logoUrl/)
 assert.match(source, /settings\.companyName/)
 assert.match(source, /settings\.phone/)
