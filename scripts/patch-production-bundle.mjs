@@ -16,6 +16,11 @@ once(
   'async function ve(o,c={}){const a=await fetch(o,{credentials:"same-origin",headers:{"Content-Type":"application/json",...c.headers||{}},...c}),d=await a.text();let h={};try{h=d?JSON.parse(d):{}}catch{}if(!a.ok)throw new Error(h.message||d||"Die Anfrage konnte nicht verarbeitet werden ("+a.status+").");return h}',
   "API"
 );
+once(
+  'c({tone:"success",text:"Anfrage gesendet. Bitte bestätige die E-Mail. Danach schaltet die Firma das Konto frei."}),d("login")',
+  'c({tone:"success",text:"Anfrage gesendet. Bitte bestätige die E-Mail. Danach schaltet die Firma das Konto frei."})',
+  "Registrierungserfolg"
+);
 once('date:un(),start:"07:00"', 'date:Tt(new Date),start:"07:00"', "Datum");
 once(
   'catch{C({tone:"error",text:"Der Dienstplan konnte nicht als PDF erstellt werden."})}finally{E("")}}function fe',
