@@ -9,6 +9,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const browserFiles = [
   'public/attendance-core.js',
   'public/attendance-v2.js',
+  'public/attendance-day-reset.js',
   'public/attendance-v2-compat.js',
   'public/attendance-corrections-tab.js',
   'public/live-attendance.js',
@@ -40,7 +41,7 @@ await build({
 })
 
 const index = await readFile(path.join(root, 'public/index.html'), 'utf8')
-for (const file of ['attendance-v2.js', 'attendance-corrections-tab.js', 'live-attendance.js', 'schedule-v2.js', 'schedule-assist-v2.js', 'attendance-corrections.js', 'reports-v2.js', 'worksite-v2.js']) {
+for (const file of ['attendance-v2.js', 'attendance-day-reset.js', 'attendance-corrections-tab.js', 'live-attendance.js', 'schedule-v2.js', 'schedule-assist-v2.js', 'attendance-corrections.js', 'reports-v2.js', 'worksite-v2.js']) {
   assert.match(index, new RegExp(file.replace('.', '\\.')), `${file} missing from index.html`)
 }
 assert.match(index, /habun-logo|apple-touch-icon|favicon/, 'Existing brand assets must remain installed')
@@ -49,6 +50,7 @@ const tests = [
   'scripts/attendance-baseline-test.mjs',
   'scripts/attendance-domain-test.mjs',
   'scripts/attendance-client-test.mjs',
+  'scripts/attendance-day-scope-test.mjs',
   'scripts/attendance-api-contract-test.mjs',
   'scripts/attendance-handler-test.mjs',
   'scripts/attendance-repository-test.mjs',
