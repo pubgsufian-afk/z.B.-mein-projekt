@@ -1,3 +1,4 @@
+# Protected implementation trigger. This branch is not production.
 name: Apply reports schedule mobile fixes
 
 on:
