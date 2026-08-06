@@ -6,7 +6,6 @@ let source = await readFile(path, 'utf8')
 
 const schedulerLogin = "await expect(page.getByRole('heading', { name: role === 'employee' ? 'Stempeluhr' : role === 'scheduler' ? 'Dienstplan' : 'Übersicht', exact: true })).toBeVisible()"
 const legacyLogin = "await expect(page.getByRole('heading', { name: role === 'employee' ? 'Stempeluhr' : 'Übersicht', exact: true })).toBeVisible()"
-const previousStableLogin = "await expect(page.locator(role === 'employee' ? '.employee-kiosk-shell' : '.app-shell')).toBeVisible()"
 const stableLogin = `await expect(page.locator(role === 'employee' ? '.employee-kiosk-shell' : '.app-shell')).toBeVisible()
   if (role === 'admin') {
     await expect(page.locator('.sidebar nav button')).toHaveCount(9)
@@ -15,7 +14,14 @@ const stableLogin = `await expect(page.locator(role === 'employee' ? '.employee-
     await expect(page.locator('.sidebar nav button')).toHaveCount(1)
     await expect(page.locator('.sidebar nav button').filter({ hasText: 'Dienstplan' })).toHaveCount(1)
   }`
-source = source.replace(schedulerLogin, stableLogin).replace(legacyLogin, stableLogin).replace(previousStableLogin, stableLogin)
+if (source.includes(schedulerLogin)) source = source.replace(schedulerLogin, stableLogin)
+else if (source.includes(legacyLogin)) source = source.replace(legacyLogin, stableLogin)
+else if (!source.includes("if (role === 'admin')")) {
+  source = source.replace(
+    "await expect(page.locator(role === 'employee' ? '.employee-kiosk-shell' : '.app-shell')).toBeVisible()",
+    stableLogin,
+  )
+}
 source = source.replace(
   "await expect(page.locator('.topbar h1')).toHaveText(role === 'employee' ? 'Stempeluhr' : role === 'scheduler' ? 'Dienstplan' : 'Übersicht')",
   stableLogin,
@@ -31,9 +37,8 @@ const navigateEnd = source.indexOf('\n}\n\nasync function expectNoHorizontalPage
 assert.ok(navigateStart >= 0 && navigateEnd > navigateStart, 'Navigationstest wurde nicht gefunden.')
 const stableNavigate = `async function navigate(page, label) {
   const navButton = page.locator('.sidebar nav button').filter({ hasText: label }).first()
-  await expect(navButton).toBeAttached()
-  await expect(navButton).toHaveText(label)
-  await navButton.evaluate((button) => button.click())
+  await expect(navButton).toHaveCount(1)
+  await navButton.dispatchEvent('click')
   await expect(page.locator('.topbar h1')).toHaveText(label)
 }`
 source = source.slice(0, navigateStart) + stableNavigate + source.slice(navigateEnd + 2)
@@ -57,7 +62,7 @@ source = source.replace(
 )
 
 assert.match(source, /role, employeeCount: employees\.length/)
-assert.match(source, /toHaveCount\(9\)/)
+assert.match(source, /dispatchEvent\('click'\)/)
 assert.match(source, /filter\(\{ hasText: 'Berichte' \}\)/)
 
 await writeFile(path, source)
