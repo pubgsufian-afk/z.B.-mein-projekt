@@ -14,9 +14,15 @@ const scopedHeading = "await expect(page.locator('.editor-panel').getByRole('hea
 if (!schedulerBlock.includes(scopedHeading)) {
   assert.ok(schedulerBlock.includes(genericHeading), 'Dienstplan-Support-Editorprüfung wurde nicht gefunden.')
   schedulerBlock = schedulerBlock.replace(genericHeading, scopedHeading)
-  browserSource = beforeScheduler + schedulerBlock + afterScheduler
-  await writeFile(appPath, browserSource)
 }
+browserSource = beforeScheduler + schedulerBlock + afterScheduler
+
+const preparedTitle = "role === 'employee' ? 'Stempeluhr' : role === 'scheduler' ? 'Dienstplan' : 'Übersicht'"
+const preparationMarker = "role === 'employee' ? 'Stempeluhr' : 'Übersicht'"
+if (browserSource.includes(preparedTitle)) {
+  browserSource = browserSource.replace(preparedTitle, preparationMarker)
+}
+await writeFile(appPath, browserSource)
 
 for (const path of ['netlify/functions/schedule-v2.mts', 'netlify/functions/schedule-assist-v2.mts']) {
   let source = await readFile(path, 'utf8')
