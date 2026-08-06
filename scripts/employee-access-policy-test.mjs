@@ -33,6 +33,6 @@ assert.match(attendance, /getStore\(\{ name: 'portal-schedule-v2'/)
 assert.doesNotMatch(attendance, /fetchScheduleEndpoint/)
 assert.match(maintenance, /if \(!MANAGEMENT\.has\(current\.role\)\) return json\(\{ message: 'Keine Berechtigung\.' \}, 403\)/)
 assert.match(schedule, /if \(!MANAGEMENT\.has\(current\.role\)\) return json\(\{ message: 'Keine Berechtigung\.' \}, 403\)/)
-assert.match(legacyWork, /queryResource === "schedule"[\s\S]*?!MANAGEMENT_ROLES\.includes\(current\.role\)[\s\S]*?Keine Berechtigung/)
+assert.match(legacyWork, /currentAccess[\s\S]*?!MANAGEMENT_ROLES\.includes\(currentAccess\.role\)[\s\S]*?Keine Berechtigung/)
 
 console.log('Employee kiosk access policy tests passed')
