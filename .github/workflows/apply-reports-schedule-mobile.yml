@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fix-reports-live-final-check-run
+  pull_request:
+    branches:
+      - fix-reports-live
 
 permissions:
   contents: write
