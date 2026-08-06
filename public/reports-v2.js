@@ -1,3 +1,5 @@
+import { employeeOptions, loadEmployeeDirectory } from './employee-directory-v2.js'
+
 const MANAGEMENT = new Set(['owner', 'admin', 'manager'])
 
 export function reportPeriod(mode, value, from, to) {
@@ -22,28 +24,33 @@ async function render() {
   if (!section || !MANAGEMENT.has(app.model.role)) return
   const today = new Date().toISOString().slice(0, 10)
   const month = today.slice(0, 7)
-  section.innerHTML = `
-    <article class="habun-v2-card">
-      <h3>PDF-Bericht erstellen</h3>
-      <form data-report-form>
-        <div class="habun-v2-fields">
-          <label>Berichtsart<select name="reportType"><option value="employee">Mitarbeiter-Stundennachweis</option><option value="combined">Gesamtübersicht</option></select></label>
-          <label>Zeitraum<select name="periodMode"><option value="day">Ein Tag</option><option value="month" selected>Voller Monat</option><option value="range">Freier Zeitraum</option></select></label>
-          <label data-period-day hidden>Tag<input type="date" name="day" value="${today}"></label>
-          <label data-period-month>Monat<input type="month" name="month" value="${month}"></label>
-          <label data-period-range hidden>Von<input type="date" name="from"></label>
-          <label data-period-range hidden>Bis<input type="date" name="to"></label>
-          <label>Mitarbeiter-IDs<textarea name="userIds" rows="3" placeholder="Leer lassen für alle. Mehrere IDs mit Komma trennen."></textarea></label>
-          <label>Ausgabe<select name="outputMode"><option value="combined">Eine gemeinsame PDF</option><option value="separate">Je Mitarbeiter eine PDF</option></select></label>
-        </div>
-        <div class="habun-v2-actions"><button class="habun-v2-primary" type="submit">PDF erstellen</button></div>
-        <p class="habun-v2-status">Die PDF enthält nur den Mitarbeiternamen, geplante und tatsächliche Zeiten, Pause, Nettozeit und Summen. Es gibt keine privaten Daten und keine Unterschriftenfelder.</p>
-        <p class="habun-v2-status" data-report-status hidden></p>
-      </form>
-    </article>`
-  const form = section.querySelector('[data-report-form]')
-  form.elements.periodMode.addEventListener('change', () => updatePeriodFields(form))
-  form.addEventListener('submit', submit)
+  try {
+    const directory = await loadEmployeeDirectory(app.jsonFetch)
+    section.innerHTML = `
+      <article class="habun-v2-card">
+        <h3>PDF-Bericht erstellen</h3>
+        <form data-report-form>
+          <div class="habun-v2-fields">
+            <label>Berichtsart<select name="reportType"><option value="employee">Mitarbeiter-Stundennachweis</option><option value="combined">Gesamtübersicht</option></select></label>
+            <label>Zeitraum<select name="periodMode"><option value="day">Ein Tag</option><option value="month" selected>Voller Monat</option><option value="range">Freier Zeitraum</option></select></label>
+            <label data-period-day hidden>Tag<input type="date" name="day" value="${today}"></label>
+            <label data-period-month>Monat<input type="month" name="month" value="${month}"></label>
+            <label data-period-range hidden>Von<input type="date" name="from"></label>
+            <label data-period-range hidden>Bis<input type="date" name="to"></label>
+            <label>Mitarbeiter<select name="employeeSelection" multiple size="6">${employeeOptions(directory.all).replace('<option value="">Bitte wählen</option>', '')}</select><small>Keine Auswahl bedeutet alle Mitarbeiter.</small></label>
+            <label>Ausgabe<select name="outputMode"><option value="combined">Eine gemeinsame PDF</option><option value="separate">Je Mitarbeiter eine PDF</option></select></label>
+          </div>
+          <div class="habun-v2-actions"><button class="habun-v2-primary" type="submit">PDF erstellen</button></div>
+          <p class="habun-v2-status">Die PDF enthält nur den Mitarbeiternamen, geplante und tatsächliche Zeiten, Pause, Nettozeit und Summen. Es gibt keine privaten Daten und keine Unterschriftenfelder.</p>
+          <p class="habun-v2-status" data-report-status hidden></p>
+        </form>
+      </article>`
+    const form = section.querySelector('[data-report-form]')
+    form.elements.periodMode.addEventListener('change', () => updatePeriodFields(form))
+    form.addEventListener('submit', submit)
+  } catch (error) {
+    section.innerHTML = `<p class="habun-v2-status" data-tone="bad">${escapeHtml(error.message || 'Mitarbeiterliste konnte nicht geladen werden.')}</p>`
+  }
 }
 
 function updatePeriodFields(form) {
@@ -86,10 +93,10 @@ async function submit(event) {
   target.textContent = 'Bericht wird erstellt …'
   try {
     const period = reportPeriod(form.elements.periodMode.value, form.elements.periodMode.value === 'day' ? form.elements.day.value : form.elements.month.value, form.elements.from.value, form.elements.to.value)
-    const userIds = form.elements.userIds.value.split(',').map((value) => value.trim()).filter(Boolean)
+    const userIds = [...form.elements.employeeSelection.selectedOptions].map((option) => option.value).filter(Boolean)
     const base = { reportType: form.elements.reportType.value, ...period }
     if (form.elements.outputMode.value === 'separate' && userIds.length > 1) {
-      for (const userId of userIds) await downloadPdf({ ...base, userIds: [userId] }, `Habun-${userId}`)
+      for (const userId of userIds) await downloadPdf({ ...base, userIds: [userId] }, 'Habun-Mitarbeiterbericht')
     } else {
       await downloadPdf({ ...base, userIds })
     }
