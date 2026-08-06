@@ -56,10 +56,14 @@ if (!block.text.includes("toBlob();await habunSaveBlob")) {
 }
 
 const saveHelper = 'async function habunSaveBlob(o,c,a=o.type||"application/octet-stream"){const d=typeof navigator<"u"?navigator:{},h=/iPad|iPhone|iPod/.test(d.userAgent||"")||d.platform==="MacIntel"&&d.maxTouchPoints>1;if(h&&typeof File==="function"&&typeof d.share==="function"&&typeof d.canShare==="function")try{const g=new File([o],c,{type:a});if(d.canShare({files:[g]})){await d.share({files:[g],title:c});return}}catch(g){if(g?.name==="AbortError")return}const w=URL.createObjectURL(o),N=document.createElement("a");N.href=w,N.download=c,N.rel="noopener",N.style.display="none",document.body.appendChild(N),N.click(),N.remove(),window.setTimeout(()=>URL.revokeObjectURL(w),12e4)}async function habunSavePdfFile(o,c){await habunSaveBlob(o.output("blob"),c,"application/pdf")}';
-const helperStart = code.indexOf("async function habunSavePdfFile(");
+const existingBlobHelper = code.indexOf("async function habunSaveBlob(");
+const existingPdfHelper = code.indexOf("async function habunSavePdfFile(");
+const helperStart = existingBlobHelper >= 0 ? existingBlobHelper : existingPdfHelper;
 const helperEnd = code.indexOf("async function sp(", helperStart);
 if (helperStart >= 0 && helperEnd > helperStart) code = code.slice(0, helperStart) + saveHelper + code.slice(helperEnd);
-else if (!code.includes("async function habunSaveBlob(")) throw new Error("Download-Helfer fehlt");
+else throw new Error("Download-Helfer fehlt");
+if ((code.split("async function habunSaveBlob(").length - 1) !== 1) throw new Error("Download-Helfer ist mehrfach definiert");
+if ((code.split("async function habunSavePdfFile(").length - 1) !== 1) throw new Error("PDF-Helfer ist mehrfach definiert");
 
 once('y.save(`Habun-Stundenzettel-Alle-${c}.pdf`)', 'await habunSavePdfFile(y,`Habun-Stundenzettel-Alle-${c}.pdf`)', "Gesamt-PDF");
 once('S.save(`Stundenzettel-${id(c.fullName)}-${a}.pdf`)', 'await habunSavePdfFile(S,`Stundenzettel-${id(c.fullName)}-${a}.pdf`)', "Einzel-PDF");
