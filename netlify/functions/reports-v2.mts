@@ -41,7 +41,9 @@ function minutesBetween(start: unknown, end: unknown) {
 function timeOf(value: unknown) {
   if (!value) return '–'
   const date = new Date(String(value))
-  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }).format(date) : '–'
+  return Number.isFinite(date.getTime())
+    ? new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }).format(date)
+    : '–'
 }
 
 function hours(minutes: number) {
@@ -65,47 +67,122 @@ async function fetchSchedules(request: Request, from: string, to: string) {
   } catch { return [] }
 }
 
-function groupRows(events: Record<string, unknown>[], schedules: Record<string, unknown>[]) {
-  const scheduleMap = new Map<string, Record<string, unknown>>()
-  for (const shift of schedules) scheduleMap.set(`${shift.employeeUserId}:${shift.date}`, shift)
-  const eventMap = new Map<string, Record<string, unknown>[]>()
-  for (const event of events) {
-    const key = `${event.user_id}:${String(event.event_date).slice(0, 10)}`
-    if (!eventMap.has(key)) eventMap.set(key, [])
-    eventMap.get(key)!.push(event)
-  }
-  const keys = new Set([...scheduleMap.keys(), ...eventMap.keys()])
-  return [...keys].map((key) => {
-    const [userId, date] = key.split(':')
-    const shift = scheduleMap.get(key)
-    const items = (eventMap.get(key) || []).sort((a, b) => String(a.client_occurred_at).localeCompare(String(b.client_occurred_at)))
-    const start = items.find((item) => item.action === 'clock-in')
-    const end = [...items].reverse().find((item) => item.action === 'clock-out')
-    const pause = Math.max(0, Number(shift?.pauseMinutes || 0))
-    const gross = start && end ? minutesBetween(start.client_occurred_at, end.client_occurred_at) : 0
-    const net = Math.max(0, gross - pause)
-    return {
-      userId,
-      employeeName: safeText(shift?.employeeName || userId),
-      date,
-      plannedStart: safeText(shift?.start || '–'),
-      plannedEnd: safeText(shift?.end || '–'),
-      actualStart: timeOf(start?.client_occurred_at),
-      actualEnd: timeOf(end?.client_occurred_at),
-      pauseMinutes: pause,
-      netMinutes: net,
-      location: safeText(shift?.location || start?.object_id || end?.object_id || '–'),
-      warning: items.some((item) => item.location_status !== 'inside' || item.offline_captured),
+function sessionGroups(events: Record<string, unknown>[]) {
+  const sorted = [...events].sort((a, b) => String(a.client_occurred_at).localeCompare(String(b.client_occurred_at)))
+  const groups: Record<string, unknown>[][] = []
+  let current: Record<string, unknown>[] = []
+  for (const event of sorted) {
+    if (event.action === 'clock-in') {
+      if (current.length) groups.push(current)
+      current = [event]
+    } else if (event.action === 'clock-out') {
+      if (!current.length) current = [event]
+      else current.push(event)
+      groups.push(current)
+      current = []
     }
-  }).sort((a, b) => `${a.employeeName}-${a.date}`.localeCompare(`${b.employeeName}-${b.date}`))
+  }
+  if (current.length) groups.push(current)
+  return groups
 }
 
-async function buildPdf(request: Request, rows: ReturnType<typeof groupRows>, reportType: string, from: string, to: string) {
+function buildRow(
+  userId: string,
+  date: string,
+  shift: Record<string, unknown> | undefined,
+  items: Record<string, unknown>[],
+  rowId: string,
+) {
+  const ordered = [...items].sort((a, b) => String(a.client_occurred_at).localeCompare(String(b.client_occurred_at)))
+  const start = ordered.find((item) => item.action === 'clock-in')
+  const end = [...ordered].reverse().find((item) => item.action === 'clock-out')
+  const pause = Math.max(0, Number(shift?.pauseMinutes || 0))
+  const gross = start && end ? minutesBetween(start.client_occurred_at, end.client_occurred_at) : 0
+  return {
+    rowId,
+    userId,
+    scheduleId: safeText(shift?.id || start?.schedule_id || end?.schedule_id || ''),
+    employeeName: safeText(shift?.employeeName || userId),
+    date,
+    month: date.slice(0, 7),
+    plannedStart: safeText(shift?.start || '–'),
+    plannedEnd: safeText(shift?.end || '–'),
+    actualStart: timeOf(start?.client_occurred_at),
+    actualEnd: timeOf(end?.client_occurred_at),
+    pauseMinutes: pause,
+    netMinutes: Math.max(0, gross - pause),
+    location: safeText(shift?.location || start?.object_id || end?.object_id || '–'),
+    warning: ordered.some((item) => item.location_status !== 'inside' || item.offline_captured),
+  }
+}
+
+export function groupReportRows(events: Record<string, unknown>[], schedules: Record<string, unknown>[]) {
+  const rows: ReturnType<typeof buildRow>[] = []
+  const scheduleById = new Map<string, Record<string, unknown>>()
+  const consumedSchedules = new Set<string>()
+  const eventsBySchedule = new Map<string, Record<string, unknown>[]>()
+  const unassignedByDay = new Map<string, Record<string, unknown>[]>()
+
+  for (const shift of schedules) {
+    const id = safeText(shift.id)
+    if (id) scheduleById.set(id, shift)
+  }
+  for (const event of events) {
+    const scheduleId = safeText(event.schedule_id)
+    if (scheduleId) {
+      if (!eventsBySchedule.has(scheduleId)) eventsBySchedule.set(scheduleId, [])
+      eventsBySchedule.get(scheduleId)!.push(event)
+    } else {
+      const key = `${safeText(event.user_id)}:${String(event.event_date).slice(0, 10)}`
+      if (!unassignedByDay.has(key)) unassignedByDay.set(key, [])
+      unassignedByDay.get(key)!.push(event)
+    }
+  }
+
+  for (const [scheduleId, items] of eventsBySchedule) {
+    const shift = scheduleById.get(scheduleId)
+    if (shift) consumedSchedules.add(scheduleId)
+    const first = items[0] || {}
+    const userId = safeText(shift?.employeeUserId || first.user_id)
+    const date = safeText(shift?.date || String(first.event_date).slice(0, 10))
+    for (const [index, group] of sessionGroups(items).entries()) {
+      rows.push(buildRow(userId, date, shift, group, `${scheduleId}:${index}`))
+    }
+  }
+
+  for (const [key, items] of unassignedByDay) {
+    const separator = key.indexOf(':')
+    const userId = key.slice(0, separator)
+    const date = key.slice(separator + 1)
+    const daySchedules = schedules
+      .filter((shift) => safeText(shift.employeeUserId) === userId && safeText(shift.date) === date)
+      .sort((a, b) => safeText(a.start).localeCompare(safeText(b.start)))
+    const groups = sessionGroups(items)
+    groups.forEach((group, index) => {
+      const shift = daySchedules[index]
+      if (shift?.id) consumedSchedules.add(safeText(shift.id))
+      rows.push(buildRow(userId, date, shift, group, `unassigned:${key}:${index}`))
+    })
+  }
+
+  for (const shift of schedules) {
+    const id = safeText(shift.id)
+    if (id && consumedSchedules.has(id)) continue
+    const userId = safeText(shift.employeeUserId)
+    const date = safeText(shift.date)
+    if (!userId || !date) continue
+    rows.push(buildRow(userId, date, shift, [], `planned:${id || `${userId}:${date}:${shift.start}`}`))
+  }
+
+  return rows.sort((a, b) => `${a.employeeName}-${a.date}-${a.plannedStart}-${a.actualStart}`.localeCompare(`${b.employeeName}-${b.date}-${b.plannedStart}-${b.actualStart}`))
+}
+
+async function buildPdf(request: Request, rows: ReturnType<typeof groupReportRows>, reportType: string, from: string, to: string) {
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib')
   const pdf = await PDFDocument.create()
   const regular = await pdf.embedFont(StandardFonts.Helvetica)
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
-  let logo: Awaited<ReturnType<typeof pdf.embedPng>> | null = null
+  let logo: any = null
   try {
     const response = await fetch(new URL('/habun-logo.png', request.url))
     if (response.ok) logo = await pdf.embedPng(await response.arrayBuffer())
@@ -116,8 +193,8 @@ async function buildPdf(request: Request, rows: ReturnType<typeof groupRows>, re
   const width = 842
   const height = 595
   const rowHeight = 18
-  let page
-  let y
+  let page: any
+  let y = 0
   let pageNumber = 0
 
   const newPage = () => {
@@ -153,18 +230,34 @@ async function buildPdf(request: Request, rows: ReturnType<typeof groupRows>, re
     values.forEach((value, index) => page.drawText(value, { x: xs[index], y, size: 7.5, font: regular }))
     y -= rowHeight
   }
+
+  const monthly = new Map<string, number>()
   const totals = new Map<string, number>()
-  for (const row of rows) totals.set(row.employeeName, (totals.get(row.employeeName) || 0) + row.netMinutes)
-  if (y < margin + 60) newPage()
+  let grandTotal = 0
+  for (const row of rows) {
+    monthly.set(`${row.employeeName}:${row.month}`, (monthly.get(`${row.employeeName}:${row.month}`) || 0) + row.netMinutes)
+    totals.set(row.employeeName, (totals.get(row.employeeName) || 0) + row.netMinutes)
+    grandTotal += row.netMinutes
+  }
+  if (y < margin + 80) newPage()
   y -= 5
   page.drawLine({ start: { x: margin, y }, end: { x: width - margin, y }, thickness: 0.7 })
   y -= 18
-  page.drawText('Summen', { x: margin, y, size: 10, font: bold })
+  page.drawText('Monats- und Gesamtsummen', { x: margin, y, size: 10, font: bold })
+  for (const [key, total] of monthly) {
+    y -= 14
+    if (y < margin + 25) newPage()
+    const separator = key.lastIndexOf(':')
+    page.drawText(`${key.slice(0, separator)} · ${key.slice(separator + 1)}: ${hours(total)} Stunden`, { x: margin, y, size: 8.5, font: regular })
+  }
   for (const [name, total] of totals) {
     y -= 15
-    if (y < margin + 20) newPage()
-    page.drawText(`${name}: ${hours(total)} Stunden`, { x: margin, y, size: 9, font: regular })
+    if (y < margin + 25) newPage()
+    page.drawText(`${name} gesamt: ${hours(total)} Stunden`, { x: margin, y, size: 9, font: bold })
   }
+  y -= 17
+  if (y < margin + 25) newPage()
+  page.drawText(`Gesamtsumme aller ausgewählten Mitarbeiter: ${hours(grandTotal)} Stunden`, { x: margin, y, size: 10, font: bold })
   return pdf.save()
 }
 
@@ -187,7 +280,7 @@ export default async function reportsV2(request: Request, _context: Context) {
     const { neon } = await import('@neondatabase/serverless')
     const sql = neon(url)
     const events = await sql(
-      `SELECT id, user_id, action, client_occurred_at, event_date, object_id, location_status, offline_captured
+      `SELECT id, user_id, schedule_id, action, client_occurred_at, event_date, object_id, location_status, offline_captured
          FROM attendance_events
         WHERE event_date BETWEEN $1::date AND $2::date
           AND (cardinality($3::text[]) = 0 OR user_id = ANY($3::text[]))
@@ -195,7 +288,7 @@ export default async function reportsV2(request: Request, _context: Context) {
       [from, to, userIds],
     )
     const schedules = await fetchSchedules(request, from, to)
-    let rows = groupRows(events, schedules)
+    let rows = groupReportRows(events, schedules)
     if (userIds.length) rows = rows.filter((row) => userIds.includes(row.userId))
     if (!rows.length) return json({ message: 'Für den gewählten Zeitraum sind keine Daten vorhanden.', code: 'NO_DATA' }, 404)
     const bytes = await buildPdf(request, rows, reportType, from, to)
