@@ -4,7 +4,7 @@ import {
   createAttendanceService,
   eventDateInBerlin,
   normalizeClockRequest,
-} from './_shared/attendance-service.mts'
+} from './_shared/daily-attendance-service.mts'
 import { createAttendanceRepository } from './_shared/neon-attendance.mts'
 
 type PortalRole = 'owner' | 'admin' | 'manager' | 'employee' | 'pending'
@@ -68,6 +68,7 @@ export function attendanceFunctionMarkers() {
     employeeSelfScope: true,
     liveManagementOnly: true,
     scheduleV2First: true,
+    currentDayScope: true,
   }
 }
 
