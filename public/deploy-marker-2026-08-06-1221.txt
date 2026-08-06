@@ -1,0 +1,1 @@
+Netlify production functions reloaded after restoring the secured attendance database connection.
