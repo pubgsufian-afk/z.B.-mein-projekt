@@ -1,4 +1,5 @@
 # Protected implementation trigger. This branch is not production.
+# Shell-only verification trigger added after GitHub action-download outage.
 name: Apply reports schedule mobile fixes
 
 on:
