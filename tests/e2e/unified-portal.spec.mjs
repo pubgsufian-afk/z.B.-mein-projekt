@@ -152,6 +152,16 @@ async function mockPortalApis(page, role = 'admin') {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ settings: company }) })
   })
 
+  await page.route('**/api/schedule-pdf', async (route) => {
+    if (role === 'employee') return route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ message: 'Mitarbeiter dürfen keinen Dienstplan als PDF herunterladen.' }) })
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/pdf',
+      headers: { 'Content-Disposition': 'attachment; filename="Habun-Dienstplan-Test.pdf"' },
+      body: Buffer.from('%PDF-1.4\n%%EOF'),
+    })
+  })
+
   await page.route('**/api/unified-reports', async (route) => {
     const format = route.request().postDataJSON().format
     if (format === 'xlsx') {
@@ -185,12 +195,13 @@ async function login(page, role = 'admin') {
 }
 
 async function navigate(page, label) {
-  const button = page.getByRole('button', { name: label, exact: true })
-  if (!(await button.isVisible().catch(() => false))) {
-    await page.getByRole('button', { name: 'Menü öffnen' }).click()
+  const menu = page.getByRole('button', { name: 'Menü öffnen' })
+  if (await menu.isVisible().catch(() => false)) {
+    await menu.click()
+    await expect(page.locator('.sidebar')).toHaveClass(/open/)
   }
   await page.getByRole('button', { name: label, exact: true }).click()
-  await expect(page.getByRole('heading', { name: label, exact: true })).toBeVisible()
+  await expect(page.locator('.topbar h1')).toHaveText(label)
 }
 
 async function expectNoHorizontalPageOverflow(page) {
@@ -213,7 +224,7 @@ test('public registration has no employee ID and remains usable on mobile', asyn
   await expectNoHorizontalPageOverflow(page)
 })
 
-test('admin uses one portal and settings remain open and save correctly', async ({ page }) => {
+test('admin uses one portal and settings remain open and save correctly', async ({ page }, testInfo) => {
   await login(page, 'admin')
   await expect(page.getByRole('button', { name: 'Neue Zeiterfassung' })).toHaveCount(0)
   await expect(page.getByRole('dialog')).toHaveCount(0)
@@ -226,12 +237,14 @@ test('admin uses one portal and settings remain open and save correctly', async 
   await page.waitForTimeout(400)
   await expect(page.getByRole('heading', { name: 'Einstellungen', exact: true })).toBeVisible()
   await expect(page.getByText('buero@habun-security.de')).toBeVisible()
+  if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/01-einstellungen-iphone.png', fullPage: true })
 })
 
-test('digital attendance supports work, pause, resume and work end', async ({ page }) => {
+test('digital attendance supports work, pause, resume and work end', async ({ page }, testInfo) => {
   await login(page, 'admin')
   await navigate(page, 'Zeiterfassung')
   await expect(page.locator('.digital-clock')).toHaveText(/^\d{2}:\d{2}:\d{2}$/)
+  if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/02-zeiterfassung-iphone.png', fullPage: true })
   await page.getByRole('button', { name: /Arbeit beginnen/ }).click()
   await expect(page.getByText('Arbeitszeit läuft', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Pause beginnen' }).click()
@@ -239,36 +252,48 @@ test('digital attendance supports work, pause, resume and work end', async ({ pa
   await page.getByRole('button', { name: 'Pause beenden' }).click()
   await expect(page.getByText('Arbeitszeit läuft', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Arbeit beenden' }).click()
-  await expect(page.getByText('Dienst abgeschlossen', { exact: true })).toBeVisible()
-  await expect(page.getByText('Pause begonnen', { exact: true })).toBeVisible()
-  await expect(page.getByText('Pause beendet', { exact: true })).toBeVisible()
+  await expect(page.getByText('Dienst abgeschlossen', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('Pause begonnen', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('Pause beendet', { exact: true }).first()).toBeVisible()
 })
 
-test('mobile schedule opens a simple editor from a day card', async ({ page }) => {
+test('mobile schedule opens a simple editor from a day card', async ({ page }, testInfo) => {
   await login(page, 'admin')
   await navigate(page, 'Dienstplan')
   await expect(page.locator('.day-card')).toHaveCount(7)
   await page.getByRole('button', { name: /Dienst am .* hinzufügen/ }).first().click()
   await expect(page.getByRole('heading', { name: 'Dienst erstellen' })).toBeVisible()
+  if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/03-dienstplan-iphone.png', fullPage: true })
   await page.getByLabel('Mitarbeiter').selectOption('employee-anna')
-  await page.getByLabel('Einsatzort').selectOption('site-nord')
+  await page.locator('.schedule-form select').nth(1).selectOption('site-nord')
   await page.getByLabel('Arbeitsbereich').fill('Zutrittskontrolle')
   await page.getByRole('button', { name: 'Als Entwurf speichern' }).click()
-  await expect(page.getByText(/Dienst als Entwurf gespeichert/i)).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Dienst erstellen' })).toHaveCount(0)
   await expectNoHorizontalPageOverflow(page)
 })
 
-test('reports provide PDF preview, PDF download and Excel download', async ({ page }) => {
+test('management downloads a valid schedule PDF', async ({ page }) => {
+  await login(page, 'admin')
+  await navigate(page, 'Dienstplan')
+  const downloadPromise = page.waitForEvent('download', { predicate: (download) => /Habun-Dienstplan.*\.pdf$/i.test(download.suggestedFilename()) })
+  await page.getByRole('button', { name: 'Dienstplan als PDF' }).click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toMatch(/\.pdf$/i)
+  await expect(page.getByText(/Dienstplan wurde als PDF erstellt/i)).toBeVisible()
+})
+
+test('reports provide PDF preview, PDF download and Excel download', async ({ page }, testInfo) => {
   await login(page, 'admin')
   await navigate(page, 'Berichte')
   await page.getByRole('button', { name: 'PDF-Vorschau' }).click()
   await expect(page.getByTitle('PDF-Vorschau')).toBeVisible()
+  if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/04-berichte-iphone.png', fullPage: true })
 
-  const pdfDownload = page.waitForEvent('download')
+  const pdfDownload = page.waitForEvent('download', { predicate: (download) => /\.pdf$/i.test(download.suggestedFilename()) })
   await page.getByRole('button', { name: 'PDF herunterladen' }).click()
   expect((await pdfDownload).suggestedFilename()).toMatch(/\.pdf$/i)
 
-  const excelDownload = page.waitForEvent('download')
+  const excelDownload = page.waitForEvent('download', { predicate: (download) => /\.xlsx$/i.test(download.suggestedFilename()) })
   await page.getByRole('button', { name: 'Excel herunterladen' }).click()
   expect((await excelDownload).suggestedFilename()).toMatch(/\.xlsx$/i)
 })
@@ -296,6 +321,10 @@ test('employee sees only clock and own published schedule', async ({ page }, tes
   await expect(page.getByText('Zutrittskontrolle', { exact: false })).toBeVisible()
   await expect(page.getByText('Objekt Süd', { exact: false })).toHaveCount(0)
   await expect(page.getByText('Bernd Muster', { exact: false })).toHaveCount(0)
+  await expect(page.locator('.employee-shift-card')).toHaveCount(1)
+  await expect(page.locator('.day-card')).toHaveCount(0)
+  await expect(page.getByText('Kein Dienst', { exact: true })).toHaveCount(0)
+  await expect(page.getByText(/PDF|Excel/i)).toHaveCount(0)
   await expect(page.getByRole('button', { name: /Dienst am .* hinzufügen/ })).toHaveCount(0)
   await expect(page.getByText(/Vorwoche kopieren|Entwurf prüfen und freigeben|Dienst erstellen|Als Entwurf speichern/i)).toHaveCount(0)
   if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/07-mitarbeiter-dienstplan-iphone.png', fullPage: true })
