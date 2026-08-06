@@ -60,7 +60,7 @@ function compact(value) {
     .replace(/\x1b\[[0-9;]*m/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
-    .slice(0, 42) || 'unknown'
+    .slice(0, 70) || 'unknown'
 }
 
 function failureLine(error, testLines) {
@@ -71,13 +71,15 @@ function failureLine(error, testLines) {
 
 function reason(error, source) {
   const text = String(error || '').replace(/\x1b\[[0-9;]*m/g, '')
+  const navMissing = text.match(/Navigation fehlt:\s*([^\n]+)/i)
+  if (navMissing) return compact(navMissing[1])
   const lower = text.toLowerCase()
-  if (source) return compact(source)
   if (lower.includes('strict mode violation')) return 'duplicate-locator'
   if (lower.includes('waitforevent') || lower.includes('waiting for event')) return 'download-event'
   if (lower.includes('timed out')) return 'timeout'
+  if (source) return compact(source)
   const first = text.split('\n').map((line) => line.trim()).find((line) => /^(error|typeerror|referenceerror|expect)/i.test(line))
-  return compact(first || text.slice(0, 120))
+  return compact(first || text.slice(0, 160))
 }
 
 async function createMarker(name, payload) {
@@ -109,7 +111,7 @@ try {
 
   if (result.status === 0) {
     stage = 'tests'
-    result = run('npx', ['playwright', 'test', testPath, '--reporter=json'])
+    result = run('npx', ['playwright', 'test', testPath, '--grep', 'reports', '--reporter=json'])
     details = `${result.stdout || ''}\n${result.stderr || ''}`.trim()
     try { failures = collectFailures(JSON.parse(result.stdout || '{}')) } catch { failures = [] }
   }
@@ -117,8 +119,8 @@ try {
   const testLines = (await readFile(testPath, 'utf8')).split('\n')
   const success = result.status === 0
   const categories = [...new Set(failures.map((failure) => category(failure.title)))].slice(0, 6)
-  await createMarker(success ? 'audit-browser-success-33' : `audit-browser-failed-${stage}-${failures.length || 'unknown'}-${categories.join('-') || 'unparsed'}`, {
-    success, stage, exitCode: result.status, expectedTests: 33, failures, details: details.slice(-12000),
+  await createMarker(success ? 'audit-browser-reports-success-9' : `audit-browser-reports-failed-${stage}-${failures.length || 'unknown'}-${categories.join('-') || 'unparsed'}`, {
+    success, stage, exitCode: result.status, expectedTests: 9, failures, details: details.slice(-12000),
   })
 
   for (const failure of failures) {
