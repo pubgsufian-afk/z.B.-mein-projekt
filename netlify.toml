@@ -6,6 +6,18 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
+[[redirects]]
+  from = "/api/unified-reports"
+  to = "/.netlify/functions/unified-reports-fixed"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/schedule-pdf"
+  to = "/.netlify/functions/schedule-pdf-fixed"
+  status = 200
+  force = true
+
 [[headers]]
   for = "/*"
   [headers.values]
