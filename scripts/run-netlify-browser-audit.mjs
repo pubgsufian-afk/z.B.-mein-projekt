@@ -1,4 +1,4 @@
-import { readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { readdir, rm, writeFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 
 const functionsDir = 'netlify/functions'
@@ -35,52 +35,13 @@ function collectFailures(report) {
   return failures
 }
 
-function device(value) {
-  if (value.includes('desktop')) return 'd'
-  if (value.includes('iphone')) return 'i'
-  if (value.includes('android')) return 'a'
-  return 'b'
-}
-
-function category(value) {
-  const title = String(value || '').toLowerCase()
-  if (title.includes('reports preview')) return 'preview'
-  if (title.includes('reports pdf download')) return 'pdf'
-  if (title.includes('reports excel download')) return 'excel'
-  if (title.includes('scheduler sees')) return 'support-access'
-  if (title.includes('scheduler opens')) return 'support-editor'
-  if (title.includes('schedule') || title.includes('dienstplan')) return 'schedule'
-  return 'other'
-}
-
-function compact(value) {
+function sanitize(value) {
   return String(value || '')
+    .replace(/\x1b\[[0-9;]*m/g, '')
     .toLowerCase()
     .normalize('NFKD')
-    .replace(/\x1b\[[0-9;]*m/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
-    .slice(0, 70) || 'unknown'
-}
-
-function failureLine(error, testLines) {
-  const lineNumber = Number(String(error || '').match(/unified-portal\.spec\.mjs:(\d+)/)?.[1] || 0)
-  const source = lineNumber ? testLines[lineNumber - 1] : ''
-  return { lineNumber, source }
-}
-
-function reason(error, source) {
-  const text = String(error || '').replace(/\x1b\[[0-9;]*m/g, '')
-  const navMissing = text.match(/NAVIGATION_FEHLT_([^\n]+)/i) || text.match(/Navigation fehlt:\s*([^\n]+)/i)
-  if (navMissing) return compact(navMissing[1])
-  const lower = text.toLowerCase()
-  if (lower.includes('strict mode violation')) return 'duplicate-locator'
-  if (lower.includes('waitforevent') || lower.includes('waiting for event')) return 'download-event'
-  if (lower.includes('timed out')) return 'timeout'
-  const first = text.split('\n').map((line) => line.trim()).find((line) => /^(error|typeerror|referenceerror|expect|page\.evaluate)/i.test(line))
-  if (first) return compact(first)
-  if (source) return compact(source)
-  return compact(text.slice(0, 180))
 }
 
 async function createMarker(name, payload) {
@@ -91,7 +52,7 @@ async function createMarker(name, payload) {
 
 try {
   for (const name of await readdir(functionsDir)) {
-    if ((name.startsWith('audit-browser-') || name.startsWith('audit-fail-')) && name.endsWith('.mts')) await rm(`${functionsDir}/${name}`)
+    if ((name.startsWith('audit-browser-') || name.startsWith('audit-fail-') || name.startsWith('audit-error-')) && name.endsWith('.mts')) await rm(`${functionsDir}/${name}`)
   }
 
   let stage = 'install'
@@ -112,22 +73,20 @@ try {
 
   if (result.status === 0) {
     stage = 'tests'
-    result = run('npx', ['playwright', 'test', testPath, '--grep', 'reports', '--reporter=json'])
+    result = run('npx', ['playwright', 'test', testPath, '--project=desktop-chromium', '--grep', 'reports preview', '--reporter=json'])
     details = `${result.stdout || ''}\n${result.stderr || ''}`.trim()
     try { failures = collectFailures(JSON.parse(result.stdout || '{}')) } catch { failures = [] }
   }
 
-  const testLines = (await readFile(testPath, 'utf8')).split('\n')
   const success = result.status === 0
-  const categories = [...new Set(failures.map((failure) => category(failure.title)))].slice(0, 6)
-  await createMarker(success ? 'audit-browser-reports-success-9' : `audit-browser-reports-failed-${stage}-${failures.length || 'unknown'}-${categories.join('-') || 'unparsed'}`, {
-    success, stage, exitCode: result.status, expectedTests: 9, failures, details: details.slice(-12000),
+  await createMarker(success ? 'audit-browser-single-success' : `audit-browser-single-failed-${stage}`, {
+    success, stage, exitCode: result.status, failures, details: details.slice(-16000),
   })
 
-  for (const failure of failures) {
-    const at = failureLine(failure.error, testLines)
-    const name = `audit-fail-${device(failure.project)}-${category(failure.title)}-l${at.lineNumber || 0}-${reason(failure.error, at.source)}`
-    await createMarker(name, { project: failure.project, title: failure.title, line: at.lineNumber, source: at.source, error: failure.error.slice(0, 4000) })
+  const errorText = sanitize(failures[0]?.error || details || 'keine-fehlermeldung')
+  const chunks = errorText.match(/.{1,78}/g)?.slice(0, 8) || ['keine-fehlermeldung']
+  for (let index = 0; index < chunks.length; index += 1) {
+    await createMarker(`audit-error-${String(index + 1).padStart(2, '0')}-${chunks[index]}`, { index: index + 1, chunk: chunks[index] })
   }
 } catch (error) {
   await createMarker('audit-browser-runner-crash', { success: false, stage: 'runner', error: String(error?.stack || error) })
