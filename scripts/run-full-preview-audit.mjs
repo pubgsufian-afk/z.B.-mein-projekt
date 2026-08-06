@@ -26,6 +26,7 @@ const checks = [
   ['report-production', 'node', ['scripts/report-production-v2-test.mjs']],
   ['database-config', 'node', ['scripts/netlify-database-config-test.mjs']],
   ['frontend-build', 'node', ['scripts/build-frontend.mjs']],
+  ['dist-build', 'node', ['scripts/build.mjs']],
 ]
 
 function run(command, args) {
@@ -63,10 +64,3 @@ if (!failed) {
 
 if (failed) await marker(`audit-pipeline-failed-${failed.label}`, failed)
 else await marker('audit-pipeline-complete', { success: true })
-
-const dist = run('node', ['scripts/build.mjs'])
-if (dist.stdout) console.log(dist.stdout)
-if (dist.stderr) console.error(dist.stderr)
-if (dist.status !== 0) {
-  await marker('audit-pipeline-failed-dist', { exitCode: dist.status, details: `${dist.stdout || ''}\n${dist.stderr || ''}`.slice(-10000) })
-}
