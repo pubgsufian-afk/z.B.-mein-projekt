@@ -1,0 +1,33 @@
+name: Apply portal audit fixes
+
+on:
+  push:
+    branches:
+      - fix/portal-audit-errors-20260806
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, 'fix: apply portal audit corrections') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/portal-audit-errors-20260806
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/apply-portal-audit-fixes.mjs
+      - name: Commit generated fixes
+        run: |
+          if git diff --quiet; then
+            echo "No changes required"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/App.jsx netlify/functions/unified-reports.mts netlify/functions/schedule-v2.mts
+          git commit -m "fix: apply portal audit corrections"
+          git push
