@@ -36,9 +36,20 @@ const navigateStart = source.indexOf('async function navigate(page, label) {')
 const navigateEnd = source.indexOf('\n}\n\nasync function expectNoHorizontalPageOverflow', navigateStart)
 assert.ok(navigateStart >= 0 && navigateEnd > navigateStart, 'Navigationstest wurde nicht gefunden.')
 const stableNavigate = `async function navigate(page, label) {
-  const navButton = page.locator('.sidebar nav button').filter({ hasText: label }).first()
-  await expect(navButton).toHaveCount(1)
-  await navButton.dispatchEvent('click')
+  const clicked = await page.evaluate(async (targetLabel) => {
+    const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim()
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const buttons = Array.from(document.querySelectorAll('.sidebar nav button'))
+      const button = buttons.find((entry) => normalize(entry.textContent) === normalize(targetLabel))
+      if (button) {
+        button.click()
+        return true
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    return false
+  }, label)
+  expect(clicked).toBe(true)
   await expect(page.locator('.topbar h1')).toHaveText(label)
 }`
 source = source.slice(0, navigateStart) + stableNavigate + source.slice(navigateEnd + 2)
@@ -62,7 +73,7 @@ source = source.replace(
 )
 
 assert.match(source, /role, employeeCount: employees\.length/)
-assert.match(source, /dispatchEvent\('click'\)/)
+assert.match(source, /attempt < 40/)
 assert.match(source, /filter\(\{ hasText: 'Berichte' \}\)/)
 
 await writeFile(path, source)
