@@ -268,13 +268,20 @@ test('reports provide PDF preview, PDF download and Excel download', async ({ pa
   expect((await excelDownload).suggestedFilename()).toMatch(/\.xlsx$/i)
 })
 
-test('employee sees only the kiosk clock and no portal data', async ({ page }) => {
+test('employee sees only the kiosk clock and no portal data', async ({ page }, testInfo) => {
   await login(page, 'employee')
   await expect(page.locator('.employee-kiosk-shell')).toBeVisible()
   await expect(page.getByRole('img', { name: 'Habun Security' })).toBeVisible()
+  const brandMark = page.locator('.employee-kiosk-header .brand-mark')
+  await expect(brandMark).toBeVisible()
+  const brandBox = await brandMark.boundingBox()
+  expect(brandBox?.width || 0).toBeGreaterThanOrEqual(70)
+  expect(brandBox?.height || 0).toBeGreaterThanOrEqual(70)
   await expect(page.getByRole('button', { name: 'Menü öffnen' })).toHaveCount(0)
-  await expect(page.getByText(/Übersicht|Dienstplan|Meine Zeiten|Zeiten|Korrekturen|Berichte|PDF|Excel|Gesamt|Heutige Buchungen/i)).toHaveCount(0)
+  await expect(page.getByText(/Übersicht|Dienstplan|Heutiger Dienst|Meine Zeiten|Zeiten|Korrekturen|Berichte|PDF|Excel|Gesamt|Heutige Buchungen/i)).toHaveCount(0)
   await expect(page.locator('.digital-clock')).toHaveText(/^\d{2}:\d{2}:\d{2}$/)
+  if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/05-mitarbeiter-stempeluhr-iphone.png', fullPage: true })
+  if (testInfo.project.name === 'android-chromium') await page.screenshot({ path: 'artifacts/unified-preview/06-mitarbeiter-stempeluhr-android.png', fullPage: true })
   await page.getByRole('button', { name: /Arbeit beginnen/ }).click()
   await expect(page.getByText('Arbeitszeit läuft', { exact: true }).first()).toBeVisible()
   await page.getByRole('button', { name: 'Pause beginnen' }).click()

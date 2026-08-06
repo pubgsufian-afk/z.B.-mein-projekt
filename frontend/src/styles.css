@@ -351,3 +351,32 @@ body { min-height: 100dvh; }
 @media (display-mode: standalone) {
   .employee-kiosk-shell, .app-shell { min-height: 100dvh; }
 }
+
+/* HABUN_LOGO_VISIBILITY_AUDIT */
+.brand > .brand-mark { margin-top: 0; color: inherit; font-size: inherit; }
+.brand-mark { isolation: isolate; }
+.brand-mark img {
+  width: 220px !important;
+  height: auto !important;
+  max-width: none;
+  object-fit: contain;
+  object-position: center;
+  filter: none;
+}
+.brand-compact .brand-mark img { width: 178px !important; height: auto !important; }
+
+@media (max-width: 900px) {
+  .topbar-logo .brand-mark {
+    width: 64px;
+    height: 64px;
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    background: var(--surface-2);
+  }
+  .topbar-logo .brand-mark img { width: 190px !important; height: auto !important; }
+}
+
+@media (max-width: 680px) {
+  .employee-kiosk-header .brand-mark { width: 76px; height: 76px; }
+  .employee-kiosk-header .brand-mark img { width: 226px !important; height: auto !important; }
+}
