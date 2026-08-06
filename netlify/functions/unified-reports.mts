@@ -2,6 +2,7 @@ import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { getUser, verifyRequestOrigin } from '@netlify/identity'
 import { readCompanySettings } from './_shared/company-settings.mts'
+import { databaseConnectionString } from './_shared/database-connection.mts'
 
 type Role = 'owner' | 'admin' | 'manager' | 'employee' | 'pending'
 type AccessRecord = { role?: Role; status?: string } | null
@@ -64,10 +65,6 @@ async function actor() {
       ? access.role
       : ([...(user.roles || []), ...metadata, ...direct].find((value) => ['owner', 'admin', 'manager', 'employee'].includes(value)) as Role || 'pending')
   return { userId: user.id, email, role }
-}
-
-function databaseUrl() {
-  return Netlify.env.get('ATTENDANCE_DATABASE_URL') || Netlify.env.get('DATABASE_URL') || Netlify.env.get('NETLIFY_DATABASE_URL') || ''
 }
 
 function text(value: unknown) {
@@ -320,7 +317,7 @@ export default async function unifiedReports(request: Request, _context: Context
   const format = body.format === 'xlsx' ? 'xlsx' : 'pdf'
   const userIds = Array.isArray(body.userIds) ? body.userIds.map(String).filter(Boolean) : []
   if (!ISO_DATE.test(from) || !ISO_DATE.test(to) || to < from) return json({ message: 'Der Zeitraum ist ungültig.' }, 400)
-  const connection = databaseUrl()
+  const connection = databaseConnectionString()
   if (!connection) return json({ message: 'Die Zeiterfassungsdatenbank ist noch nicht verbunden.' }, 503)
 
   try {
