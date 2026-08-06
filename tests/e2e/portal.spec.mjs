@@ -114,7 +114,10 @@ test('public portal loads, registration works and Mitarbeiter-ID is absent', asy
   await page.getByLabel('Firma').fill('Habun Security')
   await page.getByLabel('Objekt / Einsatzort').fill('Objekt Nord')
   await page.getByRole('button', { name: 'Anfrage absenden' }).click()
-  await expect(page.getByText(/Registrierungsanfrage gesendet/i)).toBeVisible()
+  const notice = page.locator('.notice')
+  await expect(notice).toBeVisible()
+  console.log('REGISTRATION_NOTICE:', await notice.textContent())
+  await expect(notice).toContainText(/Registrierungsanfrage gesendet/i)
   expect(errors).toEqual([])
 })
 
