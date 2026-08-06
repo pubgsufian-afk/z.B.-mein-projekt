@@ -37,9 +37,21 @@ replaceOnce(
 )
 
 replaceOnce(
+"await expect(page.getByText('Pause begonnen', { exact: true })).toBeVisible()",
+"await expect(page.getByText('Pause begonnen', { exact: true }).first()).toBeVisible()",
+'pause started timeline',
+)
+
+replaceOnce(
+"await expect(page.getByText('Pause beendet', { exact: true })).toBeVisible()",
+"await expect(page.getByText('Pause beendet', { exact: true }).first()).toBeVisible()",
+'pause ended timeline',
+)
+
+replaceOnce(
 "await page.getByLabel('Einsatzort').selectOption('site-nord')",
-"await page.getByLabel('Einsatzort', { exact: true }).selectOption('site-nord')",
-'exact worksite selector',
+"await page.locator('.schedule-form select').nth(1).selectOption('site-nord')",
+'worksite selector',
 )
 
 replaceOnce(
