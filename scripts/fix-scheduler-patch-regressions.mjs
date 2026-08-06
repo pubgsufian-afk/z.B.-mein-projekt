@@ -10,10 +10,10 @@ const beforeScheduler = browserSource.slice(0, schedulerStart)
 let schedulerBlock = browserSource.slice(schedulerStart, employeeStart)
 const afterScheduler = browserSource.slice(employeeStart)
 const genericHeading = "await expect(page.getByRole('heading', { name: 'Dienst erstellen' })).toBeVisible()"
-const scopedHeading = "await expect(page.locator('.editor-panel').getByRole('heading', { name: 'Dienst erstellen' })).toBeVisible()"
-if (!schedulerBlock.includes(scopedHeading)) {
+const uniqueHeading = "await expect(page.getByRole('heading', { exact: true, name: 'Dienst erstellen' })).toBeVisible()"
+if (!schedulerBlock.includes(uniqueHeading)) {
   assert.ok(schedulerBlock.includes(genericHeading), 'Dienstplan-Support-Editorprüfung wurde nicht gefunden.')
-  schedulerBlock = schedulerBlock.replace(genericHeading, scopedHeading)
+  schedulerBlock = schedulerBlock.replace(genericHeading, uniqueHeading)
 }
 browserSource = beforeScheduler + schedulerBlock + afterScheduler
 
