@@ -21,14 +21,19 @@ const navigateStart = source.indexOf('async function navigate(page, label) {')
 const navigateEnd = source.indexOf('\n}\n\nasync function expectNoHorizontalPageOverflow', navigateStart)
 if (navigateStart >= 0 && navigateEnd > navigateStart) {
   const stableNavigate = `async function navigate(page, label) {
-  const result = await page.evaluate((targetLabel) => {
-    const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim()
-    const buttons = Array.from(document.querySelectorAll('.sidebar nav button'))
-    const button = buttons.find((entry) => normalize(entry.textContent) === normalize(targetLabel))
-    if (!button) return { clicked: false, available: buttons.map((entry) => normalize(entry.textContent)).filter(Boolean) }
-    button.click()
-    return { clicked: true, available: [] }
-  }, label)
+  let result
+  try {
+    result = await page.evaluate((targetLabel) => {
+      const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim()
+      const buttons = Array.from(document.querySelectorAll('.sidebar nav button'))
+      const button = buttons.find((entry) => normalize(entry.textContent) === normalize(targetLabel))
+      if (!button) return { clicked: false, available: buttons.map((entry) => normalize(entry.textContent)).filter(Boolean) }
+      button.click()
+      return { clicked: true, available: [] }
+    }, label)
+  } catch (error) {
+    throw new Error('NAV_CLICK_ERROR_' + String(error?.message || error).replace(/\\s+/g, '_').slice(0, 240))
+  }
   if (!result.clicked) throw new Error('NAVIGATION_FEHLT_' + label + '__VORHANDEN_' + result.available.join('_'))
   await expect(page.locator('.topbar h1')).toHaveText(label)
 }`
