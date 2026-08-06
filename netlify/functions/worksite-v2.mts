@@ -50,13 +50,19 @@ export default async function worksiteV2(request: Request, _context: Context) {
   const address = String(body.address || '').trim()
   const latitude = body.latitude === '' || body.latitude == null ? null : Number(body.latitude)
   const longitude = body.longitude === '' || body.longitude == null ? null : Number(body.longitude)
+  const hasCoordinates = latitude !== null || longitude !== null
+  const coordinatesComplete = latitude !== null && longitude !== null
+  const accuracyMeters = coordinatesComplete
+    ? Math.max(0, Number.isFinite(Number(body.accuracyMeters)) ? Number(body.accuracyMeters) : 0)
+    : null
   const radiusMeters = Number(body.radiusMeters || 500)
   if (!name || !address) return json({ message: 'Name und Adresse sind erforderlich.' }, 400)
+  if (hasCoordinates && !coordinatesComplete) return json({ message: 'Breiten- und Längengrad müssen gemeinsam angegeben werden.' }, 400)
   if ((latitude !== null && (!Number.isFinite(latitude) || Math.abs(latitude) > 90)) || (longitude !== null && (!Number.isFinite(longitude) || Math.abs(longitude) > 180))) {
     return json({ message: 'Die Koordinaten sind ungültig.' }, 400)
   }
   if (!Number.isFinite(radiusMeters) || radiusMeters < 0 || radiusMeters > 10000) return json({ message: 'Der Prüfradius ist ungültig.' }, 400)
-  const object = { id, name, address, latitude, longitude, radiusMeters, updatedAt: new Date().toISOString(), updatedBy: current.userId }
+  const object = { id, name, address, latitude, longitude, accuracyMeters, radiusMeters, updatedAt: new Date().toISOString(), updatedBy: current.userId }
   await siteStore.setJSON(`objects/${id}`, object)
   const url = databaseUrl()
   if (url) {
@@ -64,10 +70,11 @@ export default async function worksiteV2(request: Request, _context: Context) {
     const sql = neon(url)
     await sql(
       `INSERT INTO attendance_objects (id, latitude, longitude, accuracy_meters, radius_meters, updated_at, updated_by)
-       VALUES ($1,$2,$3,NULL,$4,now(),$5)
+       VALUES ($1,$2,$3,$4,$5,now(),$6)
        ON CONFLICT (id) DO UPDATE SET latitude = EXCLUDED.latitude, longitude = EXCLUDED.longitude,
-         radius_meters = EXCLUDED.radius_meters, updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by`,
-      [id, latitude, longitude, radiusMeters, current.userId],
+         accuracy_meters = EXCLUDED.accuracy_meters, radius_meters = EXCLUDED.radius_meters,
+         updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by`,
+      [id, latitude, longitude, accuracyMeters, radiusMeters, current.userId],
     )
   }
   return json({ object, databaseSynced: Boolean(url) }, 201)
