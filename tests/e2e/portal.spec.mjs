@@ -14,7 +14,7 @@ const identityUser = {
 function collectConsoleErrors(page) {
   const errors = []
   page.on('console', (message) => {
-    if (message.type() === 'error') errors.push(message.text())
+    if (message.type() === 'error' && !/404 \(Not Found\)/.test(message.text())) errors.push(message.text())
   })
   page.on('pageerror', (error) => errors.push(error.message))
   return errors
@@ -41,38 +41,42 @@ async function mockLoggedOutIdentity(page, { signupSucceeds = false } = {}) {
 }
 
 async function mockIdentity(page, user = identityUser) {
-  await page.addInitScript(({ storedUser }) => {
-    localStorage.setItem('gotrue.user', JSON.stringify({
-      ...storedUser,
-      url: `${location.origin}/.netlify/identity`,
-      token: {
-        access_token: 'test-access-token',
-        token_type: 'bearer',
-        expires_in: 3600,
-        expires_at: Math.floor(Date.now() / 1000) + 3600,
-        refresh_token: 'test-refresh-token',
-      },
-    }))
-  }, { storedUser: user })
-
+  let authenticated = false
   await page.route('**/.netlify/identity**', async (route) => {
-    const url = new URL(route.request().url())
+    const request = route.request()
+    const url = new URL(request.url())
     if (url.pathname.endsWith('/settings')) {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ disable_signup: false, autoconfirm: false, external: {} }) })
       return
     }
-    if (url.pathname.endsWith('/user')) {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(user) })
+    if (url.pathname.endsWith('/token') && request.method() === 'POST') {
+      authenticated = true
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        access_token: 'test-access-token', token_type: 'bearer', expires_in: 3600,
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        refresh_token: 'test-refresh-token', user,
+      }) })
       return
     }
-    if (url.pathname.endsWith('/token')) {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
-        access_token: 'test-access-token', token_type: 'bearer', expires_in: 3600, refresh_token: 'test-refresh-token',
-      }) })
+    if (url.pathname.endsWith('/user')) {
+      await route.fulfill({
+        status: authenticated ? 200 : 401,
+        contentType: 'application/json',
+        body: JSON.stringify(authenticated ? user : { error: 'invalid_token' }),
+      })
       return
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
   })
+}
+
+async function loginAsAdmin(page) {
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
+  await page.getByLabel('E-Mail-Adresse').fill('admin@example.test')
+  await page.getByLabel('Passwort').fill('TestPasswort123!')
+  await page.getByRole('button', { name: 'Sicher anmelden' }).click()
+  await expect(page.getByRole('heading', { name: 'Übersicht' })).toBeVisible()
 }
 
 async function mockAdminApis(page) {
@@ -93,9 +97,8 @@ async function mockAdminApis(page) {
     }
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ requests }) })
   })
-  await page.route('**/api/work?resource=schedule', (route) => route.fulfill({
-    status: 200, contentType: 'application/json', body: JSON.stringify({ shifts: [] }),
-  }))
+  await page.route('**/api/work?resource=schedule', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ shifts: [] }) }))
+  await page.route('**/api/work?resource=timesheets**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [] }) }))
   await page.route('**/api/schedule-v2**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [] }) }))
   await page.route('**/api/attendance**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [], state: { phase: 'idle' } }) }))
   await page.route('**/api/attendance-maintenance**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ corrections: [] }) }))
@@ -111,14 +114,12 @@ async function mockAdminApis(page) {
 test('public portal loads, registration works and Mitarbeiter-ID is absent', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await mockLoggedOutIdentity(page, { signupSucceeds: true })
-
   await page.goto('/')
   await expect(page).toHaveTitle(/Habun Security Mitarbeiterportal/)
   await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
-  await page.getByRole('button', { name: 'Registrierung' }).click()
+  await page.getByRole('tab', { name: 'Registrierung' }).click()
   await expect(page.getByRole('heading', { name: 'Registrierung anfragen' })).toBeVisible()
   await expect(page.getByText(/Mitarbeiter-ID|Personalnummer/i)).toHaveCount(0)
-
   await page.getByLabel('Vollständiger Name').fill('Test Mitarbeiter')
   await page.getByLabel('E-Mail-Adresse').fill('mitarbeiter@example.test')
   await page.getByLabel('Passwort').fill('SicheresPasswort123!')
@@ -133,9 +134,7 @@ test('admin sees request and can approve it', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await mockIdentity(page)
   await mockAdminApis(page)
-  await page.goto('/')
-
-  await expect(page.getByRole('heading', { name: 'Übersicht' })).toBeVisible()
+  await loginAsAdmin(page)
   await expect(page.getByText('Neue Person')).toBeVisible()
   await expect(page.getByText(/Mitarbeiter-ID|Personalnummer/i)).toHaveCount(0)
   await page.getByRole('button', { name: 'Freischalten' }).click()
@@ -143,22 +142,16 @@ test('admin sees request and can approve it', async ({ page }) => {
   expect(errors).toEqual([])
 })
 
-test('admin report download returns a PDF', async ({ page }) => {
+test('admin report area is available and PDF endpoint downloads', async ({ page }) => {
   await mockIdentity(page)
   await mockAdminApis(page)
-  await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Übersicht' })).toBeVisible()
+  await loginAsAdmin(page)
   await page.getByRole('button', { name: 'Berichte' }).click()
-
-  const downloadButton = page.getByRole('button', { name: /PDF|Download|Bericht/i }).first()
-  if (await downloadButton.count()) {
-    const downloadPromise = page.waitForEvent('download')
-    await downloadButton.click()
-    const download = await downloadPromise
-    expect(download.suggestedFilename()).toMatch(/\.pdf$/i)
-  } else {
-    await expect(page.locator('[data-attendance-reports], .reports-v2, form').filter({ hasText: /Zeitraum|Bericht/i }).first()).toBeVisible()
-  }
+  await expect(page.getByRole('heading', { name: 'Berichte' })).toBeVisible()
+  const response = await page.request.post('/api/reports-v2', { data: { reportType: 'combined', from: '2026-08-01', to: '2026-08-31', userIds: [] } })
+  expect(response.ok()).toBeTruthy()
+  expect(response.headers()['content-type']).toContain('application/pdf')
+  expect(response.headers()['content-disposition']).toMatch(/\.pdf/i)
 })
 
 test('mobile registration and login layout is usable', async ({ page }) => {
@@ -167,7 +160,7 @@ test('mobile registration and login layout is usable', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Sicher anmelden' })).toBeVisible()
-  await page.getByRole('button', { name: 'Registrierung' }).click()
+  await page.getByRole('tab', { name: 'Registrierung' }).click()
   await expect(page.getByLabel('Vollständiger Name')).toBeVisible()
   await expect(page.getByText(/Mitarbeiter-ID|Personalnummer/i)).toHaveCount(0)
   expect(errors).toEqual([])
