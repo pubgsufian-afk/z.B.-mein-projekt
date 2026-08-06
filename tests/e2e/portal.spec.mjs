@@ -20,6 +20,26 @@ function collectConsoleErrors(page) {
   return errors
 }
 
+async function mockLoggedOutIdentity(page, { signupSucceeds = false } = {}) {
+  await page.route('**/.netlify/identity**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (url.pathname.endsWith('/settings')) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ disable_signup: false, autoconfirm: false, external: {} }) })
+      return
+    }
+    if (url.pathname.endsWith('/signup') && request.method() === 'POST' && signupSucceeds) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...identityUser, id: 'new-user' }) })
+      return
+    }
+    if (url.pathname.endsWith('/user')) {
+      await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'invalid_token', error_description: 'Not logged in' }) })
+      return
+    }
+    await route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'invalid_request' }) })
+  })
+}
+
 async function mockIdentity(page, user = identityUser) {
   await page.addInitScript(({ storedUser }) => {
     localStorage.setItem('gotrue.user', JSON.stringify({
@@ -35,8 +55,12 @@ async function mockIdentity(page, user = identityUser) {
     }))
   }, { storedUser: user })
 
-  await page.route('**/.netlify/identity/**', async (route) => {
+  await page.route('**/.netlify/identity**', async (route) => {
     const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/settings')) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ disable_signup: false, autoconfirm: false, external: {} }) })
+      return
+    }
     if (url.pathname.endsWith('/user')) {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(user) })
       return
@@ -86,9 +110,7 @@ async function mockAdminApis(page) {
 
 test('public portal loads, registration works and Mitarbeiter-ID is absent', async ({ page }) => {
   const errors = collectConsoleErrors(page)
-  await page.route('**/.netlify/identity/signup', (route) => route.fulfill({
-    status: 200, contentType: 'application/json', body: JSON.stringify({ ...identityUser, id: 'new-user' }),
-  }))
+  await mockLoggedOutIdentity(page, { signupSucceeds: true })
 
   await page.goto('/')
   await expect(page).toHaveTitle(/Habun Security Mitarbeiterportal/)
@@ -125,6 +147,7 @@ test('admin report download returns a PDF', async ({ page }) => {
   await mockIdentity(page)
   await mockAdminApis(page)
   await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Übersicht' })).toBeVisible()
   await page.getByRole('button', { name: 'Berichte' }).click()
 
   const downloadButton = page.getByRole('button', { name: /PDF|Download|Bericht/i }).first()
@@ -134,13 +157,13 @@ test('admin report download returns a PDF', async ({ page }) => {
     const download = await downloadPromise
     expect(download.suggestedFilename()).toMatch(/\.pdf$/i)
   } else {
-    // V2 report controls are injected asynchronously; their presence is the minimum browser contract.
     await expect(page.locator('[data-attendance-reports], .reports-v2, form').filter({ hasText: /Zeitraum|Bericht/i }).first()).toBeVisible()
   }
 })
 
 test('mobile registration and login layout is usable', async ({ page }) => {
   const errors = collectConsoleErrors(page)
+  await mockLoggedOutIdentity(page)
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Sicher anmelden' })).toBeVisible()
