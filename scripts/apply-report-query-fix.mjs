@@ -41,8 +41,8 @@ for (const path of paths) {
     source = source.replace(marker, marker + helper)
   }
   source = source.replace(
-    "const placeholders = userIds.map((_, index) => `${index + 3}`).join(', ')",
-    "const placeholders = userIds.map((_, index) => '$' + (index + 3)).join(', ')",
+    /^\s*const placeholders = userIds\.map\(.*$/m,
+    "  const placeholders = userIds.map((_, index) => '$' + (index + 3)).join(', ')",
   )
   if (source.includes(oldQuery)) source = source.replace(oldQuery, newQuery)
   if (!source.includes('const employeeFilter = buildEmployeeFilter(userIds)')) throw new Error(`Neue Berichtsabfrage fehlt in ${path}`)
