@@ -1,3 +1,5 @@
+import { employeeOptions, loadEmployeeDirectory, syncEmployeeSelection } from './employee-directory-v2.js'
+
 const MANAGEMENT = new Set(['owner', 'admin', 'manager'])
 
 function monday(value = new Date().toISOString().slice(0, 10)) {
@@ -51,17 +53,18 @@ async function load() {
   if (!section || !MANAGEMENT.has(app.model.role)) return
   const week = section.querySelector('[data-schedule-week]')?.value || monday()
   try {
-    const [entriesPayload, objectsPayload] = await Promise.all([
+    const [entriesPayload, objectsPayload, directory] = await Promise.all([
       app.jsonFetch(`/api/schedule-v2?resource=entries&from=${week}&to=${addDays(week, 6)}`),
       app.jsonFetch('/api/schedule-v2?resource=objects'),
+      loadEmployeeDirectory(app.jsonFetch),
     ])
-    render(section, week, entriesPayload.entries || [], objectsPayload.objects || [])
+    render(section, week, entriesPayload.entries || [], objectsPayload.objects || [], directory.all || [])
   } catch (error) {
     section.innerHTML = `<p class="habun-v2-status" data-tone="bad">${escapeHtml(error.message || 'Dienstplan konnte nicht geladen werden.')}</p>`
   }
 }
 
-function render(section, week, entries, objects) {
+function render(section, week, entries, objects, employees) {
   const rows = entries.map((entry) => {
     let net = '–'
     try { net = formatHours(netShiftMinutes(entry.start, entry.end, entry.pauseMinutes)) } catch {}
@@ -86,9 +89,9 @@ function render(section, week, entries, objects) {
       <h3>Dienst anlegen oder bearbeiten</h3>
       <form data-shift-form>
         <input type="hidden" name="id">
+        <input type="hidden" name="employeeName">
         <div class="habun-v2-fields">
-          <label>Mitarbeitername<input name="employeeName" required></label>
-          <label>Mitarbeiter-ID<input name="employeeUserId" required></label>
+          <label>Mitarbeiter<select name="employeeUserId" required>${employeeOptions(employees)}</select></label>
           <label>Datum<input type="date" name="date" required value="${week}"></label>
           <label>Von<input type="time" name="start" required></label>
           <label>Bis<input type="time" name="end" required></label>
@@ -130,6 +133,8 @@ function render(section, week, entries, objects) {
     await postAction({ action: 'publish', week: weekInput.value }, 'Der Wochenplan wurde freigegeben.')
   })
   const form = section.querySelector('[data-shift-form]')
+  form.elements.employeeUserId.addEventListener('change', () => syncEmployeeSelection(form))
+  syncEmployeeSelection(form)
   const pauseSelect = form.elements.pauseMinutes
   pauseSelect.addEventListener('change', () => {
     form.querySelector('[data-custom-pause]').hidden = pauseSelect.value !== 'custom'
@@ -161,6 +166,7 @@ function updatePreview(form) {
 }
 
 function formPayload(form) {
+  syncEmployeeSelection(form)
   return {
     action: 'save', id: form.elements.id.value || undefined,
     employeeName: form.elements.employeeName.value, employeeUserId: form.elements.employeeUserId.value,
@@ -188,7 +194,15 @@ async function saveForm(event) {
 
 function editShift(form, entry) {
   if (!entry) return
-  ;['id','employeeName','employeeUserId','date','start','end','objectId','location','workArea','note'].forEach((name) => { if (form.elements[name]) form.elements[name].value = entry[name] || '' })
+  ;['id','employeeUserId','date','start','end','objectId','location','workArea','note'].forEach((name) => { if (form.elements[name]) form.elements[name].value = entry[name] || '' })
+  form.elements.employeeName.value = entry.employeeName || ''
+  if (![...form.elements.employeeUserId.options].some((option) => option.value === entry.employeeUserId)) {
+    const option = new Option(entry.employeeName || 'Archivierter Mitarbeiter', entry.employeeUserId, true, true)
+    option.dataset.name = entry.employeeName || ''
+    form.elements.employeeUserId.add(option)
+  }
+  form.elements.employeeUserId.value = entry.employeeUserId || ''
+  syncEmployeeSelection(form)
   const standard = [0,30,45,60].includes(Number(entry.pauseMinutes))
   form.elements.pauseMinutes.value = standard ? String(entry.pauseMinutes) : 'custom'
   form.elements.customPauseMinutes.value = standard ? '' : entry.pauseMinutes
@@ -204,6 +218,8 @@ function resetForm(form) {
   form.querySelector('[data-custom-pause]').hidden = true
   form.elements.pauseMinutes.value = '30'
   form.elements.date.value = form.closest('[data-section]').querySelector('[data-schedule-week]').value
+  form.elements.employeeUserId.value = ''
+  syncEmployeeSelection(form)
   updatePreview(form)
 }
 
