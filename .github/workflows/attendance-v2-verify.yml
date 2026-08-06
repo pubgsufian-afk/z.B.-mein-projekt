@@ -32,6 +32,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: unified-portal-preview
-          path: artifacts/unified-preview
+          path: |
+            artifacts/unified-preview
+            public/habun-logo.png
           if-no-files-found: error
           retention-days: 7
