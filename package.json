@@ -7,9 +7,10 @@
     "prepare:exports": "node scripts/install-export-fix.mjs",
     "verify:legacy": "node --check public/improvements.js && node --check public/premium.js && node --check public/export-core.js && node --check public/export-fix.js && node --check public/admin-time-fix.js && node --check public/schedule-multi-fix.js && node scripts/admin-time-test.mjs && node scripts/schedule-multi-test.mjs && node scripts/export-test.mjs && node scripts/check.mjs",
     "verify:v2": "node scripts/attendance-v2-verify.mjs",
-    "verify": "npm run verify:legacy && npm run verify:v2",
-    "build": "npm run prepare:exports && node scripts/patch-production-bundle.mjs && npm run verify && node scripts/build.mjs",
-    "check": "npm run prepare:exports && node scripts/patch-production-bundle.mjs && npm run verify"
+    "verify:all": "npm run verify:legacy && npm run verify:v2",
+    "verify": "npm run prepare:exports && node scripts/patch-production-bundle.mjs && npm run verify:all",
+    "build": "npm run verify && node scripts/build.mjs",
+    "check": "npm run verify"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.1",
