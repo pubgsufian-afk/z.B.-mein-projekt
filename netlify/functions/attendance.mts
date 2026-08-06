@@ -45,20 +45,57 @@ export function resolvePortalRole({
   return (metadataRole as PortalRole) || 'pending'
 }
 
+function timeMinutes(value: string | Date | null | undefined) {
+  if (!value) return null
+  const date = value instanceof Date ? value : new Date(value)
+  if (!Number.isFinite(date.getTime())) return null
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Berlin',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date)
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value)
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value)
+  return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : null
+}
+
+function scheduleTime(value: string | undefined) {
+  const [hour, minute] = String(value || '').split(':').map(Number)
+  return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : null
+}
+
+export function plannedSchedules(entries: ScheduleEntry[], userId: string, date: string) {
+  return (Array.isArray(entries) ? entries : [])
+    .filter((entry) => String(entry.employeeUserId || '') === userId && entry.date === date && entry.status !== 'draft')
+    .sort((left, right) => String(left.start || '').localeCompare(String(right.start || '')))
+}
+
 export function selectPlannedSchedule(
   entries: ScheduleEntry[],
   userId: string,
   date: string,
   requestedScheduleId: string | null,
+  occurredAt: string | Date | null = null,
 ) {
-  const candidates = (Array.isArray(entries) ? entries : [])
-    .filter((entry) => String(entry.employeeUserId || '') === userId && entry.date === date && entry.status !== 'draft')
-    .sort((left, right) => String(left.start || '').localeCompare(String(right.start || '')))
+  const candidates = plannedSchedules(entries, userId, date)
   if (requestedScheduleId) {
     const requested = candidates.find((entry) => String(entry.id || '') === requestedScheduleId)
     if (requested) return requested
   }
-  return candidates[0] || null
+  const currentMinute = timeMinutes(occurredAt)
+  if (currentMinute === null) return candidates[0] || null
+  const active = candidates.find((entry) => {
+    const start = scheduleTime(entry.start)
+    const end = scheduleTime(entry.end)
+    return start !== null && end !== null && currentMinute >= start && currentMinute <= end
+  })
+  if (active) return active
+  const upcoming = candidates.find((entry) => {
+    const start = scheduleTime(entry.start)
+    return start !== null && start >= currentMinute
+  })
+  return upcoming || candidates.at(-1) || null
 }
 
 export function attendanceFunctionMarkers() {
@@ -69,6 +106,7 @@ export function attendanceFunctionMarkers() {
     liveManagementOnly: true,
     scheduleV2First: true,
     currentDayScope: true,
+    multipleDailyShifts: true,
   }
 }
 
@@ -167,6 +205,7 @@ function enrichLiveEntries(entries: Array<Record<string, unknown>>, schedules: S
       String(entry.userId || ''),
       String(entry.eventDate || ''),
       String(entry.scheduleId || '') || null,
+      String(entry.clientOccurredAt || ''),
     )
     return {
       ...entry,
@@ -200,10 +239,12 @@ export default async function attendance(request: Request, _context: Context) {
       if (resource === 'state') {
         const state = await service.getState(actor)
         const schedules = await loadSchedules(request)
-        const today = eventDateInBerlin(new Date())
+        const now = new Date()
+        const today = eventDateInBerlin(now)
         const requestedScheduleId = url.searchParams.get('scheduleId')
-        const schedule = selectPlannedSchedule(schedules, actor.userId, today, requestedScheduleId)
-        return response({ ...state, schedule: schedulePayload(schedule) })
+        const candidates = plannedSchedules(schedules, actor.userId, today)
+        const schedule = selectPlannedSchedule(schedules, actor.userId, today, requestedScheduleId, now)
+        return response({ ...state, schedule: schedulePayload(schedule), schedules: candidates.map((entry) => schedulePayload(entry)) })
       }
       if (resource === 'history') {
         return response(await service.getHistory(actor, {
@@ -235,7 +276,7 @@ export default async function attendance(request: Request, _context: Context) {
     const normalized = normalizeClockRequest(body)
     const eventDate = eventDateInBerlin(normalized.clientOccurredAt)
     const schedules = await loadSchedules(request)
-    const schedule = selectPlannedSchedule(schedules, actor.userId, eventDate, normalized.scheduleId)
+    const schedule = selectPlannedSchedule(schedules, actor.userId, eventDate, normalized.scheduleId, normalized.clientOccurredAt)
     const safeBody = { ...body, scheduleId: schedule?.id || null, objectId: schedule?.objectId || null }
     return response(await service.record(actor, safeBody), 201)
   } catch (error) {
