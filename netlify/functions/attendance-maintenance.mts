@@ -1,6 +1,7 @@
 import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { getUser, verifyRequestOrigin } from '@netlify/identity'
+import { databaseConnectionString } from './_shared/database-connection.mts'
 
 type Role = 'owner' | 'admin' | 'manager' | 'employee' | 'pending'
 type AccessRecord = { role?: Role; status?: string } | null
@@ -26,10 +27,6 @@ async function actor() {
   return { userId: user.id, email, role }
 }
 
-function databaseUrl() {
-  return Netlify.env.get('ATTENDANCE_DATABASE_URL') || Netlify.env.get('DATABASE_URL') || Netlify.env.get('NETLIFY_DATABASE_URL') || ''
-}
-
 export function cleanRequestedData(value: unknown) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
   const clean: Record<string, unknown> = {}
@@ -52,7 +49,7 @@ export function cleanRequestedData(value: unknown) {
 }
 
 async function connection() {
-  const url = databaseUrl()
+  const url = databaseConnectionString()
   if (!url) throw Object.assign(new Error('Die Zeiterfassungsdatenbank ist noch nicht verbunden.'), { status: 503 })
   const { neon } = await import('@neondatabase/serverless')
   return neon(url)
