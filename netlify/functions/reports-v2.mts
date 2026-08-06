@@ -47,6 +47,13 @@ function hours(minutes: number) {
   return (minutes / 60).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+function buildEmployeeFilter(userIds: string[]) {
+  if (!userIds.length) return { clause: '', params: [] as string[] }
+  const placeholders = userIds.map((_, index) => `${index + 3}`).join(', ')
+  return { clause: `
+          AND user_id IN (${placeholders})`, params: userIds }
+}
+
 function safeText(value: unknown) {
   return String(value ?? '').replace(/[\r\n\t]+/g, ' ').trim()
 }
@@ -276,13 +283,13 @@ export default async function reportsV2(request: Request, _context: Context) {
   try {
     const { neon } = await import('@neondatabase/serverless')
     const sql = neon(url)
+    const employeeFilter = buildEmployeeFilter(userIds)
     const events = await sql(
       `SELECT id, user_id, schedule_id, action, client_occurred_at, event_date, object_id, location_status, offline_captured
          FROM attendance_events
-        WHERE event_date BETWEEN $1::date AND $2::date
-          AND (cardinality($3::text[]) = 0 OR user_id = ANY($3::text[]))
+        WHERE event_date BETWEEN $1::date AND $2::date${employeeFilter.clause}
         ORDER BY user_id, event_date, client_occurred_at`,
-      [from, to, userIds],
+      [from, to, ...employeeFilter.params],
     )
     const schedules = await fetchSchedules(request, from, to)
     let rows = groupReportRows(events, schedules)
