@@ -30,10 +30,25 @@ function databaseUrl() {
   return Netlify.env.get('ATTENDANCE_DATABASE_URL') || Netlify.env.get('DATABASE_URL') || Netlify.env.get('NETLIFY_DATABASE_URL') || ''
 }
 
-function cleanRequestedData(value: unknown) {
+export function cleanRequestedData(value: unknown) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
-  const allowed = ['clockInAt', 'clockOutAt', 'pauseMinutes', 'note']
-  return Object.fromEntries(Object.entries(source).filter(([key]) => allowed.includes(key)))
+  const clean: Record<string, unknown> = {}
+  for (const key of ['clockInAt', 'clockOutAt'] as const) {
+    if (source[key] === undefined || source[key] === null || source[key] === '') continue
+    const date = new Date(String(source[key]))
+    if (!Number.isFinite(date.getTime())) throw new TypeError(`${key} ist kein gültiger Zeitpunkt.`)
+    clean[key] = date.toISOString()
+  }
+  if (source.pauseMinutes !== undefined && source.pauseMinutes !== null && source.pauseMinutes !== '') {
+    const pause = Number(source.pauseMinutes)
+    if (!Number.isFinite(pause) || pause < 0 || !Number.isInteger(pause)) throw new TypeError('Die Pause muss eine nichtnegative ganze Minute sein.')
+    clean.pauseMinutes = pause
+  }
+  if (source.note !== undefined && source.note !== null) {
+    const note = String(source.note).trim()
+    if (note) clean.note = note.slice(0, 1000)
+  }
+  return clean
 }
 
 async function connection() {
@@ -53,7 +68,7 @@ async function listCorrections(sql: Awaited<ReturnType<typeof connection>>, curr
        LEFT JOIN LATERAL (
          SELECT * FROM attendance_correction_decisions d
           WHERE d.correction_id = c.id
-          ORDER BY d.occurred_at DESC LIMIT 1
+          ORDER BY d.occurred_at DESC, d.id DESC LIMIT 1
        ) d ON true
       WHERE ($1::boolean OR c.requested_by = $2)
       ORDER BY c.occurred_at DESC`,
@@ -73,9 +88,7 @@ async function requestCorrection(sql: Awaited<ReturnType<typeof connection>>, cu
   const id = `attendance-correction:${crypto.randomUUID()}`
   const now = new Date().toISOString()
   const before = {
-    clockAction: events[0].action,
-    clientOccurredAt: events[0].client_occurred_at,
-    eventDate: events[0].event_date,
+    clientOccurredAt: new Date(events[0].client_occurred_at).toISOString(),
     scheduleId: events[0].schedule_id,
     objectId: events[0].object_id,
     locationStatus: events[0].location_status,
@@ -107,7 +120,24 @@ async function decideCorrection(sql: Awaited<ReturnType<typeof connection>>, cur
   const corrections = await sql(`SELECT * FROM attendance_corrections WHERE id = $1`, [correctionId])
   const correction = corrections[0]
   if (!correction) return json({ message: 'Korrekturantrag nicht gefunden.' }, 404)
-  const afterData = decision === 'approved' ? cleanRequestedData(body.afterData || correction.after_data) : correction.before_data
+  const latest = await sql(
+    `SELECT decision FROM attendance_correction_decisions WHERE correction_id = $1 ORDER BY occurred_at DESC, id DESC LIMIT 1`,
+    [correctionId],
+  )
+  if (['approved', 'rejected'].includes(String(latest[0]?.decision || ''))) {
+    return json({ message: 'Dieser Korrekturantrag wurde bereits endgültig entschieden.' }, 409)
+  }
+  const requested = cleanRequestedData(correction.after_data)
+  const afterData = decision === 'approved'
+    ? cleanRequestedData(body.afterData && typeof body.afterData === 'object' ? body.afterData : requested)
+    : correction.before_data
+  const requestData = {
+    id: correction.id,
+    eventId: correction.event_id,
+    requestedBy: correction.requested_by,
+    reason: correction.reason,
+    occurredAt: new Date(correction.occurred_at).toISOString(),
+  }
   const id = `attendance-decision:${crypto.randomUUID()}`
   const now = new Date().toISOString()
   await sql(
@@ -116,7 +146,7 @@ async function decideCorrection(sql: Awaited<ReturnType<typeof connection>>, cur
         request_data, before_data, after_data, occurred_at, expires_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11::timestamptz,$11::timestamptz + interval '24 months')`,
     [id, correctionId, decision, current.userId, current.email, current.role, reason,
-      JSON.stringify(correction.after_data), JSON.stringify(correction.before_data), JSON.stringify(afterData), now],
+      JSON.stringify(requestData), JSON.stringify(correction.before_data), JSON.stringify(afterData), now],
   )
   await sql(
     `INSERT INTO attendance_audit_log
@@ -158,7 +188,7 @@ export default async function maintenance(request: Request, _context: Context) {
   if (!current) return json({ message: 'Nicht angemeldet.' }, 401)
   if (current.role === 'pending') return json({ message: 'Das Konto ist noch nicht freigeschaltet.' }, 403)
   let sql
-  try { sql = await connection() } catch (error) { return json({ message: error.message }, error.status || 500) }
+  try { sql = await connection() } catch (error: any) { return json({ message: error.message }, error.status || 500) }
   const url = new URL(request.url)
   if (request.method === 'GET') {
     if ((url.searchParams.get('resource') || 'corrections') === 'corrections') return json({ corrections: await listCorrections(sql, current) })
@@ -176,6 +206,7 @@ export default async function maintenance(request: Request, _context: Context) {
     if (action === 'retention-apply') return await retention(sql, current, true)
     return json({ message: 'Unbekannte Aktion.' }, 400)
   } catch (error) {
+    if (error instanceof TypeError || error instanceof RangeError) return json({ message: error.message }, 400)
     console.error('Habun attendance maintenance', error)
     return json({ message: 'Die Korrektur- oder Aufbewahrungsaktion ist fehlgeschlagen.' }, 500)
   }
