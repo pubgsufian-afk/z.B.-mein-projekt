@@ -8,6 +8,12 @@ const identityUser = {
   updated_at: '2026-08-06T00:00:00.000Z',
 }
 
+const employees = [
+  { userId: 'employee-anna', fullName: 'Anna Beispiel', location: 'Objekt Nord' },
+  { userId: 'employee-bernd', fullName: 'Bernd Muster', location: 'Objekt Süd' },
+]
+const workSites = [{ id: 'site-nord', name: 'Objekt Nord', address: 'Musterstraße 1', radiusMeters: 500 }]
+
 const b64 = (value) => Buffer.from(JSON.stringify(value)).toString('base64url')
 function jwtFor(user) {
   const now = Math.floor(Date.now() / 1000)
@@ -77,17 +83,22 @@ async function loginAsAdmin(page) {
 
 async function mockAdminApis(page) {
   const requests = [{ id: 'request-1', fullName: 'Neue Person', email: 'neu@example.test', location: 'Objekt Nord', approvalCode: '123456', status: 'pending' }]
-  await page.route('**/api/session', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ userId: 'user-admin-1', email: 'admin@example.test', fullName: 'Test Admin', role: 'admin', employeeCount: 3 }) }))
+  await page.route('**/api/session', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ userId: 'user-admin-1', email: 'admin@example.test', fullName: 'Test Admin', role: 'admin', employeeCount: employees.length }) }))
   await page.route('**/api/registrations', async (route) => {
     if (route.request().method() === 'PATCH') { requests.length = 0; return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, role: 'employee' }) }) }
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ requests }) })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ requests, employees, archived: [] }) })
   })
-  await page.route('**/api/work?resource=schedule', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ shifts: [] }) }))
+  await page.route('**/api/work?resource=schedule', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ shifts: [], entries: [] }) }))
   await page.route('**/api/work?resource=timesheets**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [] }) }))
-  await page.route('**/api/schedule-v2**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [] }) }))
-  await page.route('**/api/attendance**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [], state: { phase: 'idle' } }) }))
+  await page.route('**/api/schedule-v2**', (route) => {
+    const url = new URL(route.request().url())
+    const body = url.searchParams.get('resource') === 'objects' ? { objects: workSites } : { entries: [] }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
+  })
+  await page.route('**/api/schedule-assist-v2**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ templates: [], suggestions: [], shiftCount: 0, draftCount: 0, conflicts: [] }) }))
+  await page.route('**/api/attendance**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ phase: 'idle', clockInAt: null, clockOutAt: null, events: [], schedule: null, schedules: [], entries: [] }) }))
   await page.route('**/api/attendance-maintenance**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ corrections: [] }) }))
-  await page.route('**/api/worksite-v2**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ objects: [] }) }))
+  await page.route('**/api/worksite-v2**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ objects: workSites }) }))
   await page.route('**/api/reports-v2', (route) => route.fulfill({ status: 200, contentType: 'application/pdf', headers: { 'Content-Disposition': 'attachment; filename="Habun-Test.pdf"' }, body: Buffer.from('%PDF-1.4\n%%EOF') }))
 }
 
@@ -99,7 +110,16 @@ async function openReports(page) {
   await expect(page.getByRole('heading', { name: 'Berichte', exact: true })).toBeVisible()
 }
 
-test('public portal loads, registration works and Mitarbeiter-ID is absent', async ({ page }) => {
+async function openV2(page) {
+  const launcher = page.getByRole('button', { name: 'Neue Zeiterfassung', exact: true })
+  await expect(launcher).toBeVisible()
+  await launcher.click()
+  const dialog = page.getByRole('dialog', { name: 'Zeiterfassung und Planung' })
+  await expect(dialog).toBeVisible()
+  return dialog
+}
+
+test('public portal loads, registration works and employee number is absent', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await mockLoggedOutIdentity(page, { signupSucceeds: true })
   await page.route('**/api/registrations', (route) => route.fulfill({
@@ -130,6 +150,29 @@ test('admin sees request and can approve it', async ({ page }) => {
   await expect(page.getByText(/Mitarbeiter-ID|Personalnummer/i)).toHaveCount(0)
   await page.getByRole('button', { name: 'Freischalten' }).click()
   await expect(page.getByText('Keine offenen Registrierungsanfragen.')).toBeVisible()
+  expect(errors).toEqual([])
+})
+
+test('V2 schedule, live view and reports select employees by name', async ({ page }) => {
+  const errors = collectConsoleErrors(page)
+  await mockIdentity(page); await mockAdminApis(page); await loginAsAdmin(page)
+  const dialog = await openV2(page)
+
+  await dialog.getByRole('button', { name: 'Dienstplan', exact: true }).click()
+  const employeeSelect = dialog.getByLabel('Mitarbeiter', { exact: true })
+  await expect(employeeSelect).toBeVisible()
+  await expect(employeeSelect.locator('option')).toContainText(['Bitte wählen', 'Anna Beispiel', 'Bernd Muster'])
+  await employeeSelect.selectOption('employee-anna')
+  await expect(dialog.locator('input[name="employeeName"]')).toHaveValue('Anna Beispiel')
+
+  await dialog.getByRole('button', { name: 'Live-Übersicht', exact: true }).click()
+  await expect(dialog.getByLabel('Mitarbeiter', { exact: true })).toContainText('Anna Beispiel')
+  await expect(dialog.getByLabel('Einsatzort', { exact: true })).toContainText('Objekt Nord')
+
+  await dialog.getByRole('button', { name: 'Berichte', exact: true }).click()
+  const reportEmployees = dialog.getByLabel('Mitarbeiter', { exact: true })
+  await expect(reportEmployees).toContainText('Anna Beispiel')
+  await expect(dialog.getByText(/Mitarbeiter-ID|Personalnummer|Einsatzort-ID/i)).toHaveCount(0)
   expect(errors).toEqual([])
 })
 
