@@ -1,10 +1,27 @@
 import { test, expect } from '@playwright/test'
 
 const identityUser = {
-  id: 'user-admin-1', email: 'admin@example.test', aud: '', role: '',
+  id: 'user-admin-1', email: 'admin@example.test', aud: '', role: 'authenticated',
   app_metadata: { provider: 'email', roles: ['admin'] },
   user_metadata: { full_name: 'Test Admin' },
   created_at: '2026-08-06T00:00:00.000Z', confirmed_at: '2026-08-06T00:00:00.000Z',
+  updated_at: '2026-08-06T00:00:00.000Z',
+}
+
+const b64 = (value) => Buffer.from(JSON.stringify(value)).toString('base64url')
+function jwtFor(user) {
+  const now = Math.floor(Date.now() / 1000)
+  return `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({
+    aud: 'authenticated', sub: user.id, email: user.email, role: 'authenticated',
+    exp: now + 3600, iat: now, app_metadata: user.app_metadata, user_metadata: user.user_metadata,
+  })}.test-signature`
+}
+function tokenResponse(user) {
+  return {
+    access_token: jwtFor(user), token_type: 'bearer', expires_in: 3600,
+    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    refresh_token: 'test-refresh-token', user,
+  }
 }
 
 function collectConsoleErrors(page) {
@@ -19,8 +36,11 @@ function collectConsoleErrors(page) {
 async function mockLoggedOutIdentity(page, { signupSucceeds = false } = {}) {
   await page.route('**/.netlify/identity**', async (route) => {
     const request = route.request(); const url = new URL(request.url())
-    if (url.pathname.endsWith('/settings')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ disable_signup: false, autoconfirm: false, external: {} }) })
-    if (url.pathname.endsWith('/signup') && request.method() === 'POST' && signupSucceeds) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...identityUser, id: 'new-user' }) })
+    if (url.pathname.endsWith('/settings')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ disable_signup: false, autoconfirm: true, external: {} }) })
+    if (url.pathname.endsWith('/signup') && request.method() === 'POST' && signupSucceeds) {
+      const user = { ...identityUser, id: 'new-user', email: 'mitarbeiter@example.test', app_metadata: { provider: 'email', roles: [] }, user_metadata: { full_name: 'Test Mitarbeiter' } }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tokenResponse(user)) })
+    }
     if (url.pathname.endsWith('/user')) return route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'invalid_token', error_description: 'Not logged in' }) })
     return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'invalid_request' }) })
   })
@@ -30,13 +50,10 @@ async function mockIdentity(page, user = identityUser) {
   let authenticated = false
   await page.route('**/.netlify/identity**', async (route) => {
     const request = route.request(); const url = new URL(request.url())
-    if (url.pathname.endsWith('/settings')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ disable_signup: false, autoconfirm: false, external: {} }) })
+    if (url.pathname.endsWith('/settings')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ disable_signup: false, autoconfirm: true, external: {} }) })
     if (url.pathname.endsWith('/token') && request.method() === 'POST') {
       authenticated = true
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
-        access_token: 'test-access-token', token_type: 'bearer', expires_in: 3600,
-        expires_at: Math.floor(Date.now() / 1000) + 3600, refresh_token: 'test-refresh-token', user,
-      }) })
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tokenResponse(user)) })
     }
     if (url.pathname.endsWith('/user')) return route.fulfill({ status: authenticated ? 200 : 401, contentType: 'application/json', body: JSON.stringify(authenticated ? user : { error: 'invalid_token' }) })
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
@@ -70,7 +87,7 @@ async function mockAdminApis(page) {
 
 async function openReports(page) {
   const menu = page.locator('.hamburger-button')
-  if (await menu.count()) await menu.click()
+  if (await menu.isVisible().catch(() => false)) await menu.click()
   const reports = page.getByRole('button', { name: 'Berichte', exact: true })
   await reports.evaluate((element) => element.click())
   await expect(page.getByRole('heading', { name: 'Berichte', exact: true })).toBeVisible()
