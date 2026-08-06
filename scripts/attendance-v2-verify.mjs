@@ -12,6 +12,7 @@ const browserFiles = [
   'public/attendance-day-reset.js',
   'public/attendance-v2-compat.js',
   'public/attendance-corrections-tab.js',
+  'public/employee-directory-v2.js',
   'public/live-attendance.js',
   'public/schedule-v2.js',
   'public/schedule-assist-v2.js',
