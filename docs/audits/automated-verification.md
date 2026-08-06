@@ -115,7 +115,8 @@ AUDIT frontend-build: OK
 public/assets/habun-portal.js   258.0kb
   public/assets/habun-portal.css   28.7kb
 
-⚡ Done in 44ms
+⚡ Done in 47ms
+AUDIT dist-build: OK
 AUDIT browser: OK
 
 > habun-mitarbeiterportal-main-repair@2026.8.6 test:e2e
@@ -125,9 +126,9 @@ file:///home/runner/work/z.B.-mein-projekt/z.B.-mein-projekt/scripts/prepare-uni
   if (count !== 1) throw new Error(`${label}: erwartet 1 Treffer, gefunden ${count}`)
                          ^
 
-Error: reports screenshot test info: erwartet 1 Treffer, gefunden 0
+Error: mobile navigation helper: erwartet 1 Treffer, gefunden 0
     at replaceOnce (file:///home/runner/work/z.B.-mein-projekt/z.B.-mein-projekt/scripts/prepare-unified-e2e.mjs:10:26)
-    at file:///home/runner/work/z.B.-mein-projekt/z.B.-mein-projekt/scripts/prepare-unified-e2e.mjs:98:1
+    at file:///home/runner/work/z.B.-mein-projekt/z.B.-mein-projekt/scripts/prepare-unified-e2e.mjs:14:1
 
-Node.js v22.23.1
+Node.js v22.23.2
 ```
