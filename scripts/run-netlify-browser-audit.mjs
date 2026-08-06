@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 
 const functionsDir = 'netlify/functions'
 for (const name of await readdir(functionsDir)) {
-  if (name.startsWith('audit-browser-') && name.endsWith('.mts')) {
+  if ((name.startsWith('audit-browser-') || name.startsWith('audit-fail-')) && name.endsWith('.mts')) {
     await rm(`${functionsDir}/${name}`)
   }
 }
@@ -38,13 +38,24 @@ function collectFailures(report) {
   return failures
 }
 
-function slug(value) {
-  return String(value || 'unknown')
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 44) || 'unknown'
+function compactProject(value) {
+  if (value.includes('desktop')) return 'desktop'
+  if (value.includes('iphone')) return 'iphone'
+  if (value.includes('android')) return 'android'
+  return 'browser'
+}
+
+function compactTest(value) {
+  const title = value.toLowerCase()
+  if (title.includes('reports provide')) return 'reports-downloads'
+  if (title.includes('scheduler edits')) return 'scheduler-access'
+  if (title.includes('admin uses')) return 'admin-settings'
+  if (title.includes('digital attendance')) return 'attendance-flow'
+  if (title.includes('mobile schedule')) return 'schedule-editor'
+  if (title.includes('employee sees')) return 'employee-access'
+  if (title.includes('management records')) return 'management-times'
+  if (title.includes('login')) return 'login'
+  return 'other'
 }
 
 let stage = 'install'
@@ -70,11 +81,7 @@ if (result.status === 0) {
 }
 
 const success = result.status === 0
-const firstFailure = failures[0]
-const failureSuffix = stage === 'tests'
-  ? `-${failures.length || 'unknown'}-${slug(firstFailure ? `${firstFailure.project}-${firstFailure.title}` : 'unparsed')}`
-  : ''
-const marker = success ? 'audit-browser-success-24' : `audit-browser-failed-${stage}${failureSuffix}`
+const marker = success ? 'audit-browser-success-24' : `audit-browser-failed-${stage}-${failures.length || 'unknown'}`
 const safeDetails = details.slice(-12000)
 const payload = {
   success,
@@ -86,5 +93,13 @@ const payload = {
   details: safeDetails,
 }
 
-await writeFile(`${functionsDir}/${marker}.mts`, `import type { Config } from '@netlify/functions'\n\nexport default async () => Response.json(${JSON.stringify(payload)}, { headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' } })\n\nexport const config: Config = { path: '/api/${marker}' }\n`)
+const createMarker = async (name, data) => {
+  await writeFile(`${functionsDir}/${name}.mts`, `import type { Config } from '@netlify/functions'\n\nexport default async () => Response.json(${JSON.stringify(data)}, { headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' } })\n\nexport const config: Config = { path: '/api/${name}' }\n`)
+}
+
+await createMarker(marker, payload)
+for (const failure of failures) {
+  const name = `audit-fail-${compactProject(failure.project)}-${compactTest(failure.title)}`
+  await createMarker(name, failure)
+}
 console.log(`Browser audit marker: ${marker}`)
