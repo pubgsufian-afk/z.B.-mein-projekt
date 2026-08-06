@@ -23,11 +23,16 @@ function collectFailures(report) {
     const nextParents = suite.title ? [...parents, suite.title] : parents
     for (const spec of suite.specs || []) {
       for (const test of spec.tests || []) {
-        const failed = (test.results || []).some((entry) => !['passed', 'skipped'].includes(entry.status))
+        const results = test.results || []
+        const failed = results.some((entry) => !['passed', 'skipped'].includes(entry.status))
         if (failed || test.status === 'unexpected') {
+          const error = results.flatMap((entry) => entry.errors || (entry.error ? [entry.error] : []))
+            .map((entry) => String(entry?.message || entry?.value || entry || ''))
+            .join(' ')
           failures.push({
             project: String(test.projectName || 'browser'),
             title: [...nextParents, spec.title].filter(Boolean).join(' > '),
+            error,
           })
         }
       }
@@ -58,6 +63,18 @@ function testCode(value) {
   return 'other'
 }
 
+function errorCode(value) {
+  const error = String(value || '').toLowerCase()
+  if (error.includes('waiting for event "download"') || (error.includes('waitforevent') && error.includes('download'))) return 'download-event'
+  if (error.includes('pdf-vorschau')) return 'preview'
+  if (error.includes('dienst erstellen')) return 'editor-heading'
+  if (error.includes('dienstplan als pdf')) return 'pdf-rights'
+  if (error.includes('horizontal') || error.includes('scrollwidth')) return 'overflow'
+  if (error.includes('strict mode violation')) return 'duplicate-locator'
+  if (error.includes('timed out')) return 'timeout'
+  return 'assertion'
+}
+
 let stage = 'install'
 let result = run('npx', ['playwright', 'install', 'chromium'])
 let details = `${result.stdout || ''}\n${result.stderr || ''}`.trim()
@@ -81,7 +98,7 @@ if (result.status === 0) {
 }
 
 const success = result.status === 0
-const failurePattern = [...new Set(failures.map((failure) => `${projectCode(failure.project)}-${testCode(failure.title)}`))].join('-') || 'unparsed'
+const failurePattern = [...new Set(failures.map((failure) => `${projectCode(failure.project)}-${testCode(failure.title)}-${errorCode(failure.error)}`))].join('-') || 'unparsed'
 const marker = success ? 'audit-browser-success-24' : `audit-browser-failed-${stage}-${failures.length || 'unknown'}-${failurePattern}`
 const safeDetails = details.slice(-12000)
 const payload = {
