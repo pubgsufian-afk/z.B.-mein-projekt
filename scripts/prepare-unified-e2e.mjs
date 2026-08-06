@@ -78,8 +78,8 @@ replaceOnce(
 'attendance screenshot test info',
 )
 replaceOnce(
-"  await expect(page.locator('.digital-clock')).toHaveText(/^\\d{2}:\\d{2}:\\d{2}$/)",
-"  await expect(page.locator('.digital-clock')).toHaveText(/^\\d{2}:\\d{2}:\\d{2}$/)\n  if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/02-zeiterfassung-iphone.png', fullPage: true })",
+"  await navigate(page, 'Zeiterfassung')\n  await expect(page.locator('.digital-clock')).toHaveText(/^\\d{2}:\\d{2}:\\d{2}$/)",
+"  await navigate(page, 'Zeiterfassung')\n  await expect(page.locator('.digital-clock')).toHaveText(/^\\d{2}:\\d{2}:\\d{2}$/)\n  if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/02-zeiterfassung-iphone.png', fullPage: true })",
 'attendance screenshot',
 )
 
