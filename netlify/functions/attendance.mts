@@ -148,26 +148,12 @@ async function currentPortalActor() {
   return { userId: user.id, email, role }
 }
 
-async function fetchScheduleEndpoint(request: Request, path: string) {
-  try {
-    const url = new URL(path, request.url)
-    const result = await fetch(url, { method: 'GET', headers: request.headers, redirect: 'manual', cache: 'no-store' })
-    if (!result.ok) return []
-    const payload = await result.json().catch(() => ({})) as { entries?: ScheduleEntry[] }
-    return Array.isArray(payload.entries) ? payload.entries : []
-  } catch { return [] }
-}
-
-async function loadSchedules(request: Request): Promise<ScheduleEntry[]> {
-  const [v2, legacy] = await Promise.all([
-    fetchScheduleEndpoint(request, '/api/schedule-v2?resource=entries'),
-    fetchScheduleEndpoint(request, '/api/work?resource=schedule'),
-  ])
-  const merged = [...v2, ...legacy]
-  return merged.filter((entry, index, values) => {
-    const key = entry.id || `${entry.employeeUserId}:${entry.date}:${entry.start}:${entry.location}`
-    return values.findIndex((candidate) => (candidate.id || `${candidate.employeeUserId}:${candidate.date}:${candidate.start}:${candidate.location}`) === key) === index
-  })
+async function loadSchedules(): Promise<ScheduleEntry[]> {
+  const { getStore } = await import('@netlify/blobs')
+  const scheduleStore = getStore({ name: 'portal-schedule-v2', consistency: 'strong' })
+  const listed = await scheduleStore.list({ prefix: 'shifts/' })
+  const rows = await Promise.all(listed.blobs.map((blob) => scheduleStore.get(blob.key, { type: 'json' }) as Promise<ScheduleEntry | null>))
+  return rows.filter((entry): entry is ScheduleEntry => Boolean(entry))
 }
 
 function schedulePayload(entry: ScheduleEntry | null) {
@@ -226,7 +212,8 @@ export default async function attendance(request: Request, _context: Context) {
       const resource = url.searchParams.get('resource') || 'state'
       if (resource === 'state') {
         const state = await service.getState(actor)
-        const schedules = await loadSchedules(request)
+        if (actor.role === 'employee') return response({ phase: state.phase })
+        const schedules = await loadSchedules()
         const now = new Date()
         const today = eventDateInBerlin(now)
         const requestedScheduleId = url.searchParams.get('scheduleId')
@@ -235,6 +222,7 @@ export default async function attendance(request: Request, _context: Context) {
         return response({ ...state, schedule: schedulePayload(schedule), schedules: candidates.map((entry) => schedulePayload(entry)) })
       }
       if (resource === 'history') {
+        if (actor.role === 'employee') return response({ message: 'Keine Berechtigung.', code: 'FORBIDDEN' }, 403)
         return response(await service.getHistory(actor, {
           userId: url.searchParams.get('userId'),
           from: url.searchParams.get('from'),
@@ -248,7 +236,7 @@ export default async function attendance(request: Request, _context: Context) {
           userId: url.searchParams.get('userId'),
           status: url.searchParams.get('status'),
         })
-        const schedules = await loadSchedules(request)
+        const schedules = await loadSchedules()
         return response({ entries: enrichLiveEntries(result.entries, schedules) })
       }
       return response({ message: 'Unbekannter Zeiterfassungsbereich.' }, 400)
@@ -263,10 +251,11 @@ export default async function attendance(request: Request, _context: Context) {
 
     const normalized = normalizeClockRequest(body)
     const eventDate = eventDateInBerlin(normalized.clientOccurredAt)
-    const schedules = await loadSchedules(request)
+    const schedules = await loadSchedules()
     const schedule = selectPlannedSchedule(schedules, actor.userId, eventDate, normalized.scheduleId, normalized.clientOccurredAt)
     const safeBody = { ...body, scheduleId: schedule?.id || null, objectId: schedule?.objectId || null }
-    return response(await service.record(actor, safeBody), 201)
+    const recorded = await service.record(actor, safeBody)
+    return response(actor.role === 'employee' ? { saved: true, action: normalized.action } : recorded, 201)
   } catch (error) {
     if (error instanceof AttendanceServiceError) return response({ message: error.message, code: error.code }, error.status)
     if (error instanceof TypeError || error instanceof RangeError) return response({ message: error.message, code: 'INVALID_INPUT' }, 400)

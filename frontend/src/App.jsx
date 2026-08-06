@@ -22,13 +22,13 @@ const MANAGEMENT = new Set(['owner', 'admin', 'manager'])
 const ADMINISTRATION = new Set(['owner', 'admin'])
 
 const NAVIGATION = [
-  { key: 'overview', label: 'Übersicht', roles: ['owner', 'admin', 'manager', 'employee'] },
+  { key: 'overview', label: 'Übersicht', roles: ['owner', 'admin', 'manager'] },
   { key: 'attendance', label: 'Zeiterfassung', roles: ['owner', 'admin', 'manager', 'employee'] },
   { key: 'employees', label: 'Mitarbeiter', roles: ['owner', 'admin', 'manager'] },
-  { key: 'schedule', label: 'Dienstplan', roles: ['owner', 'admin', 'manager', 'employee'] },
-  { key: 'times', label: 'Meine Zeiten', roles: ['owner', 'admin', 'manager', 'employee'] },
+  { key: 'schedule', label: 'Dienstplan', roles: ['owner', 'admin', 'manager'] },
+  { key: 'times', label: 'Zeiten', roles: ['owner', 'admin', 'manager'] },
   { key: 'worksites', label: 'Einsatzorte', roles: ['owner', 'admin'] },
-  { key: 'corrections', label: 'Korrekturen', roles: ['owner', 'admin', 'manager', 'employee'] },
+  { key: 'corrections', label: 'Korrekturen', roles: ['owner', 'admin', 'manager'] },
   { key: 'reports', label: 'Berichte', roles: ['owner', 'admin', 'manager'] },
   { key: 'settings', label: 'Einstellungen', roles: ['owner', 'admin'] },
 ]
@@ -119,7 +119,7 @@ function formatDuration(minutes) {
 function Brand({ compact = false }) {
   return (
     <div className={`brand ${compact ? 'brand-compact' : ''}`}>
-      <img src="/habun-logo.png" alt="Habun Security" />
+      <span className="brand-mark"><img src="/habun-logo.png" alt="Habun Security" /></span>
       {!compact && <div><strong>Habun Security</strong><span>Mitarbeiterportal</span></div>}
     </div>
   )
@@ -230,6 +230,18 @@ function PortalShell({ session, page, setPage, onLogout, children }) {
   const title = items.find((item) => item.key === page)?.label || 'Übersicht'
   const navigate = (key) => { setPage(key); setDrawer(false); window.scrollTo({ top: 0, behavior: 'smooth' }) }
 
+  if (session.role === 'employee') {
+    return (
+      <div className="employee-kiosk-shell">
+        <header className="employee-kiosk-header">
+          <Brand />
+          <button className="secondary-button compact" type="button" onClick={onLogout}>Abmelden</button>
+        </header>
+        <main className="employee-kiosk-main" aria-label="Mitarbeiter-Zeiterfassung">{children}</main>
+      </div>
+    )
+  }
+
   return (
     <div className="app-shell">
       <button className={`drawer-backdrop ${drawer ? 'visible' : ''}`} aria-label="Menü schließen" onClick={() => setDrawer(false)} />
@@ -243,6 +255,7 @@ function PortalShell({ session, page, setPage, onLogout, children }) {
       <main className="app-main">
         <header className="topbar">
           <button className="hamburger-button" type="button" aria-label="Menü öffnen" onClick={() => setDrawer(true)}><span /><span /><span /></button>
+          <div className="topbar-logo" aria-hidden="true"><Brand compact /></div>
           <div className="topbar-title"><h1>{title}</h1><p>Habun Security · Geschützter Firmenbereich</p></div>
           <div className="account-chip"><span>{session.fullName?.slice(0, 1)?.toUpperCase() || 'H'}</span><div><strong>{session.fullName}</strong><small>{ROLE_LABELS[session.role]}</small></div></div>
         </header>
@@ -314,6 +327,7 @@ function actionLabel(action) {
 }
 
 function AttendancePage({ session }) {
+  const employeeOnly = session.role === 'employee'
   const [now, setNow] = useState(new Date())
   const [state, setState] = useState({ phase: 'idle', events: [], schedule: null })
   const [live, setLive] = useState([])
@@ -370,18 +384,24 @@ function AttendancePage({ session }) {
 
   const phase = state.phase || 'idle'
   return <>
-    <section className="attendance-hero">
+    <section className={`attendance-hero ${employeeOnly ? 'employee-attendance-hero' : ''}`}>
       <DigitalClock now={now} />
       <div className="attendance-shift">
-        <span>Heutiger Dienst</span>
-        <strong>{state.schedule ? `${state.schedule.start || '–'}–${state.schedule.end || '–'}` : 'Kein Dienst veröffentlicht'}</strong>
-        <p>{state.schedule ? `${state.schedule.location || '–'} · ${state.schedule.workArea || '–'}` : 'Der Dienstplan wurde für heute noch nicht freigegeben.'}</p>
+        {employeeOnly ? <>
+          <span>Arbeitsstatus</span>
+          <strong>{phase === 'working' ? 'Arbeitszeit läuft' : phase === 'paused' ? 'Pause läuft' : phase === 'completed' ? 'Dienst abgeschlossen' : 'Bereit zum Start'}</strong>
+          <p>Hier kannst du ausschließlich deine Arbeitszeit und Pause bedienen.</p>
+        </> : <>
+          <span>Heutiger Dienst</span>
+          <strong>{state.schedule ? `${state.schedule.start || '–'}–${state.schedule.end || '–'}` : 'Kein Dienst veröffentlicht'}</strong>
+          <p>{state.schedule ? `${state.schedule.location || '–'} · ${state.schedule.workArea || '–'}` : 'Der Dienstplan wurde für heute noch nicht freigegeben.'}</p>
+        </>}
         <div className="attendance-state"><span className={`state-light ${phase}`} />{phase === 'working' ? 'Arbeitszeit läuft' : phase === 'paused' ? 'Pause läuft' : phase === 'completed' ? 'Dienst abgeschlossen' : 'Bereit zum Start'}</div>
       </div>
     </section>
     <Notice notice={notice} onClose={() => setNotice(null)} />
     <section className="panel attendance-controls-panel">
-      <PageHeader title="Zeit bedienen" subtitle="Der Standort wird nur bei Arbeitsbeginn und Arbeitsende abgefragt." />
+      <PageHeader title={employeeOnly ? 'Stempeluhr' : 'Zeit bedienen'} subtitle={employeeOnly ? 'Arbeitsbeginn, Pause und Arbeitsende.' : 'Der Standort wird nur bei Arbeitsbeginn und Arbeitsende abgefragt.'} />
       <div className="clock-actions">
         {phase === 'idle' && <button className="clock-button start" disabled={Boolean(busy)} onClick={() => record('clock-in')}><span>▶</span><strong>{busy ? 'Wird gespeichert …' : 'Arbeit beginnen'}</strong></button>}
         {phase === 'working' && <>
@@ -389,13 +409,13 @@ function AttendancePage({ session }) {
           <button className="clock-button stop" disabled={Boolean(busy)} onClick={() => record('clock-out')}><span>■</span><strong>Arbeit beenden</strong></button>
         </>}
         {phase === 'paused' && <button className="clock-button start" disabled={Boolean(busy)} onClick={() => record('break-end')}><span>▶</span><strong>Pause beenden</strong></button>}
-        {phase === 'completed' && <div className="completed-card"><strong>Dienst abgeschlossen</strong><span>Arbeitsbeginn {formatDateTime(state.clockInAt)} · Arbeitsende {formatDateTime(state.clockOutAt)}</span></div>}
+        {phase === 'completed' && <div className="completed-card"><strong>Dienst abgeschlossen</strong>{!employeeOnly && <span>Arbeitsbeginn {formatDateTime(state.clockInAt)} · Arbeitsende {formatDateTime(state.clockOutAt)}</span>}</div>}
       </div>
     </section>
-    <section className="panel">
+    {!employeeOnly && <section className="panel">
       <PageHeader title="Heutige Buchungen" subtitle="Alle Aktionen in zeitlicher Reihenfolge." action={<button className="secondary-button compact" onClick={load}>Aktualisieren</button>} />
       {(state.events || []).length ? <div className="timeline">{state.events.map((event) => <div key={event.id || event.clientEventId}><span className={`timeline-dot ${event.action}`} /><div><strong>{actionLabel(event.action)}</strong><small>{formatDateTime(event.clientOccurredAt)}</small></div><Status tone={event.locationStatus === 'inside' ? 'success' : event.locationStatus === 'outside' ? 'warning' : 'neutral'}>{event.action.startsWith('break') ? 'ohne Standort' : event.locationStatus === 'inside' ? 'am Einsatzort' : event.locationStatus === 'outside' ? 'außerhalb' : 'Standort nicht verfügbar'}</Status></div>)}</div> : <Empty>Noch keine Buchung für heute.</Empty>}
-    </section>
+    </section>}
     {MANAGEMENT.has(session.role) && <section className="panel"><PageHeader title="Live-Übersicht" subtitle="Aktuelle Buchungen der Mitarbeiter – keine dauerhafte Ortung." />{live.length ? <div className="responsive-table"><table><thead><tr><th>Mitarbeiter</th><th>Aktion</th><th>Zeit</th><th>Einsatzort</th><th>Status</th></tr></thead><tbody>{live.map((entry) => <tr key={entry.id}><td>{entry.employeeName || 'Mitarbeiter'}</td><td>{actionLabel(entry.action)}</td><td>{formatDateTime(entry.clientOccurredAt)}</td><td>{entry.workSiteName || '–'}</td><td><Status tone={entry.locationStatus === 'inside' ? 'success' : 'warning'}>{entry.locationStatus === 'inside' ? 'Im Bereich' : entry.locationStatus === 'outside' ? 'Außerhalb' : 'Nicht verfügbar'}</Status></td></tr>)}</tbody></table></div> : <Empty>Heute liegen noch keine Buchungen vor.</Empty>}</section>}
   </>
 }
@@ -674,8 +694,9 @@ function SettingsPage() {
 
 function UnifiedPortal({ session, onLogout }) {
   const allowed = NAVIGATION.filter((item) => item.roles.includes(session.role)).map((item) => item.key)
-  const [page, setPage] = useState('overview')
-  useEffect(() => { if (!allowed.includes(page)) setPage('overview') }, [allowed, page])
+  const initialPage = session.role === 'employee' ? 'attendance' : 'overview'
+  const [page, setPage] = useState(initialPage)
+  useEffect(() => { if (!allowed.includes(page)) setPage(initialPage) }, [allowed, initialPage, page])
   const content = page === 'overview' ? <OverviewPage session={session} navigate={setPage} />
     : page === 'attendance' ? <AttendancePage session={session} />
       : page === 'employees' ? <EmployeesPage session={session} />

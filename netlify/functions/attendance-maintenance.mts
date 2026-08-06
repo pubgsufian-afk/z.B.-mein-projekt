@@ -183,7 +183,7 @@ async function retention(sql: Awaited<ReturnType<typeof connection>>, current: N
 export default async function maintenance(request: Request, _context: Context) {
   const current = await actor()
   if (!current) return json({ message: 'Nicht angemeldet.' }, 401)
-  if (current.role === 'pending') return json({ message: 'Das Konto ist noch nicht freigeschaltet.' }, 403)
+  if (!MANAGEMENT.has(current.role)) return json({ message: 'Keine Berechtigung.' }, 403)
   let sql
   try { sql = await connection() } catch (error: any) { return json({ message: error.message }, error.status || 500) }
   const url = new URL(request.url)

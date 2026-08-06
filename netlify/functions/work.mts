@@ -159,9 +159,12 @@ async function proxyScheduleAction(request: Request, body: Record<string, unknow
 export default async function work(request: Request, _context: Context) {
   const url = new URL(request.url);
   const queryResource = url.searchParams.get("resource");
+  const currentAccess = await currentPortalUser();
+  if (!currentAccess) return error("Nicht angemeldet.", 401);
+  if (!MANAGEMENT_ROLES.includes(currentAccess.role)) return error("Keine Berechtigung.", 403);
 
   if (request.method === "GET" && queryResource === "schedule") {
-    const current = await currentPortalUser();
+    const current = currentAccess;
     const upstream = await proxyToProductionBackend(request, "/api/work");
     if (!upstream.ok || !current) return upstream;
 
@@ -187,9 +190,7 @@ export default async function work(request: Request, _context: Context) {
     return error("Ungültige Anfragequelle.", 403);
   }
 
-  const current = await currentPortalUser();
-  if (!current) return error("Nicht angemeldet.", 401);
-  if (!MANAGEMENT_ROLES.includes(current.role)) return error("Keine Berechtigung.", 403);
+  const current = currentAccess;
 
   const action = String(body.action || "create");
   const oldKey = body.entryId && body.originalEmployeeUserId && body.originalDate

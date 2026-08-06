@@ -176,7 +176,7 @@ async function login(page, role = 'admin') {
   await page.getByLabel('E-Mail-Adresse').fill(user.email)
   await page.getByLabel('Passwort').fill('TestPasswort123!')
   await page.getByRole('button', { name: 'Sicher anmelden' }).click()
-  await expect(page.getByRole('heading', { name: 'Übersicht', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: role === 'employee' ? 'Stempeluhr' : 'Übersicht', exact: true })).toBeVisible()
 }
 
 async function navigate(page, label) {
@@ -268,13 +268,20 @@ test('reports provide PDF preview, PDF download and Excel download', async ({ pa
   expect((await excelDownload).suggestedFilename()).toMatch(/\.xlsx$/i)
 })
 
-test('employee sees only personal operational pages and no administration', async ({ page }) => {
+test('employee sees only the kiosk clock and no portal data', async ({ page }) => {
   await login(page, 'employee')
-  await expect(page.getByRole('button', { name: 'Mitarbeiter', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Einsatzorte', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Berichte', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Einstellungen', exact: true })).toHaveCount(0)
-  await navigate(page, 'Meine Zeiten')
-  await expect(page.getByRole('button', { name: /PDF|Excel/ })).toHaveCount(0)
+  await expect(page.locator('.employee-kiosk-shell')).toBeVisible()
+  await expect(page.getByRole('img', { name: 'Habun Security' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Menü öffnen' })).toHaveCount(0)
+  await expect(page.getByText(/Übersicht|Dienstplan|Meine Zeiten|Zeiten|Korrekturen|Berichte|PDF|Excel|Gesamt|Heutige Buchungen/i)).toHaveCount(0)
+  await expect(page.locator('.digital-clock')).toHaveText(/^\d{2}:\d{2}:\d{2}$/)
+  await page.getByRole('button', { name: /Arbeit beginnen/ }).click()
+  await expect(page.getByText('Arbeitszeit läuft', { exact: true }).first()).toBeVisible()
+  await page.getByRole('button', { name: 'Pause beginnen' }).click()
+  await expect(page.getByText('Pause läuft', { exact: true }).first()).toBeVisible()
+  await page.getByRole('button', { name: 'Pause beenden' }).click()
+  await page.getByRole('button', { name: 'Arbeit beenden' }).click()
+  await expect(page.getByText('Dienst abgeschlossen', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Abmelden' })).toBeVisible()
   await expectNoHorizontalPageOverflow(page)
 })
