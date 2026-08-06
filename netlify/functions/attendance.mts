@@ -6,6 +6,7 @@ import {
   normalizeClockRequest,
 } from './_shared/daily-attendance-service.mts'
 import { createAttendanceRepository } from './_shared/neon-attendance.mts'
+import { databaseConnectionString } from './_shared/database-connection.mts'
 
 type PortalRole = 'owner' | 'admin' | 'manager' | 'employee' | 'pending'
 type AccessRecord = { role?: PortalRole; status?: string } | null
@@ -122,19 +123,6 @@ function response(data: unknown, status = 200) {
   })
 }
 
-function databaseUrl() {
-  const runtimeValue = typeof Netlify !== 'undefined'
-    ? Netlify.env.get('ATTENDANCE_DATABASE_URL')
-      || Netlify.env.get('DATABASE_URL')
-      || Netlify.env.get('NETLIFY_DATABASE_URL')
-    : ''
-  return runtimeValue
-    || process.env.ATTENDANCE_DATABASE_URL
-    || process.env.DATABASE_URL
-    || process.env.NETLIFY_DATABASE_URL
-    || ''
-}
-
 async function currentPortalActor() {
   const [{ getUser }, { getStore }] = await Promise.all([
     import('@netlify/identity'),
@@ -228,7 +216,7 @@ export default async function attendance(request: Request, _context: Context) {
     if (!actor) return response({ message: 'Nicht angemeldet.', code: 'UNAUTHENTICATED' }, 401)
     if (actor.role === 'pending') return response({ message: 'Das Konto ist noch nicht freigeschaltet.', code: 'ACCOUNT_PENDING' }, 403)
 
-    const connectionString = databaseUrl()
+    const connectionString = databaseConnectionString()
     if (!connectionString) return response({ message: 'Die Zeiterfassungsdatenbank ist noch nicht verbunden.', code: 'DATABASE_NOT_CONFIGURED' }, 503)
     const repository = await createAttendanceRepository(connectionString)
     const service = createAttendanceService({ repository })
