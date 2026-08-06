@@ -1,1 +1,2 @@
 Netlify production functions reloaded after restoring the secured attendance database connection.
+Second reload after applying ATTENDANCE_DATABASE_URL to all contexts and functions.
