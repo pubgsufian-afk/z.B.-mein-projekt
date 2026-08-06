@@ -27,6 +27,13 @@ test('startup diagnostic renders meaningful portal content without missing resou
     }
     await route.fulfill({ status: 400, contentType: 'application/json', body: '{}' })
   })
+  await page.route('**/api/session', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ userId: null, email: '', fullName: '', role: 'pending', employeeCount: 0 }),
+  }))
+  await page.route('**/api/attendance-maintenance**', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ corrections: [] }),
+  }))
 
   await page.goto('/')
   await page.waitForTimeout(1500)
