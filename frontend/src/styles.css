@@ -304,3 +304,113 @@ tbody tr:last-child td { border-bottom: 0; }
   .week-cards { grid-template-columns: repeat(7, minmax(84vw, 300px)); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
+
+/* Strenger Mitarbeiter-Kiosk und mobile Safe-Area-Korrekturen */
+html, body, #root { min-height: 100%; }
+body { min-height: 100dvh; }
+.brand-mark { display: grid; place-items: center; flex: 0 0 auto; width: 72px; height: 78px; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-2); }
+.brand-mark img, .brand img { width: 64px; height: 70px; object-fit: contain; filter: none; }
+.brand-compact .brand-mark { width: 52px; height: 56px; border-radius: 11px; }
+.brand-compact .brand-mark img { width: 46px; height: 50px; }
+.topbar-logo { display: none; flex: 0 0 auto; }
+.app-main { padding-bottom: calc(50px + env(safe-area-inset-bottom)); }
+.topbar { min-height: calc(104px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); }
+.sidebar { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+.auth-form-panel, .pending-page, .loading-screen { padding-top: max(24px, env(safe-area-inset-top)); padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+.employee-kiosk-shell { min-height: 100dvh; padding: max(18px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); background: var(--bg); }
+.employee-kiosk-header { width: min(100%, 760px); min-height: 92px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--border); }
+.employee-kiosk-main { width: min(100%, 760px); margin: 0 auto; padding: 22px 0 8px; }
+.employee-kiosk-main .attendance-hero { grid-template-columns: 1fr; }
+.employee-kiosk-main .attendance-shift { min-height: 150px; }
+.employee-kiosk-main .attendance-controls-panel { margin-top: 18px; }
+.employee-kiosk-main .clock-actions { grid-template-columns: 1fr; }
+.employee-kiosk-main .clock-button { min-height: 118px; }
+.employee-kiosk-main .notice { margin-inline: 0; }
+
+@media (max-width: 900px) {
+  .topbar { min-height: calc(82px + env(safe-area-inset-top)); }
+  .topbar-logo { display: block; }
+  .topbar-logo .brand-mark { width: 44px; height: 48px; border: 0; background: transparent; }
+  .topbar-logo .brand-mark img { width: 42px; height: 46px; }
+  .sidebar { height: 100dvh; }
+  .sidebar nav { min-height: 0; overscroll-behavior: contain; }
+  .app-main { padding-bottom: calc(42px + env(safe-area-inset-bottom)); }
+}
+
+@media (max-width: 680px) {
+  .employee-kiosk-header { min-height: 84px; }
+  .employee-kiosk-header .brand > div { display: none; }
+  .employee-kiosk-header .brand-mark { width: 60px; height: 66px; }
+  .employee-kiosk-header .brand-mark img { width: 54px; height: 60px; }
+  .employee-kiosk-main { padding-top: 16px; }
+  .employee-kiosk-main .digital-clock-wrap { min-height: 190px; }
+  .employee-kiosk-main .attendance-shift { min-height: 135px; }
+  .employee-kiosk-main .page-heading { min-height: auto; }
+}
+
+@media (display-mode: standalone) {
+  .employee-kiosk-shell, .app-shell { min-height: 100dvh; }
+}
+
+/* HABUN_LOGO_VISIBILITY_AUDIT */
+.brand > .brand-mark { margin-top: 0; color: inherit; font-size: inherit; }
+.brand-mark { isolation: isolate; }
+.brand-mark img {
+  width: 220px !important;
+  height: auto !important;
+  max-width: none;
+  object-fit: contain;
+  object-position: center;
+  filter: none;
+}
+.brand-compact .brand-mark img { width: 178px !important; height: auto !important; }
+
+@media (max-width: 900px) {
+  .topbar-logo .brand-mark {
+    width: 64px;
+    height: 64px;
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    background: var(--surface-2);
+  }
+  .topbar-logo .brand-mark img { width: 190px !important; height: auto !important; }
+}
+
+@media (max-width: 680px) {
+  .employee-kiosk-header .brand-mark { width: 76px; height: 76px; }
+  .employee-kiosk-header .brand-mark img { width: 226px !important; height: auto !important; }
+}
+
+/* Mitarbeiter dürfen zusätzlich nur ihren eigenen Dienstplan lesen. */
+.employee-kiosk-nav {
+  width: min(100%, 760px);
+  margin: 14px auto 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+}
+.employee-kiosk-nav button {
+  min-height: 46px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--muted);
+  background: transparent;
+  font-weight: 800;
+}
+.employee-kiosk-nav button.active {
+  color: #181100;
+  background: var(--gold);
+}
+.employee-kiosk-main .employee-schedule-intro { margin-top: 0; }
+.employee-kiosk-main .schedule-toolbar { margin-top: 14px; }
+.employee-kiosk-main .shift-item[aria-disabled="true"] { cursor: default; }
+.employee-kiosk-main .shift-item[aria-disabled="true"]:hover { border-color: var(--border); transform: none; }
+
+@media (max-width: 680px) {
+  .employee-kiosk-nav { margin-top: 10px; }
+  .employee-kiosk-main:has(.employee-schedule-intro) { padding-top: 12px; }
+}

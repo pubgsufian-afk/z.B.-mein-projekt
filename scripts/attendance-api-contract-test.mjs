@@ -78,7 +78,8 @@ assert.equal(clockOut.event.offlineCaptured, true)
 const state = await service.getState(employee)
 assert.equal(state.phase, 'completed')
 assert.equal(state.events.length, 2)
-assert.deepEqual(await service.getHistory(employee, { userId: 'another-user' }), { entries: repository.events })
+await assert.rejects(() => service.getHistory(employee, { userId: 'employee-1' }), /Keine Berechtigung/)
+assert.deepEqual(await service.getHistory(manager, { userId: 'employee-1' }), { entries: repository.events })
 
 const repository2 = fakeRepository()
 const service2 = createAttendanceService({ repository: repository2, now: () => new Date('2026-08-06T08:00:00.000Z'), randomUUID: () => 'server-1' })
@@ -90,4 +91,4 @@ const unavailable = await service2.record(employee, {
 })
 assert.equal(unavailable.event.locationStatus, 'unavailable')
 
-console.log('Attendance API contract tests passed · 24 assertions')
+console.log('Attendance API contract tests passed · 25 assertions')

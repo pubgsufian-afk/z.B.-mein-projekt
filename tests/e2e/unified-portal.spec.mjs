@@ -86,6 +86,11 @@ async function mockPortalApis(page, role = 'admin') {
     id: 'shift-1', employeeUserId: 'employee-anna', employeeName: 'Anna Beispiel', date: new Date().toISOString().slice(0, 10),
     start: '07:00', end: '17:00', pauseMinutes: 30, objectId: 'site-nord', location: 'Objekt Nord', workArea: 'Zutrittskontrolle', status: 'published', version: 1,
   }
+  const otherSchedule = {
+    id: 'shift-2', employeeUserId: 'employee-bernd', employeeName: 'Bernd Muster', date: new Date().toISOString().slice(0, 10),
+    start: '08:00', end: '16:00', pauseMinutes: 30, objectId: 'site-sued', location: 'Objekt Süd', workArea: 'Empfang', status: 'published', version: 1,
+  }
+  const schedules = [schedule, otherSchedule]
   const requests = [{ id: 'request-1', fullName: 'Neue Person', email: 'neu@example.test', location: 'Objekt Nord', status: 'pending' }]
 
   await page.addInitScript(() => {
@@ -114,7 +119,7 @@ async function mockPortalApis(page, role = 'admin') {
     if (request.method() === 'GET') {
       const resource = url.searchParams.get('resource')
       if (resource === 'objects') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ objects }) })
-      const visible = role === 'employee' ? [schedule] : [schedule]
+      const visible = role === 'employee' ? schedules.filter((entry) => entry.employeeUserId === 'employee-anna' && entry.status === 'published') : schedules
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: visible }) })
     }
     const body = request.postDataJSON()
@@ -176,7 +181,7 @@ async function login(page, role = 'admin') {
   await page.getByLabel('E-Mail-Adresse').fill(user.email)
   await page.getByLabel('Passwort').fill('TestPasswort123!')
   await page.getByRole('button', { name: 'Sicher anmelden' }).click()
-  await expect(page.getByRole('heading', { name: 'Übersicht', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: role === 'employee' ? 'Stempeluhr' : 'Übersicht', exact: true })).toBeVisible()
 }
 
 async function navigate(page, label) {
@@ -268,13 +273,44 @@ test('reports provide PDF preview, PDF download and Excel download', async ({ pa
   expect((await excelDownload).suggestedFilename()).toMatch(/\.xlsx$/i)
 })
 
-test('employee sees only personal operational pages and no administration', async ({ page }) => {
+test('employee sees only clock and own published schedule', async ({ page }, testInfo) => {
   await login(page, 'employee')
-  await expect(page.getByRole('button', { name: 'Mitarbeiter', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Einsatzorte', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Berichte', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Einstellungen', exact: true })).toHaveCount(0)
-  await navigate(page, 'Meine Zeiten')
-  await expect(page.getByRole('button', { name: /PDF|Excel/ })).toHaveCount(0)
+  await expect(page.locator('.employee-kiosk-shell')).toBeVisible()
+  await expect(page.getByRole('img', { name: 'Habun Security' })).toBeVisible()
+  const brandMark = page.locator('.employee-kiosk-header .brand-mark')
+  await expect(brandMark).toBeVisible()
+  const brandBox = await brandMark.boundingBox()
+  expect(brandBox?.width || 0).toBeGreaterThanOrEqual(70)
+  expect(brandBox?.height || 0).toBeGreaterThanOrEqual(70)
+  await expect(page.getByRole('button', { name: 'Menü öffnen' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Stempeluhr', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Dienstplan', exact: true })).toBeVisible()
+  await expect(page.getByText(/Übersicht|Heutiger Dienst|Meine Zeiten|Zeiten|Korrekturen|Berichte|PDF|Excel|Gesamt|Heutige Buchungen/i)).toHaveCount(0)
+  await expect(page.locator('.digital-clock')).toHaveText(/^\d{2}:\d{2}:\d{2}$/)
+  if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/05-mitarbeiter-stempeluhr-iphone.png', fullPage: true })
+  if (testInfo.project.name === 'android-chromium') await page.screenshot({ path: 'artifacts/unified-preview/06-mitarbeiter-stempeluhr-android.png', fullPage: true })
+
+  await page.getByRole('button', { name: 'Dienstplan', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Mein Dienstplan', exact: true })).toBeVisible()
+  await expect(page.getByText('Objekt Nord', { exact: false })).toBeVisible()
+  await expect(page.getByText('Zutrittskontrolle', { exact: false })).toBeVisible()
+  await expect(page.getByText('Objekt Süd', { exact: false })).toHaveCount(0)
+  await expect(page.getByText('Bernd Muster', { exact: false })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Dienst am .* hinzufügen/ })).toHaveCount(0)
+  await expect(page.getByText(/Vorwoche kopieren|Entwurf prüfen und freigeben|Dienst erstellen|Als Entwurf speichern/i)).toHaveCount(0)
+  if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/07-mitarbeiter-dienstplan-iphone.png', fullPage: true })
+  if (testInfo.project.name === 'android-chromium') await page.screenshot({ path: 'artifacts/unified-preview/08-mitarbeiter-dienstplan-android.png', fullPage: true })
+  await expectNoHorizontalPageOverflow(page)
+
+  await page.getByRole('button', { name: 'Stempeluhr', exact: true }).click()
+  await expect(page.locator('.digital-clock')).toHaveText(/^\d{2}:\d{2}:\d{2}$/)
+  await page.getByRole('button', { name: /Arbeit beginnen/ }).click()
+  await expect(page.getByText('Arbeitszeit läuft', { exact: true }).first()).toBeVisible()
+  await page.getByRole('button', { name: 'Pause beginnen' }).click()
+  await expect(page.getByText('Pause läuft', { exact: true }).first()).toBeVisible()
+  await page.getByRole('button', { name: 'Pause beenden' }).click()
+  await page.getByRole('button', { name: 'Arbeit beenden' }).click()
+  await expect(page.getByText('Dienst abgeschlossen', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Abmelden' })).toBeVisible()
   await expectNoHorizontalPageOverflow(page)
 })

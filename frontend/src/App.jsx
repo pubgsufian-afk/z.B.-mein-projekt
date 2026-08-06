@@ -22,13 +22,13 @@ const MANAGEMENT = new Set(['owner', 'admin', 'manager'])
 const ADMINISTRATION = new Set(['owner', 'admin'])
 
 const NAVIGATION = [
-  { key: 'overview', label: 'Übersicht', roles: ['owner', 'admin', 'manager', 'employee'] },
+  { key: 'overview', label: 'Übersicht', roles: ['owner', 'admin', 'manager'] },
   { key: 'attendance', label: 'Zeiterfassung', roles: ['owner', 'admin', 'manager', 'employee'] },
   { key: 'employees', label: 'Mitarbeiter', roles: ['owner', 'admin', 'manager'] },
   { key: 'schedule', label: 'Dienstplan', roles: ['owner', 'admin', 'manager', 'employee'] },
-  { key: 'times', label: 'Meine Zeiten', roles: ['owner', 'admin', 'manager', 'employee'] },
+  { key: 'times', label: 'Zeiten', roles: ['owner', 'admin', 'manager'] },
   { key: 'worksites', label: 'Einsatzorte', roles: ['owner', 'admin'] },
-  { key: 'corrections', label: 'Korrekturen', roles: ['owner', 'admin', 'manager', 'employee'] },
+  { key: 'corrections', label: 'Korrekturen', roles: ['owner', 'admin', 'manager'] },
   { key: 'reports', label: 'Berichte', roles: ['owner', 'admin', 'manager'] },
   { key: 'settings', label: 'Einstellungen', roles: ['owner', 'admin'] },
 ]
@@ -119,7 +119,7 @@ function formatDuration(minutes) {
 function Brand({ compact = false }) {
   return (
     <div className={`brand ${compact ? 'brand-compact' : ''}`}>
-      <img src="/habun-logo.png" alt="Habun Security" />
+      <span className="brand-mark"><img src="/habun-logo.png" alt="Habun Security" /></span>
       {!compact && <div><strong>Habun Security</strong><span>Mitarbeiterportal</span></div>}
     </div>
   )
@@ -230,6 +230,22 @@ function PortalShell({ session, page, setPage, onLogout, children }) {
   const title = items.find((item) => item.key === page)?.label || 'Übersicht'
   const navigate = (key) => { setPage(key); setDrawer(false); window.scrollTo({ top: 0, behavior: 'smooth' }) }
 
+  if (session.role === 'employee') {
+    return (
+      <div className="employee-kiosk-shell">
+        <header className="employee-kiosk-header">
+          <Brand />
+          <button className="secondary-button compact" type="button" onClick={onLogout}>Abmelden</button>
+        </header>
+        <nav className="employee-kiosk-nav" aria-label="Mitarbeiterbereiche">
+          <button type="button" className={page === 'attendance' ? 'active' : ''} onClick={() => navigate('attendance')}>Stempeluhr</button>
+          <button type="button" className={page === 'schedule' ? 'active' : ''} onClick={() => navigate('schedule')}>Dienstplan</button>
+        </nav>
+        <main className="employee-kiosk-main" aria-label={page === 'schedule' ? 'Eigener Dienstplan' : 'Mitarbeiter-Zeiterfassung'}>{children}</main>
+      </div>
+    )
+  }
+
   return (
     <div className="app-shell">
       <button className={`drawer-backdrop ${drawer ? 'visible' : ''}`} aria-label="Menü schließen" onClick={() => setDrawer(false)} />
@@ -243,6 +259,7 @@ function PortalShell({ session, page, setPage, onLogout, children }) {
       <main className="app-main">
         <header className="topbar">
           <button className="hamburger-button" type="button" aria-label="Menü öffnen" onClick={() => setDrawer(true)}><span /><span /><span /></button>
+          <div className="topbar-logo" aria-hidden="true"><Brand compact /></div>
           <div className="topbar-title"><h1>{title}</h1><p>Habun Security · Geschützter Firmenbereich</p></div>
           <div className="account-chip"><span>{session.fullName?.slice(0, 1)?.toUpperCase() || 'H'}</span><div><strong>{session.fullName}</strong><small>{ROLE_LABELS[session.role]}</small></div></div>
         </header>
@@ -314,6 +331,7 @@ function actionLabel(action) {
 }
 
 function AttendancePage({ session }) {
+  const employeeOnly = session.role === 'employee'
   const [now, setNow] = useState(new Date())
   const [state, setState] = useState({ phase: 'idle', events: [], schedule: null })
   const [live, setLive] = useState([])
@@ -370,18 +388,24 @@ function AttendancePage({ session }) {
 
   const phase = state.phase || 'idle'
   return <>
-    <section className="attendance-hero">
+    <section className={`attendance-hero ${employeeOnly ? 'employee-attendance-hero' : ''}`}>
       <DigitalClock now={now} />
       <div className="attendance-shift">
-        <span>Heutiger Dienst</span>
-        <strong>{state.schedule ? `${state.schedule.start || '–'}–${state.schedule.end || '–'}` : 'Kein Dienst veröffentlicht'}</strong>
-        <p>{state.schedule ? `${state.schedule.location || '–'} · ${state.schedule.workArea || '–'}` : 'Der Dienstplan wurde für heute noch nicht freigegeben.'}</p>
+        {employeeOnly ? <>
+          <span>Arbeitsstatus</span>
+          <strong>{phase === 'working' ? 'Arbeitszeit läuft' : phase === 'paused' ? 'Pause läuft' : phase === 'completed' ? 'Dienst abgeschlossen' : 'Bereit zum Start'}</strong>
+          <p>Hier kannst du ausschließlich deine Arbeitszeit und Pause bedienen.</p>
+        </> : <>
+          <span>Heutiger Dienst</span>
+          <strong>{state.schedule ? `${state.schedule.start || '–'}–${state.schedule.end || '–'}` : 'Kein Dienst veröffentlicht'}</strong>
+          <p>{state.schedule ? `${state.schedule.location || '–'} · ${state.schedule.workArea || '–'}` : 'Der Dienstplan wurde für heute noch nicht freigegeben.'}</p>
+        </>}
         <div className="attendance-state"><span className={`state-light ${phase}`} />{phase === 'working' ? 'Arbeitszeit läuft' : phase === 'paused' ? 'Pause läuft' : phase === 'completed' ? 'Dienst abgeschlossen' : 'Bereit zum Start'}</div>
       </div>
     </section>
     <Notice notice={notice} onClose={() => setNotice(null)} />
     <section className="panel attendance-controls-panel">
-      <PageHeader title="Zeit bedienen" subtitle="Der Standort wird nur bei Arbeitsbeginn und Arbeitsende abgefragt." />
+      <PageHeader title={employeeOnly ? 'Stempeluhr' : 'Zeit bedienen'} subtitle={employeeOnly ? 'Arbeitsbeginn, Pause und Arbeitsende.' : 'Der Standort wird nur bei Arbeitsbeginn und Arbeitsende abgefragt.'} />
       <div className="clock-actions">
         {phase === 'idle' && <button className="clock-button start" disabled={Boolean(busy)} onClick={() => record('clock-in')}><span>▶</span><strong>{busy ? 'Wird gespeichert …' : 'Arbeit beginnen'}</strong></button>}
         {phase === 'working' && <>
@@ -389,13 +413,13 @@ function AttendancePage({ session }) {
           <button className="clock-button stop" disabled={Boolean(busy)} onClick={() => record('clock-out')}><span>■</span><strong>Arbeit beenden</strong></button>
         </>}
         {phase === 'paused' && <button className="clock-button start" disabled={Boolean(busy)} onClick={() => record('break-end')}><span>▶</span><strong>Pause beenden</strong></button>}
-        {phase === 'completed' && <div className="completed-card"><strong>Dienst abgeschlossen</strong><span>Arbeitsbeginn {formatDateTime(state.clockInAt)} · Arbeitsende {formatDateTime(state.clockOutAt)}</span></div>}
+        {phase === 'completed' && <div className="completed-card"><strong>Dienst abgeschlossen</strong>{!employeeOnly && <span>Arbeitsbeginn {formatDateTime(state.clockInAt)} · Arbeitsende {formatDateTime(state.clockOutAt)}</span>}</div>}
       </div>
     </section>
-    <section className="panel">
+    {!employeeOnly && <section className="panel">
       <PageHeader title="Heutige Buchungen" subtitle="Alle Aktionen in zeitlicher Reihenfolge." action={<button className="secondary-button compact" onClick={load}>Aktualisieren</button>} />
       {(state.events || []).length ? <div className="timeline">{state.events.map((event) => <div key={event.id || event.clientEventId}><span className={`timeline-dot ${event.action}`} /><div><strong>{actionLabel(event.action)}</strong><small>{formatDateTime(event.clientOccurredAt)}</small></div><Status tone={event.locationStatus === 'inside' ? 'success' : event.locationStatus === 'outside' ? 'warning' : 'neutral'}>{event.action.startsWith('break') ? 'ohne Standort' : event.locationStatus === 'inside' ? 'am Einsatzort' : event.locationStatus === 'outside' ? 'außerhalb' : 'Standort nicht verfügbar'}</Status></div>)}</div> : <Empty>Noch keine Buchung für heute.</Empty>}
-    </section>
+    </section>}
     {MANAGEMENT.has(session.role) && <section className="panel"><PageHeader title="Live-Übersicht" subtitle="Aktuelle Buchungen der Mitarbeiter – keine dauerhafte Ortung." />{live.length ? <div className="responsive-table"><table><thead><tr><th>Mitarbeiter</th><th>Aktion</th><th>Zeit</th><th>Einsatzort</th><th>Status</th></tr></thead><tbody>{live.map((entry) => <tr key={entry.id}><td>{entry.employeeName || 'Mitarbeiter'}</td><td>{actionLabel(entry.action)}</td><td>{formatDateTime(entry.clientOccurredAt)}</td><td>{entry.workSiteName || '–'}</td><td><Status tone={entry.locationStatus === 'inside' ? 'success' : 'warning'}>{entry.locationStatus === 'inside' ? 'Im Bereich' : entry.locationStatus === 'outside' ? 'Außerhalb' : 'Nicht verfügbar'}</Status></td></tr>)}</tbody></table></div> : <Empty>Heute liegen noch keine Buchungen vor.</Empty>}</section>}
   </>
 }
@@ -447,11 +471,11 @@ function SchedulePage({ session }) {
     try {
       const from = week
       const to = addDays(week, 6)
-      const calls = [apiJson(`/api/schedule-v2?resource=entries&from=${from}&to=${to}`), apiJson('/api/schedule-v2?resource=objects')]
-      if (management) calls.push(apiJson('/api/registrations'))
+      const calls = [apiJson(`/api/schedule-v2?resource=entries&from=${from}&to=${to}`)]
+      if (management) calls.push(apiJson('/api/schedule-v2?resource=objects'), apiJson('/api/registrations'))
       const [shiftData, objectData, employeeData] = await Promise.all(calls)
       setEntries(shiftData.entries || [])
-      setObjects(objectData.objects || [])
+      setObjects(objectData?.objects || [])
       setEmployees(employeeData?.employees || [])
       setNotice(null)
     } catch (error) { setNotice({ tone: 'error', text: error.message }) }
@@ -460,6 +484,9 @@ function SchedulePage({ session }) {
   useEffect(() => { setForm((current) => current.id ? current : { ...emptyForm }) }, [emptyForm])
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(week, index)), [week])
+  const visibleEntries = useMemo(() => management
+    ? entries
+    : entries.filter((entry) => entry.employeeUserId === session.userId && entry.status === 'published'), [entries, management, session.userId])
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }))
 
   function startNew(date) {
@@ -519,8 +546,9 @@ function SchedulePage({ session }) {
 
   return <>
     <Notice notice={notice} onClose={() => setNotice(null)} />
+    {!management && <section className="panel employee-schedule-intro"><PageHeader title="Mein Dienstplan" subtitle="Hier siehst du ausschließlich deine freigegebenen Dienste." /></section>}
     <section className="panel schedule-toolbar"><div className="toolbar-row"><label>Woche ab<input type="date" value={week} onChange={(event) => setWeek(mondayOf(event.target.value))} /></label><div className="toolbar-actions"><button className="secondary-button" onClick={() => setWeek(mondayOf(addDays(week, -7)))}>‹ Vorherige</button><button className="secondary-button" onClick={() => setWeek(mondayOf())}>Aktuelle Woche</button><button className="secondary-button" onClick={() => setWeek(mondayOf(addDays(week, 7)))}>Nächste ›</button></div></div>{management && <div className="toolbar-actions"><button className="secondary-button" disabled={Boolean(busy)} onClick={() => post('copy-previous-week')}>Vorwoche kopieren</button><button className="primary-button" disabled={Boolean(busy)} onClick={() => window.confirm('Diesen Wochenplan jetzt für Mitarbeiter freigeben?') && post('publish')}>Entwurf prüfen und freigeben</button></div>}</section>
-    <div className="week-cards">{days.map((date) => { const dayEntries = entries.filter((entry) => entry.date === date); return <section className="day-card" key={date}><header><div><span>{formatDate(date, { weekday: 'long' })}</span><strong>{formatDate(date, { day: '2-digit', month: '2-digit' })}</strong></div>{management && <button aria-label={`Dienst am ${formatDate(date)} hinzufügen`} onClick={() => startNew(date)}>＋</button>}</header><div>{dayEntries.length ? dayEntries.map((entry) => <button className="shift-item" key={entry.id} onClick={() => management && edit(entry)}><strong>{entry.start}–{entry.end}</strong><span>{entry.employeeName}</span><small>{entry.location} · {entry.workArea}</small><em>{entry.pauseMinutes || 0} Min. Pause · {entry.status === 'published' ? 'Freigegeben' : 'Entwurf'}</em></button>) : <span className="day-empty">Kein Dienst</span>}</div></section> })}</div>
+    <div className="week-cards">{days.map((date) => { const dayEntries = visibleEntries.filter((entry) => entry.date === date); return <section className="day-card" key={date}><header><div><span>{formatDate(date, { weekday: 'long' })}</span><strong>{formatDate(date, { day: '2-digit', month: '2-digit' })}</strong></div>{management && <button aria-label={`Dienst am ${formatDate(date)} hinzufügen`} onClick={() => startNew(date)}>＋</button>}</header><div>{dayEntries.length ? dayEntries.map((entry) => <button type="button" className="shift-item" key={entry.id} aria-disabled={!management} tabIndex={management ? 0 : -1} onClick={() => management && edit(entry)}><strong>{entry.start}–{entry.end}</strong>{management && <span>{entry.employeeName}</span>}<small>{entry.location} · {entry.workArea}</small><em>{entry.pauseMinutes || 0} Min. Pause · {entry.status === 'published' ? 'Freigegeben' : 'Entwurf'}</em></button>) : <span className="day-empty">Kein Dienst</span>}</div></section> })}</div>
     {management && editing && <section className="panel editor-panel" ref={editorRef}><PageHeader title={form.id ? 'Dienst bearbeiten' : 'Dienst erstellen'} subtitle="Auf dem Handy in wenigen einfachen Feldern." action={<button className="secondary-button compact" onClick={() => setEditing(false)}>Schließen</button>} /><form className="schedule-form" onSubmit={save}><div className="form-grid three"><label>Mitarbeiter<select value={form.employeeUserId} onChange={update('employeeUserId')} required><option value="">Bitte wählen</option>{employees.map((employee) => <option key={employee.userId || employee.id} value={employee.userId || employee.id}>{employee.fullName}</option>)}</select></label><label>Datum<input type="date" value={form.date} onChange={update('date')} required /></label><label>Einsatzort<select value={form.objectId} onChange={update('objectId')}><option value="">Ohne gespeicherten Einsatzort</option>{objects.map((object) => <option value={object.id} key={object.id}>{object.name}</option>)}</select></label></div><div className="form-grid three"><label>Beginn<input type="time" value={form.start} onChange={update('start')} required /></label><label>Ende<input type="time" value={form.end} onChange={update('end')} required /></label><label>Pause in Minuten<input type="number" min="0" step="1" value={form.pauseMinutes} onChange={update('pauseMinutes')} required /></label></div><div className="form-grid"><label>Bezeichnung des Einsatzortes<input value={form.location} onChange={update('location')} required={!form.objectId} /></label><label>Arbeitsbereich<input value={form.workArea} onChange={update('workArea')} required /></label></div><label>Bemerkung<textarea rows="3" value={form.note || ''} onChange={update('note')} /></label><fieldset className="repeat-field"><legend>Zusätzlich auf andere Tage dieser Woche übernehmen</legend>{days.filter((date) => date !== form.date).map((date) => <label key={date}><input type="checkbox" checked={form.repeatDays?.includes(date) || false} onChange={(event) => setForm((current) => ({ ...current, repeatDays: event.target.checked ? [...(current.repeatDays || []), date] : (current.repeatDays || []).filter((item) => item !== date) }))} /><span>{formatDate(date, { weekday: 'short', day: '2-digit', month: '2-digit' })}</span></label>)}</fieldset><div className="form-actions"><button className="primary-button" disabled={Boolean(busy)}>{busy === 'save' ? 'Wird gespeichert …' : 'Als Entwurf speichern'}</button>{form.id && <button type="button" className="danger-outline" disabled={Boolean(busy)} onClick={remove}>Dienst löschen</button>}<button type="button" className="secondary-button" onClick={() => { setForm({ ...emptyForm }); setEditing(false) }}>Abbrechen</button></div></form></section>}
   </>
 }
@@ -674,8 +702,9 @@ function SettingsPage() {
 
 function UnifiedPortal({ session, onLogout }) {
   const allowed = NAVIGATION.filter((item) => item.roles.includes(session.role)).map((item) => item.key)
-  const [page, setPage] = useState('overview')
-  useEffect(() => { if (!allowed.includes(page)) setPage('overview') }, [allowed, page])
+  const initialPage = session.role === 'employee' ? 'attendance' : 'overview'
+  const [page, setPage] = useState(initialPage)
+  useEffect(() => { if (!allowed.includes(page)) setPage(initialPage) }, [allowed, initialPage, page])
   const content = page === 'overview' ? <OverviewPage session={session} navigate={setPage} />
     : page === 'attendance' ? <AttendancePage session={session} />
       : page === 'employees' ? <EmployeesPage session={session} />

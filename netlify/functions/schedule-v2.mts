@@ -290,6 +290,7 @@ export default async function scheduleV2(request: Request, _context: Context) {
   if (request.method === 'GET') {
     const resource = url.searchParams.get('resource') || 'entries'
     if (resource === 'entries') return json({ entries: await getEntries(current, url) })
+    if (!MANAGEMENT.has(current.role)) return json({ message: 'Keine Berechtigung.' }, 403)
     if (resource === 'objects') {
       const objects = await readMany<WorkSite>('objects/')
       return json({ objects: objects.map((site) => publicSite(site, MANAGEMENT.has(current.role))) })

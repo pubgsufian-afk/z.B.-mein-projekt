@@ -1,5 +1,6 @@
 import type { Config, Context } from "@netlify/functions";
 import { proxyToProductionBackend } from "./_shared/proxy.mts";
+import { requirePortalRole } from "./_shared/portal-role.mts";
 
 type RateEntry = { count: number; resetAt: number };
 const attempts = new Map<string, RateEntry>();
@@ -20,6 +21,9 @@ function allowRegistration(context: Context) {
 }
 
 export default async (request: Request, context: Context) => {
+  const access = await requirePortalRole(['owner', 'admin', 'manager']);
+  if (access.response) return access.response;
+
   if (request.method === "POST") {
     const clone = request.clone();
     const payload = await clone.json().catch(() => null) as Record<string, unknown> | null;

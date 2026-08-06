@@ -1,6 +1,7 @@
 import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { getUser, verifyRequestOrigin } from '@netlify/identity'
+import { databaseConnectionString } from './_shared/database-connection.mts'
 
 type Role = 'owner' | 'admin' | 'manager' | 'employee' | 'pending'
 type AccessRecord = { role?: Role; status?: string } | null
@@ -25,10 +26,6 @@ async function actor() {
       ? access.role
       : ([...(user.roles || []), ...metadata, ...direct].find((value) => ['owner', 'admin', 'manager', 'employee'].includes(value)) as Role || 'pending')
   return { userId: user.id, email, role }
-}
-
-function databaseUrl() {
-  return Netlify.env.get('ATTENDANCE_DATABASE_URL') || Netlify.env.get('DATABASE_URL') || Netlify.env.get('NETLIFY_DATABASE_URL') || ''
 }
 
 function minutesBetween(start: unknown, end: unknown) {
@@ -274,7 +271,7 @@ export default async function reportsV2(request: Request, _context: Context) {
   const reportType = body.reportType === 'combined' ? 'combined' : 'employee'
   const userIds = Array.isArray(body.userIds) ? body.userIds.map(String).filter(Boolean) : []
   if (!ISO_DATE.test(from) || !ISO_DATE.test(to) || to < from) return json({ message: 'Der Zeitraum ist ungültig.' }, 400)
-  const url = databaseUrl()
+  const url = databaseConnectionString()
   if (!url) return json({ message: 'Die Zeiterfassungsdatenbank ist noch nicht verbunden.' }, 503)
   try {
     const { neon } = await import('@neondatabase/serverless')

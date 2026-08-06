@@ -1,6 +1,7 @@
 import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { getUser, verifyRequestOrigin } from '@netlify/identity'
+import { databaseConnectionString } from './_shared/database-connection.mts'
 
 type Role = 'owner' | 'admin' | 'manager' | 'employee' | 'pending'
 type AccessRecord = { role?: Role; status?: string } | null
@@ -24,10 +25,6 @@ async function actor() {
       ? access.role
       : ([...(user.roles || []), ...metadata, ...direct].find((value) => ['owner', 'admin', 'manager', 'employee'].includes(value)) as Role || 'pending')
   return { userId: user.id, email, role }
-}
-
-function databaseUrl() {
-  return Netlify.env.get('ATTENDANCE_DATABASE_URL') || Netlify.env.get('DATABASE_URL') || Netlify.env.get('NETLIFY_DATABASE_URL') || ''
 }
 
 export default async function worksiteV2(request: Request, _context: Context) {
@@ -64,7 +61,7 @@ export default async function worksiteV2(request: Request, _context: Context) {
   if (!Number.isFinite(radiusMeters) || radiusMeters < 0 || radiusMeters > 10000) return json({ message: 'Der Prüfradius ist ungültig.' }, 400)
   const object = { id, name, address, latitude, longitude, accuracyMeters, radiusMeters, updatedAt: new Date().toISOString(), updatedBy: current.userId }
   await siteStore.setJSON(`objects/${id}`, object)
-  const url = databaseUrl()
+  const url = databaseConnectionString()
   if (url) {
     const { neon } = await import('@neondatabase/serverless')
     const sql = neon(url)

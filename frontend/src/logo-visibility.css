@@ -1,0 +1,46 @@
+/* Das Original-Logo bleibt unverändert; nur seine Darstellung wird zuverlässig zentriert. */
+.brand-mark {
+  position: relative;
+  overflow: hidden;
+}
+
+.brand-mark img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 220px !important;
+  height: auto !important;
+  max-width: none;
+  transform: translate(-50%, -50%);
+  object-fit: contain;
+  filter: none;
+}
+
+.brand-compact .brand-mark img {
+  width: 150px !important;
+}
+
+@media (max-width: 900px) {
+  .topbar-logo .brand-mark {
+    width: 44px;
+    height: 48px;
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    background: var(--surface-2);
+  }
+
+  .topbar-logo .brand-mark img {
+    width: 143px !important;
+  }
+}
+
+@media (max-width: 680px) {
+  .employee-kiosk-header .brand-mark {
+    width: 76px;
+    height: 76px;
+  }
+
+  .employee-kiosk-header .brand-mark img {
+    width: 226px !important;
+  }
+}

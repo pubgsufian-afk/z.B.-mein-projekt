@@ -129,8 +129,8 @@ export function createAttendanceService({ repository, now = () => new Date(), ra
 
     async getHistory(actor: Record<string, unknown>, filters: Record<string, unknown> = {}) {
       const current = requireActor(actor)
-      const userId = MANAGEMENT_ROLES.has(current.role) ? normalizedText(filters.userId) : current.userId
-      return { entries: await repository.listHistory({ userId, from: normalizedText(filters.from), to: normalizedText(filters.to) }) }
+      if (!MANAGEMENT_ROLES.has(current.role)) throw new AttendanceServiceError('Keine Berechtigung.', 403, 'FORBIDDEN')
+      return { entries: await repository.listHistory({ userId: normalizedText(filters.userId), from: normalizedText(filters.from), to: normalizedText(filters.to) }) }
     },
 
     async getLive(actor: Record<string, unknown>, filters: Record<string, unknown> = {}) {
