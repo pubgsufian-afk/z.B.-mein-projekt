@@ -49,7 +49,7 @@ function hours(minutes: number) {
 
 function buildEmployeeFilter(userIds: string[]) {
   if (!userIds.length) return { clause: '', params: [] as string[] }
-  const placeholders = userIds.map((_, index) => `${index + 3}`).join(', ')
+  const placeholders = userIds.map((_, index) => '$' + (index + 3)).join(', ')
   return { clause: `
           AND user_id IN (${placeholders})`, params: userIds }
 }
