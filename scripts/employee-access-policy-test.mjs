@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const [app, styles, attendance, service, maintenance, schedule, legacyWork, index] = await Promise.all([
+const [app, styles, attendance, service, maintenance, schedule, legacyWork, companySettings, registrations, legacySettings, index] = await Promise.all([
   readFile('frontend/src/App.jsx', 'utf8'),
   readFile('frontend/src/styles.css', 'utf8'),
   readFile('netlify/functions/attendance.mts', 'utf8'),
@@ -9,6 +9,9 @@ const [app, styles, attendance, service, maintenance, schedule, legacyWork, inde
   readFile('netlify/functions/attendance-maintenance.mts', 'utf8'),
   readFile('netlify/functions/schedule-v2.mts', 'utf8'),
   readFile('netlify/functions/work.mts', 'utf8'),
+  readFile('netlify/functions/company-settings.mts', 'utf8'),
+  readFile('netlify/functions/registrations.mts', 'utf8'),
+  readFile('netlify/functions/settings.mts', 'utf8'),
   readFile('public/index.html', 'utf8'),
 ])
 
@@ -34,5 +37,8 @@ assert.doesNotMatch(attendance, /fetchScheduleEndpoint/)
 assert.match(maintenance, /if \(!MANAGEMENT\.has\(current\.role\)\) return json\(\{ message: 'Keine Berechtigung\.' \}, 403\)/)
 assert.match(schedule, /if \(!MANAGEMENT\.has\(current\.role\)\) return json\(\{ message: 'Keine Berechtigung\.' \}, 403\)/)
 assert.match(legacyWork, /currentAccess[\s\S]*?!MANAGEMENT_ROLES\.includes\(currentAccess\.role\)[\s\S]*?Keine Berechtigung/)
+assert.match(companySettings, /if \(!\['owner', 'admin'\]\.includes\(current\.role\)\) return json\(\{ message: 'Keine Berechtigung\.' \}, 403\)/)
+assert.match(registrations, /requirePortalRole\(\['owner', 'admin', 'manager'\]\)/)
+assert.match(legacySettings, /requirePortalRole\(\['owner', 'admin'\]\)/)
 
 console.log('Employee kiosk access policy tests passed')
