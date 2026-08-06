@@ -71,15 +71,16 @@ function failureLine(error, testLines) {
 
 function reason(error, source) {
   const text = String(error || '').replace(/\x1b\[[0-9;]*m/g, '')
-  const navMissing = text.match(/Navigation fehlt:\s*([^\n]+)/i)
+  const navMissing = text.match(/NAVIGATION_FEHLT_([^\n]+)/i) || text.match(/Navigation fehlt:\s*([^\n]+)/i)
   if (navMissing) return compact(navMissing[1])
   const lower = text.toLowerCase()
   if (lower.includes('strict mode violation')) return 'duplicate-locator'
   if (lower.includes('waitforevent') || lower.includes('waiting for event')) return 'download-event'
   if (lower.includes('timed out')) return 'timeout'
+  const first = text.split('\n').map((line) => line.trim()).find((line) => /^(error|typeerror|referenceerror|expect|page\.evaluate)/i.test(line))
+  if (first) return compact(first)
   if (source) return compact(source)
-  const first = text.split('\n').map((line) => line.trim()).find((line) => /^(error|typeerror|referenceerror|expect)/i.test(line))
-  return compact(first || text.slice(0, 160))
+  return compact(text.slice(0, 180))
 }
 
 async function createMarker(name, payload) {
