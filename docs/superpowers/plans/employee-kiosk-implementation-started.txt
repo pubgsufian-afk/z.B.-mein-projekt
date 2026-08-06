@@ -1,1 +1,0 @@
-Protected employee-kiosk implementation started. No production deployment is permitted.
