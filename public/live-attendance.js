@@ -1,3 +1,5 @@
+import { employeeOptions, loadEmployeeDirectory } from './employee-directory-v2.js'
+
 const MANAGEMENT = new Set(['owner', 'admin', 'manager'])
 
 function formatDateTime(value) {
@@ -18,6 +20,10 @@ function label(status) {
   if (status === 'inside') return 'Innerhalb'
   if (status === 'outside') return 'Außerhalb'
   return 'Nicht verfügbar'
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character])
 }
 
 function mapLink(location) {
@@ -45,17 +51,26 @@ async function render() {
   const app = window.HabunAttendanceV2
   const section = app?.model?.panel?.querySelector('[data-section="live"]')
   if (!section || !MANAGEMENT.has(app.model.role)) return
-  section.innerHTML = `
-    <div class="habun-v2-fields">
-      <label>Datum<input type="date" data-live-date value="${new Date().toISOString().slice(0, 10)}"></label>
-      <label>Einsatzort-ID<input type="text" data-live-object placeholder="optional"></label>
-      <label>Mitarbeiter-ID<input type="text" data-live-user placeholder="optional"></label>
-      <label>Status<select data-live-status><option value="">Alle</option><option value="inside">Innerhalb</option><option value="outside">Außerhalb</option><option value="unavailable">Nicht verfügbar</option></select></label>
-    </div>
-    <div class="habun-v2-actions"><button class="habun-v2-secondary" type="button" data-live-load>Live-Stand laden</button></div>
-    <div data-live-results><p class="habun-v2-status">Live-Daten werden erst nach Auswahl geladen. Es findet keine Hintergrundortung statt.</p></div>`
-  section.querySelector('[data-live-load]')?.addEventListener('click', load)
-  await load()
+  try {
+    const [directory, workSites] = await Promise.all([
+      loadEmployeeDirectory(app.jsonFetch),
+      app.jsonFetch('/api/worksite-v2').catch(() => ({ objects: [] })),
+    ])
+    const siteOptions = (workSites.objects || []).map((site) => `<option value="${escapeHtml(site.id)}">${escapeHtml(site.name)} · ${escapeHtml(site.address || '')}</option>`).join('')
+    section.innerHTML = `
+      <div class="habun-v2-fields">
+        <label>Datum<input type="date" data-live-date value="${new Date().toISOString().slice(0, 10)}"></label>
+        <label>Einsatzort<select data-live-object><option value="">Alle</option>${siteOptions}</select></label>
+        <label>Mitarbeiter<select data-live-user>${employeeOptions(directory.all).replace('Bitte wählen', 'Alle')}</select></label>
+        <label>Status<select data-live-status><option value="">Alle</option><option value="inside">Innerhalb</option><option value="outside">Außerhalb</option><option value="unavailable">Nicht verfügbar</option></select></label>
+      </div>
+      <div class="habun-v2-actions"><button class="habun-v2-secondary" type="button" data-live-load>Live-Stand laden</button></div>
+      <div data-live-results><p class="habun-v2-status">Live-Daten werden erst nach Auswahl geladen. Es findet keine Hintergrundortung statt.</p></div>`
+    section.querySelector('[data-live-load]')?.addEventListener('click', load)
+    await load()
+  } catch (error) {
+    section.innerHTML = `<p class="habun-v2-status" data-tone="bad">${escapeHtml(error.message || 'Filter konnten nicht geladen werden.')}</p>`
+  }
 }
 
 async function load() {
@@ -80,11 +95,11 @@ async function load() {
       const last = [...values].reverse().find((entry) => entry.action === 'clock-out')
       const warning = values.some((entry) => entry.locationStatus !== 'inside' || entry.offlineCaptured)
       return `<article class="habun-v2-card habun-v2-live-row" data-alert="${warning}">
-        <h3>${first?.employeeName || last?.employeeName || userId}</h3>
+        <h3>${escapeHtml(first?.employeeName || last?.employeeName || userId)}</h3>
         <dl class="habun-v2-kv">
           <dt>Arbeitsbeginn</dt><dd>${formatDateTime(first?.clientOccurredAt)}</dd>
           <dt>Arbeitsende</dt><dd>${formatDateTime(last?.clientOccurredAt)}</dd>
-          <dt>Einsatzort</dt><dd>${first?.workSiteName || last?.workSiteName || first?.objectId || last?.objectId || '–'}</dd>
+          <dt>Einsatzort</dt><dd>${escapeHtml(first?.workSiteName || last?.workSiteName || '–')}</dd>
           <dt>Startstatus</dt><dd><span class="habun-v2-pill ${first?.locationStatus || 'unavailable'}">${label(first?.locationStatus)}</span></dd>
           <dt>Startentfernung</dt><dd>${formatDistance(first?.location?.distanceMeters)}</dd>
           <dt>Startkarte</dt><dd>${mapLink(first?.location)}</dd>
@@ -97,7 +112,7 @@ async function load() {
       </article>`
     }).join('') : '<p class="habun-v2-status">Für diese Auswahl liegen keine Zeitbuchungen vor.</p>'
   } catch (error) {
-    target.innerHTML = `<p class="habun-v2-status" data-tone="bad">${error.message || 'Live-Daten konnten nicht geladen werden.'}</p>`
+    target.innerHTML = `<p class="habun-v2-status" data-tone="bad">${escapeHtml(error.message || 'Live-Daten konnten nicht geladen werden.')}</p>`
   }
 }
 
