@@ -17,7 +17,8 @@ source = source.replace(
   "await expect(page.locator('.topbar h1')).toHaveText('Dienstplan')",
 )
 
-const preparedNavigate = `async function navigate(page, label) {
+const knownNavigateVariants = [
+`async function navigate(page, label) {
   const menu = page.getByRole('button', { name: 'Menü öffnen' })
   if (await menu.isVisible().catch(() => false)) {
     await menu.click()
@@ -25,8 +26,8 @@ const preparedNavigate = `async function navigate(page, label) {
   }
   await page.getByRole('button', { name: label, exact: true }).click()
   await expect(page.locator('.topbar h1')).toHaveText(label)
-}`
-const previousNavigate = `async function navigate(page, label) {
+}`,
+`async function navigate(page, label) {
   const sidebar = page.locator('.sidebar')
   const navButton = sidebar.getByRole('button', { name: label, exact: true })
   if (!(await navButton.isVisible().catch(() => false))) {
@@ -35,8 +36,8 @@ const previousNavigate = `async function navigate(page, label) {
   }
   await navButton.click()
   await expect(page.locator('.topbar h1')).toHaveText(label)
-}`
-const currentNavigate = `async function navigate(page, label) {
+}`,
+`async function navigate(page, label) {
   const sidebar = page.locator('.sidebar')
   const menu = page.getByRole('button', { name: 'Menü öffnen' })
   if (await menu.isVisible().catch(() => false)) {
@@ -45,8 +46,8 @@ const currentNavigate = `async function navigate(page, label) {
   }
   await sidebar.getByRole('button', { name: label, exact: true }).click()
   await expect(page.locator('.topbar h1')).toHaveText(label)
-}`
-const stableNavigate = `async function navigate(page, label) {
+}`,
+`async function navigate(page, label) {
   const sidebar = page.locator('.sidebar')
   const menu = page.getByRole('button', { name: 'Menü öffnen' })
   if (await menu.isVisible().catch(() => false)) {
@@ -57,8 +58,21 @@ const stableNavigate = `async function navigate(page, label) {
   await expect(navButton).toHaveCount(1)
   await navButton.click({ force: true })
   await expect(page.locator('.topbar h1')).toHaveText(label)
+}`,
+]
+const stableNavigate = `async function navigate(page, label) {
+  await page.evaluate((targetLabel) => {
+    const buttons = Array.from(document.querySelectorAll('.sidebar nav button'))
+    const button = buttons.find((entry) => entry.textContent?.trim() === targetLabel)
+    if (!button) {
+      const available = buttons.map((entry) => entry.textContent?.trim()).filter(Boolean).join('|')
+      throw new Error('Navigation fehlt: ' + targetLabel + ' / ' + available)
+    }
+    button.click()
+  }, label)
+  await expect(page.locator('.topbar h1')).toHaveText(label)
 }`
-source = source.replace(preparedNavigate, stableNavigate).replace(previousNavigate, stableNavigate).replace(currentNavigate, stableNavigate)
+for (const variant of knownNavigateVariants) source = source.replace(variant, stableNavigate)
 
 source = source.replaceAll("page.route('**/api/unified-reports'", "page.route('**/api/unified-reports**'")
 source = source.replaceAll("page.route('**/api/schedule-directory'", "page.route('**/api/schedule-directory**'")
