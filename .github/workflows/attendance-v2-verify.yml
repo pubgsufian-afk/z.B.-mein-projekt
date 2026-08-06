@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - work/attendance-v2-complete
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -18,7 +21,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - run: npm install --no-audit --no-fund
       - run: npm run verify
       - run: npm run build
