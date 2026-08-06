@@ -56,7 +56,7 @@ async function apiJson(path, options = {}) {
   return body
 }
 
-async function apiBlob(path, options = {}) {
+async function apiBlob(path, options = {}, expectedType = '') {
   const response = await fetch(path, {
     credentials: 'same-origin',
     cache: 'no-store',
@@ -65,13 +65,29 @@ async function apiBlob(path, options = {}) {
   })
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
-    throw new Error(body.message || `Die Datei konnte nicht erstellt werden (${response.status}).`)
+    const error = new Error(body.message || `Die Datei konnte nicht erstellt werden (${response.status}).`)
+    error.code = body.code
+    error.status = response.status
+    throw error
+  }
+  const blob = await response.blob()
+  const contentType = String(response.headers.get('content-type') || blob.type || '').toLowerCase()
+  if (expectedType && !contentType.includes(expectedType.toLowerCase())) {
+    throw new Error('Der Server hat keinen gültigen Dateityp geliefert.')
+  }
+  const signature = new Uint8Array(await blob.slice(0, 5).arrayBuffer())
+  const signatureText = String.fromCharCode(...signature)
+  if (expectedType === 'application/pdf' && signatureText !== '%PDF-') {
+    throw new Error('Die erzeugte PDF-Datei ist beschädigt oder unvollständig.')
+  }
+  if (expectedType.includes('spreadsheetml') && !(signature[0] === 0x50 && signature[1] === 0x4b)) {
+    throw new Error('Die erzeugte Excel-Datei ist beschädigt oder unvollständig.')
   }
   const disposition = response.headers.get('content-disposition') || ''
   const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
   const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1]
   const filename = encoded ? decodeURIComponent(encoded) : plain || 'Habun-Bericht'
-  return { blob: await response.blob(), filename: filename.replace(/[\\/]/g, '-') }
+  return { blob, filename: filename.replace(/[\\/]/g, '-') }
 }
 
 function downloadBlob(blob, filename) {
@@ -487,6 +503,9 @@ function SchedulePage({ session }) {
   const visibleEntries = useMemo(() => management
     ? entries
     : entries.filter((entry) => entry.employeeUserId === session.userId && entry.status === 'published'), [entries, management, session.userId])
+  const sortedEmployeeEntries = useMemo(() => [...visibleEntries].sort((a, b) =>
+    `${a.date || ''}-${a.start || ''}`.localeCompare(`${b.date || ''}-${b.start || ''}`)
+  ), [visibleEntries])
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }))
 
   function startNew(date) {
@@ -536,6 +555,21 @@ function SchedulePage({ session }) {
     finally { setBusy('') }
   }
 
+  async function downloadSchedulePdf() {
+    setBusy('schedule-pdf')
+    setNotice(null)
+    try {
+      const { blob, filename } = await apiBlob('/api/schedule-pdf', {
+        method: 'POST',
+        body: JSON.stringify({ from: week, to: addDays(week, 6) }),
+      }, 'application/pdf')
+      downloadBlob(blob, filename)
+      setNotice({ tone: 'success', text: 'Der Dienstplan wurde als PDF erstellt.' })
+    } catch (error) {
+      setNotice({ tone: 'error', text: error.message })
+    } finally { setBusy('') }
+  }
+
   async function remove() {
     if (!form.id || !window.confirm('Diesen Dienst wirklich löschen?')) return
     setBusy('delete')
@@ -547,8 +581,8 @@ function SchedulePage({ session }) {
   return <>
     <Notice notice={notice} onClose={() => setNotice(null)} />
     {!management && <section className="panel employee-schedule-intro"><PageHeader title="Mein Dienstplan" subtitle="Hier siehst du ausschließlich deine freigegebenen Dienste." /></section>}
-    <section className="panel schedule-toolbar"><div className="toolbar-row"><label>Woche ab<input type="date" value={week} onChange={(event) => setWeek(mondayOf(event.target.value))} /></label><div className="toolbar-actions"><button className="secondary-button" onClick={() => setWeek(mondayOf(addDays(week, -7)))}>‹ Vorherige</button><button className="secondary-button" onClick={() => setWeek(mondayOf())}>Aktuelle Woche</button><button className="secondary-button" onClick={() => setWeek(mondayOf(addDays(week, 7)))}>Nächste ›</button></div></div>{management && <div className="toolbar-actions"><button className="secondary-button" disabled={Boolean(busy)} onClick={() => post('copy-previous-week')}>Vorwoche kopieren</button><button className="primary-button" disabled={Boolean(busy)} onClick={() => window.confirm('Diesen Wochenplan jetzt für Mitarbeiter freigeben?') && post('publish')}>Entwurf prüfen und freigeben</button></div>}</section>
-    <div className="week-cards">{days.map((date) => { const dayEntries = visibleEntries.filter((entry) => entry.date === date); return <section className="day-card" key={date}><header><div><span>{formatDate(date, { weekday: 'long' })}</span><strong>{formatDate(date, { day: '2-digit', month: '2-digit' })}</strong></div>{management && <button aria-label={`Dienst am ${formatDate(date)} hinzufügen`} onClick={() => startNew(date)}>＋</button>}</header><div>{dayEntries.length ? dayEntries.map((entry) => <button type="button" className="shift-item" key={entry.id} aria-disabled={!management} tabIndex={management ? 0 : -1} onClick={() => management && edit(entry)}><strong>{entry.start}–{entry.end}</strong>{management && <span>{entry.employeeName}</span>}<small>{entry.location} · {entry.workArea}</small><em>{entry.pauseMinutes || 0} Min. Pause · {entry.status === 'published' ? 'Freigegeben' : 'Entwurf'}</em></button>) : <span className="day-empty">Kein Dienst</span>}</div></section> })}</div>
+    <section className="panel schedule-toolbar"><div className="toolbar-row"><label>Woche ab<input type="date" value={week} onChange={(event) => setWeek(mondayOf(event.target.value))} /></label><div className="toolbar-actions"><button className="secondary-button" onClick={() => setWeek(mondayOf(addDays(week, -7)))}>‹ Vorherige</button><button className="secondary-button" onClick={() => setWeek(mondayOf())}>Aktuelle Woche</button><button className="secondary-button" onClick={() => setWeek(mondayOf(addDays(week, 7)))}>Nächste ›</button></div></div>{management && <div className="toolbar-actions"><button className="secondary-button" disabled={Boolean(busy)} onClick={() => post('copy-previous-week')}>Vorwoche kopieren</button><button className="secondary-button" disabled={Boolean(busy)} onClick={downloadSchedulePdf}>{busy === 'schedule-pdf' ? 'PDF wird erstellt …' : 'Dienstplan als PDF'}</button><button className="primary-button" disabled={Boolean(busy)} onClick={() => window.confirm('Diesen Wochenplan jetzt für Mitarbeiter freigeben?') && post('publish')}>Entwurf prüfen und freigeben</button></div>}</section>
+    {management ? <div className="week-cards management-week-cards">{days.map((date) => { const dayEntries = visibleEntries.filter((entry) => entry.date === date); return <section className="day-card" key={date}><header><div><span>{formatDate(date, { weekday: 'long' })}</span><strong>{formatDate(date, { day: '2-digit', month: '2-digit' })}</strong></div><button aria-label={`Dienst am ${formatDate(date)} hinzufügen`} onClick={() => startNew(date)}>＋</button></header><div>{dayEntries.length ? dayEntries.map((entry) => <button type="button" className="shift-item" key={entry.id} onClick={() => edit(entry)}><strong>{entry.start}–{entry.end}</strong><span>{entry.employeeName}</span><small>{entry.location} · {entry.workArea}</small><em>{entry.pauseMinutes || 0} Min. Pause · {entry.status === 'published' ? 'Freigegeben' : 'Entwurf'}</em></button>) : <span className="day-empty">Kein Dienst</span>}</div></section> })}</div> : sortedEmployeeEntries.length ? <div className="employee-shift-list">{sortedEmployeeEntries.map((entry) => <article className="employee-shift-card" key={entry.id}><header><div><span>{formatDate(entry.date, { weekday: 'long' })}</span><strong>{formatDate(entry.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong></div><strong className="employee-shift-time">{entry.start}–{entry.end}</strong></header><div className="employee-shift-details"><strong>{entry.location || 'Einsatzort nicht angegeben'}</strong><span>{entry.workArea || 'Arbeitsbereich nicht angegeben'}</span><small>{entry.pauseMinutes || 0} Min. Pause</small></div></article>)}</div> : <section className="panel employee-schedule-empty"><Empty>Für diese Woche ist kein freigegebener Dienst eingetragen.</Empty></section>}
     {management && editing && <section className="panel editor-panel" ref={editorRef}><PageHeader title={form.id ? 'Dienst bearbeiten' : 'Dienst erstellen'} subtitle="Auf dem Handy in wenigen einfachen Feldern." action={<button className="secondary-button compact" onClick={() => setEditing(false)}>Schließen</button>} /><form className="schedule-form" onSubmit={save}><div className="form-grid three"><label>Mitarbeiter<select value={form.employeeUserId} onChange={update('employeeUserId')} required><option value="">Bitte wählen</option>{employees.map((employee) => <option key={employee.userId || employee.id} value={employee.userId || employee.id}>{employee.fullName}</option>)}</select></label><label>Datum<input type="date" value={form.date} onChange={update('date')} required /></label><label>Einsatzort<select value={form.objectId} onChange={update('objectId')}><option value="">Ohne gespeicherten Einsatzort</option>{objects.map((object) => <option value={object.id} key={object.id}>{object.name}</option>)}</select></label></div><div className="form-grid three"><label>Beginn<input type="time" value={form.start} onChange={update('start')} required /></label><label>Ende<input type="time" value={form.end} onChange={update('end')} required /></label><label>Pause in Minuten<input type="number" min="0" step="1" value={form.pauseMinutes} onChange={update('pauseMinutes')} required /></label></div><div className="form-grid"><label>Bezeichnung des Einsatzortes<input value={form.location} onChange={update('location')} required={!form.objectId} /></label><label>Arbeitsbereich<input value={form.workArea} onChange={update('workArea')} required /></label></div><label>Bemerkung<textarea rows="3" value={form.note || ''} onChange={update('note')} /></label><fieldset className="repeat-field"><legend>Zusätzlich auf andere Tage dieser Woche übernehmen</legend>{days.filter((date) => date !== form.date).map((date) => <label key={date}><input type="checkbox" checked={form.repeatDays?.includes(date) || false} onChange={(event) => setForm((current) => ({ ...current, repeatDays: event.target.checked ? [...(current.repeatDays || []), date] : (current.repeatDays || []).filter((item) => item !== date) }))} /><span>{formatDate(date, { weekday: 'short', day: '2-digit', month: '2-digit' })}</span></label>)}</fieldset><div className="form-actions"><button className="primary-button" disabled={Boolean(busy)}>{busy === 'save' ? 'Wird gespeichert …' : 'Als Entwurf speichern'}</button>{form.id && <button type="button" className="danger-outline" disabled={Boolean(busy)} onClick={remove}>Dienst löschen</button>}<button type="button" className="secondary-button" onClick={() => { setForm({ ...emptyForm }); setEditing(false) }}>Abbrechen</button></div></form></section>}
   </>
 }
@@ -675,7 +709,8 @@ function ReportsPage() {
   async function generate(format, previewOnly = false) {
     setBusy(format); setNotice(null)
     try {
-      const { blob, filename } = await apiBlob('/api/unified-reports', { method: 'POST', body: JSON.stringify({ ...payload, format }) })
+      const expectedType = format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf'
+      const { blob, filename } = await apiBlob('/api/unified-reports', { method: 'POST', body: JSON.stringify({ ...payload, format }) }, expectedType)
       if (previewOnly) { if (preview) URL.revokeObjectURL(preview); setPreview(URL.createObjectURL(blob)) }
       else downloadBlob(blob, filename)
     } catch (error) { setNotice({ tone: 'error', text: error.message }) }

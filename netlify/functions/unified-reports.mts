@@ -88,6 +88,13 @@ function hours(minutes: number) {
   return (Math.max(0, minutes) / 60).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+export function buildEmployeeFilter(userIds: string[]) {
+  if (!userIds.length) return { clause: '', params: [] as string[] }
+  const placeholders = userIds.map((_, index) => '$' + (index + 3)).join(', ')
+  return { clause: `
+          AND user_id IN (${placeholders})`, params: userIds }
+}
+
 async function fetchJson(request: Request, path: string) {
   try {
     const response = await fetch(new URL(path, request.url), { headers: request.headers, cache: 'no-store' })
@@ -320,22 +327,29 @@ export default async function unifiedReports(request: Request, _context: Context
   const connection = databaseConnectionString()
   if (!connection) return json({ message: 'Die Zeiterfassungsdatenbank ist noch nicht verbunden.' }, 503)
 
+  let events: EventRow[]
   try {
     const { neon } = await import('@neondatabase/serverless')
     const sql = neon(connection)
-    const events = await sql(
+    const employeeFilter = buildEmployeeFilter(userIds)
+    events = await sql(
       `SELECT id, user_id, schedule_id, action, client_occurred_at, event_date, object_id, location_status, offline_captured
          FROM attendance_events
-        WHERE event_date BETWEEN $1::date AND $2::date
-          AND (cardinality($3::text[]) = 0 OR user_id = ANY($3::text[]))
+        WHERE event_date BETWEEN $1::date AND $2::date${employeeFilter.clause}
         ORDER BY user_id, event_date, client_occurred_at`,
-      [from, to, userIds],
+      [from, to, ...employeeFilter.params],
     ) as EventRow[]
-    const [schedules, names] = await Promise.all([loadSchedules(request, from, to), loadNames(request)])
-    const selectedSchedules = userIds.length ? schedules.filter((shift) => userIds.includes(String(shift.employeeUserId || ''))) : schedules
-    const rows = buildRows(events, selectedSchedules, names)
-    if (!rows.length) return json({ message: 'Für den ausgewählten Zeitraum wurden keine Daten gefunden.' }, 404)
+  } catch (error) {
+    console.error('Habun report query', error)
+    return json({ message: 'Die Arbeitszeitdaten konnten nicht geladen werden.', code: 'REPORT_QUERY_FAILED' }, 500)
+  }
 
+  const [schedules, names] = await Promise.all([loadSchedules(request, from, to), loadNames(request)])
+  const selectedSchedules = userIds.length ? schedules.filter((shift) => userIds.includes(String(shift.employeeUserId || ''))) : schedules
+  const rows = buildRows(events, selectedSchedules, names)
+  if (!rows.length) return json({ message: 'Für den ausgewählten Zeitraum wurden keine Daten gefunden.', code: 'NO_DATA' }, 404)
+
+  try {
     if (format === 'xlsx') {
       const bytes = await buildExcel(rows, from, to)
       return new Response(bytes as BodyInit, {
@@ -345,10 +359,10 @@ export default async function unifiedReports(request: Request, _context: Context
           'Content-Disposition': `attachment; filename="Habun-Stundenbericht-${from}-bis-${to}.xlsx"`,
           'Cache-Control': 'no-store',
           'X-Content-Type-Options': 'nosniff',
+          'X-Robots-Tag': 'noindex',
         },
       })
     }
-
     const bytes = await buildPdf(request, rows, from, to)
     return new Response(bytes as BodyInit, {
       status: 200,
@@ -357,11 +371,12 @@ export default async function unifiedReports(request: Request, _context: Context
         'Content-Disposition': `attachment; filename="Habun-Stundenbericht-${from}-bis-${to}.pdf"`,
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff',
+        'X-Robots-Tag': 'noindex',
       },
     })
   } catch (error) {
-    console.error('Unified reports', error)
-    return json({ message: 'Der Bericht konnte nicht erstellt werden.' }, 500)
+    console.error('Habun report render', error)
+    return json({ message: 'Die Berichtsdatei konnte nicht erzeugt werden.', code: 'REPORT_RENDER_FAILED' }, 500)
   }
 }
 

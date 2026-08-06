@@ -47,6 +47,13 @@ function hours(minutes: number) {
   return (minutes / 60).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+export function buildEmployeeFilter(userIds: string[]) {
+  if (!userIds.length) return { clause: '', params: [] as string[] }
+  const placeholders = userIds.map((_, index) => '$' + (index + 3)).join(', ')
+  return { clause: `
+          AND user_id IN (${placeholders})`, params: userIds }
+}
+
 function safeText(value: unknown) {
   return String(value ?? '').replace(/[\r\n\t]+/g, ' ').trim()
 }
@@ -273,21 +280,29 @@ export default async function reportsV2(request: Request, _context: Context) {
   if (!ISO_DATE.test(from) || !ISO_DATE.test(to) || to < from) return json({ message: 'Der Zeitraum ist ungültig.' }, 400)
   const url = databaseConnectionString()
   if (!url) return json({ message: 'Die Zeiterfassungsdatenbank ist noch nicht verbunden.' }, 503)
+  let events: Record<string, unknown>[]
   try {
     const { neon } = await import('@neondatabase/serverless')
     const sql = neon(url)
-    const events = await sql(
+    const employeeFilter = buildEmployeeFilter(userIds)
+    events = await sql(
       `SELECT id, user_id, schedule_id, action, client_occurred_at, event_date, object_id, location_status, offline_captured
          FROM attendance_events
-        WHERE event_date BETWEEN $1::date AND $2::date
-          AND (cardinality($3::text[]) = 0 OR user_id = ANY($3::text[]))
+        WHERE event_date BETWEEN $1::date AND $2::date${employeeFilter.clause}
         ORDER BY user_id, event_date, client_occurred_at`,
-      [from, to, userIds],
-    )
-    const schedules = await fetchSchedules(request, from, to)
-    let rows = groupReportRows(events, schedules)
-    if (userIds.length) rows = rows.filter((row) => userIds.includes(row.userId))
-    if (!rows.length) return json({ message: 'Für den gewählten Zeitraum sind keine Daten vorhanden.', code: 'NO_DATA' }, 404)
+      [from, to, ...employeeFilter.params],
+    ) as Record<string, unknown>[]
+  } catch (error) {
+    console.error('Habun legacy report query', error)
+    return json({ message: 'Die Arbeitszeitdaten konnten nicht geladen werden.', code: 'REPORT_QUERY_FAILED' }, 500)
+  }
+
+  const schedules = await fetchSchedules(request, from, to)
+  let rows = groupReportRows(events, schedules)
+  if (userIds.length) rows = rows.filter((row) => userIds.includes(row.userId))
+  if (!rows.length) return json({ message: 'Für den gewählten Zeitraum sind keine Daten vorhanden.', code: 'NO_DATA' }, 404)
+
+  try {
     const bytes = await buildPdf(request, rows, reportType, from, to)
     const filename = reportType === 'combined' ? `Habun-Gesamtuebersicht-${from}-${to}.pdf` : `Habun-Stundennachweis-${from}-${to}.pdf`
     return new Response(bytes, {
@@ -301,8 +316,8 @@ export default async function reportsV2(request: Request, _context: Context) {
       },
     })
   } catch (error) {
-    console.error('Habun reports v2', error)
-    return json({ message: 'Der Bericht konnte nicht erstellt werden.' }, 500)
+    console.error('Habun legacy report render', error)
+    return json({ message: 'Die Berichtsdatei konnte nicht erzeugt werden.', code: 'REPORT_RENDER_FAILED' }, 500)
   }
 }
 

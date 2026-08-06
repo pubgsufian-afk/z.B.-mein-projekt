@@ -414,3 +414,85 @@ body { min-height: 100dvh; }
   .employee-kiosk-nav { margin-top: 10px; }
   .employee-kiosk-main:has(.employee-schedule-intro) { padding-top: 12px; }
 }
+
+
+/* REPORTS_SCHEDULE_MOBILE_COMPACT */
+.employee-shift-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+.employee-shift-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .14);
+}
+.employee-shift-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--border);
+  background: #111719;
+}
+.employee-shift-card header span,
+.employee-shift-card header strong,
+.employee-shift-details strong,
+.employee-shift-details span,
+.employee-shift-details small { display: block; }
+.employee-shift-card header span {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: capitalize;
+}
+.employee-shift-card header > div > strong {
+  margin-top: 2px;
+  color: var(--gold-bright);
+  font-size: 15px;
+}
+.employee-shift-time {
+  color: var(--text);
+  font-size: 18px;
+  white-space: nowrap;
+}
+.employee-shift-details {
+  display: grid;
+  gap: 4px;
+  padding: 13px 15px 15px;
+}
+.employee-shift-details strong { font-size: 15px; }
+.employee-shift-details span { color: #c6d0d4; font-size: 13px; }
+.employee-shift-details small { margin-top: 3px; }
+.employee-schedule-empty { margin-top: 14px; }
+.management-week-cards .day-card { min-height: 220px; }
+.management-week-cards .day-empty { min-height: 120px; }
+.management-week-cards .shift-item { padding: 9px; }
+
+@media (max-width: 900px) {
+  .management-week-cards { grid-template-columns: repeat(7, minmax(250px, 72vw)); }
+  .management-week-cards .day-card { min-height: 190px; }
+  .management-week-cards .day-card > header { padding: 11px 12px; }
+  .management-week-cards .day-card > div { padding: 8px; }
+  .schedule-toolbar { padding: 13px; }
+  .schedule-toolbar .toolbar-actions { gap: 7px; }
+  .schedule-toolbar .toolbar-actions button { min-height: 40px; padding-inline: 11px; font-size: 12px; }
+}
+
+@media (max-width: 680px) {
+  .employee-kiosk-main .schedule-toolbar { padding: 12px; }
+  .employee-kiosk-main .schedule-toolbar .toolbar-row { gap: 10px; margin-bottom: 0; }
+  .employee-kiosk-main .schedule-toolbar .toolbar-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .employee-kiosk-main .schedule-toolbar .toolbar-actions button { min-height: 38px; padding: 6px 5px; font-size: 11px; }
+  .employee-shift-list { gap: 8px; }
+  .employee-shift-card > header { padding: 11px 12px; }
+  .employee-shift-details { padding: 11px 12px 13px; }
+  .employee-shift-time { font-size: 16px; }
+}
+
+@media (max-width: 390px) {
+  .employee-kiosk-main .schedule-toolbar .toolbar-actions { grid-template-columns: 1fr; }
+  .employee-kiosk-main .schedule-toolbar .toolbar-actions button { min-height: 36px; }
+}
