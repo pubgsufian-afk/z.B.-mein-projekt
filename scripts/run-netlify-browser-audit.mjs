@@ -64,6 +64,8 @@ try {
     ['prepare', 'node', ['scripts/prepare-unified-e2e.mjs']],
     ['split', 'node', ['scripts/split-browser-audit-tests.mjs']],
     ['mocks', 'node', ['scripts/fix-e2e-runtime-mocks.mjs']],
+    ['test-frontend', 'node', ['scripts/build-frontend.mjs']],
+    ['test-dist', 'node', ['scripts/build.mjs']],
   ]) {
     if (result.status !== 0) break
     stage = nextStage
