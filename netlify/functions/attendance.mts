@@ -1,0 +1,290 @@
+import type { Config, Context } from '@netlify/functions'
+import {
+  AttendanceServiceError,
+  createAttendanceService,
+  eventDateInBerlin,
+  normalizeClockRequest,
+} from './_shared/daily-attendance-service.mts'
+import { createAttendanceRepository } from './_shared/neon-attendance.mts'
+
+type PortalRole = 'owner' | 'admin' | 'manager' | 'employee' | 'pending'
+type AccessRecord = { role?: PortalRole; status?: string } | null
+
+type ScheduleEntry = {
+  id?: string
+  employeeUserId?: string
+  employeeName?: string
+  date?: string
+  start?: string
+  end?: string
+  location?: string
+  workArea?: string
+  pauseMinutes?: number
+  objectId?: string
+  status?: string
+}
+
+const VALID_ROLES = new Set<PortalRole>(['owner', 'admin', 'manager', 'employee', 'pending'])
+
+export function resolvePortalRole({
+  email,
+  ownerEmails,
+  access,
+  roles,
+}: {
+  email: string
+  ownerEmails: string[]
+  access: AccessRecord
+  roles: string[]
+}): PortalRole {
+  const normalizedEmail = String(email || '').trim().toLowerCase()
+  const owners = new Set(ownerEmails.map((value) => String(value).trim().toLowerCase()).filter(Boolean))
+  if (owners.has(normalizedEmail)) return 'owner'
+  if (access?.status === 'active' && access.role && VALID_ROLES.has(access.role)) return access.role
+  const metadataRole = roles.find((role) => VALID_ROLES.has(role as PortalRole))
+  return (metadataRole as PortalRole) || 'pending'
+}
+
+function timeMinutes(value: string | Date | null | undefined) {
+  if (!value) return null
+  const date = value instanceof Date ? value : new Date(value)
+  if (!Number.isFinite(date.getTime())) return null
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Berlin',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date)
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value)
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value)
+  return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : null
+}
+
+function scheduleTime(value: string | undefined) {
+  const [hour, minute] = String(value || '').split(':').map(Number)
+  return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : null
+}
+
+export function plannedSchedules(entries: ScheduleEntry[], userId: string, date: string) {
+  return (Array.isArray(entries) ? entries : [])
+    .filter((entry) => String(entry.employeeUserId || '') === userId && entry.date === date && entry.status !== 'draft')
+    .sort((left, right) => String(left.start || '').localeCompare(String(right.start || '')))
+}
+
+export function selectPlannedSchedule(
+  entries: ScheduleEntry[],
+  userId: string,
+  date: string,
+  requestedScheduleId: string | null,
+  occurredAt: string | Date | null = null,
+) {
+  const candidates = plannedSchedules(entries, userId, date)
+  if (requestedScheduleId) {
+    const requested = candidates.find((entry) => String(entry.id || '') === requestedScheduleId)
+    if (requested) return requested
+  }
+  const currentMinute = timeMinutes(occurredAt)
+  if (currentMinute === null) return candidates[0] || null
+  const active = candidates.find((entry) => {
+    const start = scheduleTime(entry.start)
+    const end = scheduleTime(entry.end)
+    return start !== null && end !== null && currentMinute >= start && currentMinute <= end
+  })
+  if (active) return active
+  const upcoming = candidates.find((entry) => {
+    const start = scheduleTime(entry.start)
+    return start !== null && start >= currentMinute
+  })
+  return upcoming || candidates.at(-1) || null
+}
+
+export function attendanceFunctionMarkers() {
+  return {
+    verifiesRequestOrigin: true,
+    bindsScheduleServerSide: true,
+    employeeSelfScope: true,
+    liveManagementOnly: true,
+    scheduleV2First: true,
+    currentDayScope: true,
+    multipleDailyShifts: true,
+  }
+}
+
+function response(data: unknown, status = 200) {
+  return Response.json(data, {
+    status,
+    headers: {
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'X-Robots-Tag': 'noindex',
+      'X-Habun-Attendance-Version': 'v2',
+    },
+  })
+}
+
+function databaseUrl() {
+  const runtimeValue = typeof Netlify !== 'undefined'
+    ? Netlify.env.get('ATTENDANCE_DATABASE_URL')
+      || Netlify.env.get('DATABASE_URL')
+      || Netlify.env.get('NETLIFY_DATABASE_URL')
+    : ''
+  return runtimeValue
+    || process.env.ATTENDANCE_DATABASE_URL
+    || process.env.DATABASE_URL
+    || process.env.NETLIFY_DATABASE_URL
+    || ''
+}
+
+async function currentPortalActor() {
+  const [{ getUser }, { getStore }] = await Promise.all([
+    import('@netlify/identity'),
+    import('@netlify/blobs'),
+  ])
+  const user = await getUser()
+  if (!user) return null
+
+  const accessStore = getStore({ name: 'portal-access', consistency: 'strong' })
+  const access = await accessStore.get(`access/${user.id}`, { type: 'json' }) as AccessRecord
+  const email = String(user.email || '').trim().toLowerCase()
+  const ownerEmails = String(
+    typeof Netlify !== 'undefined' ? Netlify.env.get('PORTAL_OWNER_EMAILS') || '' : '',
+  ).split(',').map((value) => value.trim()).filter(Boolean)
+  const metadataRoles = Array.isArray(user.appMetadata?.roles)
+    ? user.appMetadata.roles.filter((value): value is string => typeof value === 'string')
+    : []
+  const directRole = typeof (user as { role?: unknown }).role === 'string'
+    ? [(user as { role: string }).role]
+    : []
+  const roles = [...new Set([...(user.roles || []), ...metadataRoles, ...directRole])]
+  const role = resolvePortalRole({ email, ownerEmails, access, roles })
+  return { userId: user.id, email, role }
+}
+
+async function fetchScheduleEndpoint(request: Request, path: string) {
+  try {
+    const url = new URL(path, request.url)
+    const result = await fetch(url, { method: 'GET', headers: request.headers, redirect: 'manual', cache: 'no-store' })
+    if (!result.ok) return []
+    const payload = await result.json().catch(() => ({})) as { entries?: ScheduleEntry[] }
+    return Array.isArray(payload.entries) ? payload.entries : []
+  } catch { return [] }
+}
+
+async function loadSchedules(request: Request): Promise<ScheduleEntry[]> {
+  const [v2, legacy] = await Promise.all([
+    fetchScheduleEndpoint(request, '/api/schedule-v2?resource=entries'),
+    fetchScheduleEndpoint(request, '/api/work?resource=schedule'),
+  ])
+  const merged = [...v2, ...legacy]
+  return merged.filter((entry, index, values) => {
+    const key = entry.id || `${entry.employeeUserId}:${entry.date}:${entry.start}:${entry.location}`
+    return values.findIndex((candidate) => (candidate.id || `${candidate.employeeUserId}:${candidate.date}:${candidate.start}:${candidate.location}`) === key) === index
+  })
+}
+
+function schedulePayload(entry: ScheduleEntry | null) {
+  if (!entry) return null
+  return {
+    id: entry.id || null,
+    employeeName: entry.employeeName || '',
+    date: entry.date || null,
+    start: entry.start || null,
+    end: entry.end || null,
+    location: entry.location || '',
+    workArea: entry.workArea || '',
+    pauseMinutes: Number.isFinite(Number(entry.pauseMinutes)) ? Number(entry.pauseMinutes) : 0,
+    objectId: entry.objectId || null,
+    status: entry.status || 'published',
+  }
+}
+
+function enrichLiveEntries(entries: Array<Record<string, unknown>>, schedules: ScheduleEntry[]) {
+  return entries.map((entry) => {
+    const schedule = selectPlannedSchedule(
+      schedules,
+      String(entry.userId || ''),
+      String(entry.eventDate || ''),
+      String(entry.scheduleId || '') || null,
+      String(entry.clientOccurredAt || ''),
+    )
+    return {
+      ...entry,
+      employeeName: schedule?.employeeName || String(entry.userId || ''),
+      workSiteName: schedule?.location || '',
+      workArea: schedule?.workArea || '',
+      pauseMinutes: Number(schedule?.pauseMinutes || 0),
+      plannedStart: schedule?.start || null,
+      plannedEnd: schedule?.end || null,
+    }
+  })
+}
+
+export default async function attendance(request: Request, _context: Context) {
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204 })
+  if (!['GET', 'POST'].includes(request.method)) return response({ message: 'Methode nicht erlaubt.' }, 405)
+
+  try {
+    const actor = await currentPortalActor()
+    if (!actor) return response({ message: 'Nicht angemeldet.', code: 'UNAUTHENTICATED' }, 401)
+    if (actor.role === 'pending') return response({ message: 'Das Konto ist noch nicht freigeschaltet.', code: 'ACCOUNT_PENDING' }, 403)
+
+    const connectionString = databaseUrl()
+    if (!connectionString) return response({ message: 'Die Zeiterfassungsdatenbank ist noch nicht verbunden.', code: 'DATABASE_NOT_CONFIGURED' }, 503)
+    const repository = await createAttendanceRepository(connectionString)
+    const service = createAttendanceService({ repository })
+    const url = new URL(request.url)
+
+    if (request.method === 'GET') {
+      const resource = url.searchParams.get('resource') || 'state'
+      if (resource === 'state') {
+        const state = await service.getState(actor)
+        const schedules = await loadSchedules(request)
+        const now = new Date()
+        const today = eventDateInBerlin(now)
+        const requestedScheduleId = url.searchParams.get('scheduleId')
+        const candidates = plannedSchedules(schedules, actor.userId, today)
+        const schedule = selectPlannedSchedule(schedules, actor.userId, today, requestedScheduleId, now)
+        return response({ ...state, schedule: schedulePayload(schedule), schedules: candidates.map((entry) => schedulePayload(entry)) })
+      }
+      if (resource === 'history') {
+        return response(await service.getHistory(actor, {
+          userId: url.searchParams.get('userId'),
+          from: url.searchParams.get('from'),
+          to: url.searchParams.get('to'),
+        }))
+      }
+      if (resource === 'live') {
+        const result = await service.getLive(actor, {
+          date: url.searchParams.get('date'),
+          objectId: url.searchParams.get('objectId'),
+          userId: url.searchParams.get('userId'),
+          status: url.searchParams.get('status'),
+        })
+        const schedules = await loadSchedules(request)
+        return response({ entries: enrichLiveEntries(result.entries, schedules) })
+      }
+      return response({ message: 'Unbekannter Zeiterfassungsbereich.' }, 400)
+    }
+
+    const { verifyRequestOrigin } = await import('@netlify/identity')
+    try { verifyRequestOrigin(request) } catch { return response({ message: 'Ungültige Anfragequelle.', code: 'INVALID_ORIGIN' }, 403) }
+
+    const body = await request.json().catch(() => null) as Record<string, unknown> | null
+    if (!body) return response({ message: 'Ungültige Anfrage.' }, 400)
+    if (body.resource) return response({ message: 'Diese Aktion ist noch nicht verfügbar.' }, 400)
+
+    const normalized = normalizeClockRequest(body)
+    const eventDate = eventDateInBerlin(normalized.clientOccurredAt)
+    const schedules = await loadSchedules(request)
+    const schedule = selectPlannedSchedule(schedules, actor.userId, eventDate, normalized.scheduleId, normalized.clientOccurredAt)
+    const safeBody = { ...body, scheduleId: schedule?.id || null, objectId: schedule?.objectId || null }
+    return response(await service.record(actor, safeBody), 201)
+  } catch (error) {
+    if (error instanceof AttendanceServiceError) return response({ message: error.message, code: error.code }, error.status)
+    if (error instanceof TypeError || error instanceof RangeError) return response({ message: error.message, code: 'INVALID_INPUT' }, 400)
+    console.error('Habun Attendance V2', error)
+    return response({ message: 'Die Zeiterfassung konnte nicht verarbeitet werden.' }, 500)
+  }
+}
+
+export const config: Config = { path: '/api/attendance' }
