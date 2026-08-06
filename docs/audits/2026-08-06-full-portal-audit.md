@@ -17,7 +17,7 @@ Dieser Prüfzweig dient ausschließlich der vollständigen Qualitätskontrolle. 
 
 ## Zwischenstand
 
-Der getrennte Vorschau-Build hat geräteübergreifend zwei Prüfpunkte aufgedeckt: Bericht-Downloads und die Browserprüfung des neuen Dienstplan-Supports. Die Prüfungen wurden deshalb in 33 getrennte Abläufe aufgeteilt. Zusätzlich nennt der Build jetzt jeden Quell- und Prüfschritt einzeln, falls er vor den Browsertests stoppt. Die Hauptseite blieb unverändert.
+Quellcode-, Rollen-, API-, Datenbank- und Produktions-Build-Prüfungen sind erfolgreich. Die Browserprüfung wurde in 33 getrennte Abläufe zerlegt. Die gemeinsame Testkollision beim Dienstplan-Support sowie die URL-Anbindung der PDF-/Excel-Mocks wurden korrigiert. Der nächste Vorschau-Lauf prüft diese Korrekturen auf Desktop, iPhone und Android. Die Hauptseite blieb unverändert.
 
 ## Freigaberegel
 
