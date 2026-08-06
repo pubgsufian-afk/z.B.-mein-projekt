@@ -104,6 +104,16 @@ replaceOnce(
 "  await expect(page.getByTitle('PDF-Vorschau')).toBeVisible()\n  if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/04-berichte-iphone.png', fullPage: true })",
 'reports screenshot',
 )
+replaceOnce(
+"  const pdfDownload = page.waitForEvent('download')",
+"  const pdfDownload = page.waitForEvent('download', { predicate: (download) => /\\.pdf$/i.test(download.suggestedFilename()) })",
+'PDF download predicate',
+)
+replaceOnce(
+"  const excelDownload = page.waitForEvent('download')",
+"  const excelDownload = page.waitForEvent('download', { predicate: (download) => /\\.xlsx$/i.test(download.suggestedFilename()) })",
+'Excel download predicate',
+)
 
 await writeFile(path, source)
 console.log('Unified portal browser tests prepared')
