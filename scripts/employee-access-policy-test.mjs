@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const [app, styles, attendance, service, maintenance, schedule, legacyWork, companySettings, registrations, legacySettings, index] = await Promise.all([
+const [app, styles, logoStyles, main, attendance, service, maintenance, schedule, legacyWork, companySettings, registrations, legacySettings, index] = await Promise.all([
   readFile('frontend/src/App.jsx', 'utf8'),
   readFile('frontend/src/styles.css', 'utf8'),
+  readFile('frontend/src/logo-visibility.css', 'utf8'),
+  readFile('frontend/src/main.jsx', 'utf8'),
   readFile('netlify/functions/attendance.mts', 'utf8'),
   readFile('netlify/functions/_shared/attendance-service.mts', 'utf8'),
   readFile('netlify/functions/attendance-maintenance.mts', 'utf8'),
@@ -28,6 +30,10 @@ assert.match(styles, /env\(safe-area-inset-top\)/)
 assert.match(styles, /env\(safe-area-inset-bottom\)/)
 assert.match(styles, /employee-kiosk-shell/)
 assert.match(styles, /brand-mark/)
+assert.match(main, /logo-visibility\.css/)
+assert.match(logoStyles, /position:\s*absolute/)
+assert.match(logoStyles, /transform:\s*translate\(-50%,\s*-50%\)/)
+assert.match(logoStyles, /employee-kiosk-header \.brand-mark[\s\S]*?width:\s*76px[\s\S]*?height:\s*76px/)
 assert.match(index, /viewport-fit=cover/)
 
 assert.match(service, /getHistory[\s\S]*?if \(!MANAGEMENT_ROLES\.has\(current\.role\)\) throw new AttendanceServiceError\('Keine Berechtigung\.', 403, 'FORBIDDEN'\)/)
