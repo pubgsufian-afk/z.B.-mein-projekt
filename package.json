@@ -11,7 +11,7 @@
     "verify:all": "npm run verify:legacy && npm run verify:v2 && npm run verify:unified && npm run verify:database",
     "verify": "npm run verify:all",
     "build:frontend": "node scripts/build-frontend.mjs",
-    "build": "npm run verify && npm run build:frontend && node scripts/run-netlify-browser-audit.mjs && node scripts/build.mjs",
+    "build": "node scripts/run-full-preview-audit.mjs",
     "check": "npm run verify",
     "test:e2e": "node scripts/prepare-unified-e2e.mjs && node scripts/split-browser-audit-tests.mjs && playwright test tests/e2e/unified-portal.spec.mjs"
   },
