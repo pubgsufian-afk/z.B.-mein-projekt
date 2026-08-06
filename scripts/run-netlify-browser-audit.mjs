@@ -52,8 +52,11 @@ function projectCode(value) {
 
 function testCode(value) {
   const title = value.toLowerCase()
-  if (title.includes('reports provide')) return 'reports'
-  if (title.includes('scheduler edits')) return 'support'
+  if (title.includes('reports preview')) return 'preview'
+  if (title.includes('reports pdf download')) return 'pdf'
+  if (title.includes('reports excel download')) return 'excel'
+  if (title.includes('scheduler sees')) return 'support-access'
+  if (title.includes('scheduler opens')) return 'support-editor'
   if (title.includes('admin uses')) return 'settings'
   if (title.includes('digital attendance')) return 'clock'
   if (title.includes('mobile schedule')) return 'schedule'
@@ -87,6 +90,12 @@ if (result.status === 0) {
 }
 
 if (result.status === 0) {
+  stage = 'split'
+  result = run('node', ['scripts/split-browser-audit-tests.mjs'])
+  details = `${result.stdout || ''}\n${result.stderr || ''}`.trim()
+}
+
+if (result.status === 0) {
   stage = 'tests'
   result = run('npx', ['playwright', 'test', 'tests/e2e/unified-portal.spec.mjs', '--reporter=json'])
   details = `${result.stdout || ''}\n${result.stderr || ''}`.trim()
@@ -99,14 +108,14 @@ if (result.status === 0) {
 
 const success = result.status === 0
 const failurePattern = [...new Set(failures.map((failure) => `${projectCode(failure.project)}-${testCode(failure.title)}-${errorCode(failure.error)}`))].join('-') || 'unparsed'
-const marker = success ? 'audit-browser-success-24' : `audit-browser-failed-${stage}-${failures.length || 'unknown'}-${failurePattern}`
+const marker = success ? 'audit-browser-success-33' : `audit-browser-failed-${stage}-${failures.length || 'unknown'}-${failurePattern}`
 const safeDetails = details.slice(-12000)
 const payload = {
   success,
   stage,
   exitCode: result.status,
   checkedDevices: ['desktop-chromium', 'iphone-chromium', 'android-chromium'],
-  expectedTests: 24,
+  expectedTests: 33,
   failures,
   details: safeDetails,
 }
