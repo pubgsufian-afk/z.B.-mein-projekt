@@ -1,11 +1,19 @@
 import { test, expect } from '@playwright/test'
 
-test('startup diagnostic renders meaningful portal content', async ({ page }) => {
+test('startup diagnostic renders meaningful portal content without missing resources', async ({ page }) => {
   const consoleMessages = []
   const failedRequests = []
+  const badResponses = []
+
   page.on('console', (message) => consoleMessages.push(`${message.type()}: ${message.text()}`))
   page.on('pageerror', (error) => consoleMessages.push(`pageerror: ${error.message}`))
   page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()} :: ${request.failure()?.errorText || 'unknown'}`))
+  page.on('response', (response) => {
+    const url = response.url()
+    if (response.status() >= 400 && !url.includes('/.netlify/identity/')) {
+      badResponses.push(`${response.status()} ${response.request().method()} ${url}`)
+    }
+  })
 
   await page.route('**/.netlify/identity**', async (route) => {
     const url = new URL(route.request().url())
@@ -26,5 +34,9 @@ test('startup diagnostic renders meaningful portal content', async ({ page }) =>
   console.log('STARTUP_BODY:', JSON.stringify(body))
   console.log('STARTUP_CONSOLE:', JSON.stringify(consoleMessages))
   console.log('STARTUP_FAILED_REQUESTS:', JSON.stringify(failedRequests))
+  console.log('STARTUP_BAD_RESPONSES:', JSON.stringify(badResponses))
+
   await expect(page.locator('#root')).not.toBeEmpty()
+  expect(failedRequests).toEqual([])
+  expect(badResponses).toEqual([])
 })
