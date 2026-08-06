@@ -17,7 +17,7 @@ Dieser Prüfzweig dient ausschließlich der vollständigen Qualitätskontrolle. 
 
 ## Zwischenstand
 
-Der getrennte Netlify-Vorschau-Build ist erfolgreich. Die Hauptseite blieb unverändert. Der vollständige Browserlauf wird vor einer Freigabe zusätzlich verlangt.
+Der getrennte Netlify-Vorschau-Build ist erfolgreich. Die Hauptseite blieb unverändert. Der Browserlauf hat zwei geräteübergreifende Prüfpunkte aufgedeckt: Bericht-Downloads und die Testauswahl des neuen Dienstplan-Supports. Die Support-Testauswahl ist korrigiert; beim Bericht-Download wird nun die genaue Fehlerphase ermittelt.
 
 ## Freigaberegel
 
