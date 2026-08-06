@@ -2,11 +2,6 @@ import { readdir, rm, writeFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 
 const functionsDir = 'netlify/functions'
-for (const name of await readdir(functionsDir)) {
-  if ((name.startsWith('audit-browser-') || name.startsWith('audit-fail-')) && name.endsWith('.mts')) {
-    await rm(`${functionsDir}/${name}`)
-  }
-}
 
 function run(command, args) {
   return spawnSync(command, args, {
@@ -25,16 +20,16 @@ function collectFailures(report) {
       for (const test of spec.tests || []) {
         const results = test.results || []
         const failed = results.some((entry) => !['passed', 'skipped'].includes(entry.status))
-        if (failed || test.status === 'unexpected') {
-          const error = results.flatMap((entry) => entry.errors || (entry.error ? [entry.error] : []))
-            .map((entry) => String(entry?.message || entry?.value || entry || ''))
-            .join(' ')
-          failures.push({
-            project: String(test.projectName || 'browser'),
-            title: [...nextParents, spec.title].filter(Boolean).join(' > '),
-            error,
-          })
-        }
+        if (!failed && test.status !== 'unexpected') continue
+        const error = results
+          .flatMap((entry) => entry.errors || (entry.error ? [entry.error] : []))
+          .map((entry) => String(entry?.message || entry?.value || entry || ''))
+          .join(' ')
+        failures.push({
+          project: String(test.projectName || 'browser'),
+          title: [...nextParents, spec.title].filter(Boolean).join(' > '),
+          error,
+        })
       }
     }
     for (const child of suite.suites || []) visitSuite(child, nextParents)
@@ -43,15 +38,8 @@ function collectFailures(report) {
   return failures
 }
 
-function projectCode(value) {
-  if (value.includes('desktop')) return 'd'
-  if (value.includes('iphone')) return 'i'
-  if (value.includes('android')) return 'a'
-  return 'b'
-}
-
 function testCode(value) {
-  const title = value.toLowerCase()
+  const title = String(value || '').toLowerCase()
   if (title.includes('reports preview')) return 'preview'
   if (title.includes('reports pdf download')) return 'pdf'
   if (title.includes('reports excel download')) return 'excel'
@@ -66,59 +54,68 @@ function testCode(value) {
   return 'other'
 }
 
-function errorCode(value) {
-  const error = String(value || '').toLowerCase()
-  if (error.includes('waiting for event "download"') || (error.includes('waitforevent') && error.includes('download'))) return 'download-event'
-  if (error.includes('pdf-vorschau')) return 'preview'
-  if (error.includes('dienst erstellen')) return 'editor-heading'
-  if (error.includes('dienstplan als pdf')) return 'pdf-rights'
-  if (error.includes('horizontal') || error.includes('scrollwidth')) return 'overflow'
-  if (error.includes('strict mode violation')) return 'duplicate-locator'
-  if (error.includes('timed out')) return 'timeout'
-  return 'assertion'
+async function createMarker(name, payload) {
+  const safeName = name.replace(/[^a-z0-9-]/g, '-').slice(0, 110)
+  const source = `import type { Config } from '@netlify/functions'\n\nexport default async () => Response.json(${JSON.stringify(payload)}, { headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' } })\n\nexport const config: Config = { path: '/api/${safeName}' }\n`
+  await writeFile(`${functionsDir}/${safeName}.mts`, source)
+  console.log(`Browser audit marker: ${safeName}`)
 }
 
-let stage = 'install'
-let result = run('npx', ['playwright', 'install', 'chromium'])
-let details = `${result.stdout || ''}\n${result.stderr || ''}`.trim()
-let failures = []
-
-if (result.status === 0) {
-  stage = 'prepare'
-  result = run('node', ['scripts/prepare-unified-e2e.mjs'])
-  details = `${result.stdout || ''}\n${result.stderr || ''}`.trim()
-}
-
-if (result.status === 0) {
-  stage = 'split'
-  result = run('node', ['scripts/split-browser-audit-tests.mjs'])
-  details = `${result.stdout || ''}\n${result.stderr || ''}`.trim()
-}
-
-if (result.status === 0) {
-  stage = 'tests'
-  result = run('npx', ['playwright', 'test', 'tests/e2e/unified-portal.spec.mjs', '--reporter=json'])
-  details = `${result.stdout || ''}\n${result.stderr || ''}`.trim()
-  try {
-    failures = collectFailures(JSON.parse(result.stdout || '{}'))
-  } catch {
-    failures = []
+try {
+  for (const name of await readdir(functionsDir)) {
+    if ((name.startsWith('audit-browser-') || name.startsWith('audit-fail-')) && name.endsWith('.mts')) {
+      await rm(`${functionsDir}/${name}`)
+    }
   }
-}
 
-const success = result.status === 0
-const failurePattern = [...new Set(failures.map((failure) => `${projectCode(failure.project)}-${testCode(failure.title)}-${errorCode(failure.error)}`))].join('-') || 'unparsed'
-const marker = success ? 'audit-browser-success-33' : `audit-browser-failed-${stage}-${failures.length || 'unknown'}-${failurePattern}`
-const safeDetails = details.slice(-12000)
-const payload = {
-  success,
-  stage,
-  exitCode: result.status,
-  checkedDevices: ['desktop-chromium', 'iphone-chromium', 'android-chromium'],
-  expectedTests: 33,
-  failures,
-  details: safeDetails,
-}
+  let stage = 'install'
+  let result = run('npx', ['playwright', 'install', 'chromium'])
+  let details = `${result.stdout || ''}\n${result.stderr || ''}`.trim()
+  let failures = []
 
-await writeFile(`${functionsDir}/${marker}.mts`, `import type { Config } from '@netlify/functions'\n\nexport default async () => Response.json(${JSON.stringify(payload)}, { headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' } })\n\nexport const config: Config = { path: '/api/${marker}' }\n`)
-console.log(`Browser audit marker: ${marker}`)
+  if (result.status === 0) {
+    stage = 'prepare'
+    result = run('node', ['scripts/prepare-unified-e2e.mjs'])
+    details = `${result.stdout || ''}\n${result.stderr || ''}`.trim()
+  }
+
+  if (result.status === 0) {
+    stage = 'split'
+    result = run('node', ['scripts/split-browser-audit-tests.mjs'])
+    details = `${result.stdout || ''}\n${result.stderr || ''}`.trim()
+  }
+
+  if (result.status === 0) {
+    stage = 'tests'
+    result = run('npx', ['playwright', 'test', 'tests/e2e/unified-portal.spec.mjs', '--reporter=json'])
+    details = `${result.stdout || ''}\n${result.stderr || ''}`.trim()
+    try {
+      failures = collectFailures(JSON.parse(result.stdout || '{}'))
+    } catch {
+      failures = []
+    }
+  }
+
+  const success = result.status === 0
+  const categories = [...new Set(failures.map((failure) => testCode(failure.title)))].slice(0, 6)
+  const categoryText = categories.length ? categories.join('-') : 'unparsed'
+  const marker = success
+    ? 'audit-browser-success-33'
+    : `audit-browser-failed-${stage}-${failures.length || 'unknown'}-${categoryText}`
+
+  await createMarker(marker, {
+    success,
+    stage,
+    exitCode: result.status,
+    checkedDevices: ['desktop-chromium', 'iphone-chromium', 'android-chromium'],
+    expectedTests: 33,
+    failures,
+    details: details.slice(-12000),
+  })
+} catch (error) {
+  await createMarker('audit-browser-runner-crash', {
+    success: false,
+    stage: 'runner',
+    error: String(error?.stack || error),
+  })
+}
