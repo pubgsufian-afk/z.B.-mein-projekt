@@ -380,3 +380,37 @@ body { min-height: 100dvh; }
   .employee-kiosk-header .brand-mark { width: 76px; height: 76px; }
   .employee-kiosk-header .brand-mark img { width: 226px !important; height: auto !important; }
 }
+
+/* Mitarbeiter dürfen zusätzlich nur ihren eigenen Dienstplan lesen. */
+.employee-kiosk-nav {
+  width: min(100%, 760px);
+  margin: 14px auto 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+}
+.employee-kiosk-nav button {
+  min-height: 46px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--muted);
+  background: transparent;
+  font-weight: 800;
+}
+.employee-kiosk-nav button.active {
+  color: #181100;
+  background: var(--gold);
+}
+.employee-kiosk-main .employee-schedule-intro { margin-top: 0; }
+.employee-kiosk-main .schedule-toolbar { margin-top: 14px; }
+.employee-kiosk-main .shift-item[aria-disabled="true"] { cursor: default; }
+.employee-kiosk-main .shift-item[aria-disabled="true"]:hover { border-color: var(--border); transform: none; }
+
+@media (max-width: 680px) {
+  .employee-kiosk-nav { margin-top: 10px; }
+  .employee-kiosk-main:has(.employee-schedule-intro) { padding-top: 12px; }
+}

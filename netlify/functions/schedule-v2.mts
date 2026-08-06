@@ -284,12 +284,13 @@ async function upsertObject(current: NonNullable<Awaited<ReturnType<typeof actor
 export default async function scheduleV2(request: Request, _context: Context) {
   const current = await actor()
   if (!current) return json({ message: 'Nicht angemeldet.' }, 401)
-  if (!MANAGEMENT.has(current.role)) return json({ message: 'Keine Berechtigung.' }, 403)
+  if (current.role === 'pending') return json({ message: 'Das Konto ist noch nicht freigeschaltet.' }, 403)
   const url = new URL(request.url)
 
   if (request.method === 'GET') {
     const resource = url.searchParams.get('resource') || 'entries'
     if (resource === 'entries') return json({ entries: await getEntries(current, url) })
+    if (!MANAGEMENT.has(current.role)) return json({ message: 'Keine Berechtigung.' }, 403)
     if (resource === 'objects') {
       const objects = await readMany<WorkSite>('objects/')
       return json({ objects: objects.map((site) => publicSite(site, MANAGEMENT.has(current.role))) })

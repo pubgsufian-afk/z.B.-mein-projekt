@@ -19,10 +19,13 @@ const [app, styles, logoStyles, main, sessionEndpoint, attendance, service, main
 ])
 
 assert.match(app, /\{ key: 'attendance', label: 'Zeiterfassung', roles: \['owner', 'admin', 'manager', 'employee'\] \}/)
-for (const key of ['overview', 'schedule', 'times', 'corrections']) {
+assert.match(app, /\{ key: 'schedule', label: 'Dienstplan', roles: \['owner', 'admin', 'manager', 'employee'\] \}/)
+for (const key of ['overview', 'times', 'corrections']) {
   assert.doesNotMatch(app, new RegExp(`key: '${key}'[^\n]+employee`), `Mitarbeiter darf ${key} nicht in der Navigation erhalten.`)
 }
 assert.match(app, /employee-kiosk-shell/)
+assert.match(app, /employee-kiosk-nav/)
+assert.match(app, /entry\.employeeUserId === session\.userId && entry\.status === 'published'/)
 assert.match(app, /session\.role === 'employee' \? 'attendance' : 'overview'/)
 assert.match(app, /employeeOnly/)
 assert.match(app, /!employeeOnly && <section className="panel">/)
@@ -45,7 +48,9 @@ assert.match(attendance, /resource === 'history'[\s\S]*?actor\.role === 'employe
 assert.match(attendance, /getStore\(\{ name: 'portal-schedule-v2'/)
 assert.doesNotMatch(attendance, /fetchScheduleEndpoint/)
 assert.match(maintenance, /if \(!MANAGEMENT\.has\(current\.role\)\) return json\(\{ message: 'Keine Berechtigung\.' \}, 403\)/)
-assert.match(schedule, /if \(!MANAGEMENT\.has\(current\.role\)\) return json\(\{ message: 'Keine Berechtigung\.' \}, 403\)/)
+assert.match(schedule, /resource === 'entries'[\s\S]*?getEntries\(current, url\)/)
+assert.match(schedule, /entry\.employeeUserId === current\.userId && entry\.status === 'published'/)
+assert.match(schedule, /resource === 'entries'[\s\S]*?if \(!MANAGEMENT\.has\(current\.role\)\) return json\(\{ message: 'Keine Berechtigung\.' \}, 403\)/)
 assert.match(legacyWork, /currentAccess[\s\S]*?!MANAGEMENT_ROLES\.includes\(currentAccess\.role\)[\s\S]*?Keine Berechtigung/)
 assert.match(companySettings, /if \(!\['owner', 'admin'\]\.includes\(current\.role\)\) return json\(\{ message: 'Keine Berechtigung\.' \}, 403\)/)
 assert.match(registrations, /requirePortalRole\(\['owner', 'admin', 'manager'\]\)/)
