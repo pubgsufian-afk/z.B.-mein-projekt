@@ -2,47 +2,15 @@ import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 
 const reportPath = 'netlify/functions/unified-reports-fixed.mts'
-let report = await readFile(reportPath, 'utf8')
-
-if (!report.includes("import { EXPORT_LOGO_PNG_BASE64 } from './_shared/export-logo.mts'")) {
-  const marker = "import { readCompanySettings } from './_shared/company-settings.mts'\n"
-  assert.ok(report.includes(marker), 'Firmen-Einstellungen-Import fehlt.')
-  report = report.replace(marker, `${marker}import { EXPORT_LOGO_PNG_BASE64 } from './_shared/export-logo.mts'\n`)
-}
-
-if (!report.includes('async function loadExcelLogoBytes()')) {
-  const marker = '\nasync function buildExcel(rows: ReportRow[], from: string, to: string) {'
-  assert.ok(report.includes(marker), 'Excel-Builder-Marker fehlt.')
-  const helper = `\nasync function loadExcelLogoBytes() {\n  try {\n    return Buffer.from(EXPORT_LOGO_PNG_BASE64, 'base64')\n  } catch {\n    return null\n  }\n}\n\nasync function buildExcel(request: Request, rows: ReportRow[], from: string, to: string) {`
-  report = report.replace(marker, helper)
-}
-
-if (!report.includes('const logoBytes = await loadExcelLogoBytes()')) {
-  const marker = "  workbook.created = new Date()\n  const sheet = workbook.addWorksheet('Arbeitszeiten', { views: [{ state: 'frozen', ySplit: 6 }] })\n"
-  assert.ok(report.includes(marker), 'Excel-Arbeitsblatt-Marker fehlt.')
-  const replacement = `  workbook.created = new Date()\n  const logoBytes = await loadExcelLogoBytes()\n  const logoId = logoBytes ? workbook.addImage({ buffer: logoBytes, extension: 'png' }) : null\n  const sheet = workbook.addWorksheet('Arbeitszeiten', { views: [{ state: 'frozen', ySplit: 9 }] })\n  sheet.mergeCells('A1:J5')\n  if (logoId !== null) sheet.addImage(logoId, { tl: { col: 4.35, row: 0.15 }, ext: { width: 92, height: 100 } })\n`
-  report = report.replace(marker, replacement)
-}
-
-if (!report.includes("sheet.addRow([clean(settings.companyName) || 'Habun Security']).font = { bold: true, size: 14 }")) {
-  report = report.replace(
-    "  sheet.addRow([clean(settings.companyName) || 'Habun Security'])\n  sheet.addRow([clean(settings.phone), clean(settings.email)])\n  sheet.addRow([`Zeitraum ${from} bis ${to}`])\n  sheet.addRow([])\n  sheet.addRow(['Mitarbeiter', 'Datum', 'Plan Beginn', 'Plan Ende', 'Ist Beginn', 'Ist Ende', 'Pause Min.', 'Netto Std.', 'Einsatzort', 'Hinweis']).font = { bold: true }",
-    "  sheet.addRow([clean(settings.companyName) || 'Habun Security']).font = { bold: true, size: 14 }\n  sheet.addRow([clean(settings.phone), clean(settings.email), clean(settings.address)])\n  sheet.addRow([`Zeitraum ${from} bis ${to}`])\n  sheet.addRow(['Mitarbeiter', 'Datum', 'Plan Beginn', 'Plan Ende', 'Ist Beginn', 'Ist Ende', 'Pause Min.', 'Netto Std.', 'Einsatzort', 'Hinweis']).font = { bold: true }",
-  )
-}
-
-if (!report.includes("sumSheet.mergeCells('A1:B5')")) {
-  const marker = "  const sumSheet = workbook.addWorksheet('Summen')\n"
-  assert.ok(report.includes(marker), 'Excel-Summenblatt-Marker fehlt.')
-  report = report.replace(marker, `${marker}  sumSheet.mergeCells('A1:B5')\n  if (logoId !== null) sumSheet.addImage(logoId, { tl: { col: 0.68, row: 0.15 }, ext: { width: 92, height: 100 } })\n`)
-  report = report.replace(
-    "  sumSheet.addRow([clean(settings.companyName) || 'Habun Security', 'Stundensummen'])\n  sumSheet.addRow([`Zeitraum ${from} bis ${to}`])\n  sumSheet.addRow([])\n  sumSheet.addRow(['Mitarbeiter', 'Stunden']).font = { bold: true }",
-    "  sumSheet.addRow([clean(settings.companyName) || 'Habun Security', 'Stundensummen']).font = { bold: true, size: 14 }\n  sumSheet.addRow([clean(settings.phone), clean(settings.email)])\n  sumSheet.addRow([clean(settings.address), `Zeitraum ${from} bis ${to}`])\n  sumSheet.addRow(['Mitarbeiter', 'Stunden']).font = { bold: true }",
-  )
-}
-
-report = report.replace('      const bytes = await buildExcel(rows, from, to)', '      const bytes = await buildExcel(request, rows, from, to)')
-await writeFile(reportPath, report)
+const report = await readFile(reportPath, 'utf8')
+assert.match(report, /page\.drawText\('Stundenzettel'/, 'Separater Stundenzettel-Titel fehlt.')
+assert.match(report, /EXPORT_LOGO_PNG_BASE64/, 'Transparentes Excel-Logo fehlt.')
+assert.match(report, /workbook\.addImage\(/, 'Excel-Stundenzettel enthält kein Firmenlogo.')
+assert.match(report, /buildExcel\(request: Request,/, 'Logo-fähiger Excel-Builder fehlt.')
+assert.match(report, /await buildExcel\(request, rows, from, to\)/, 'Excel-Export nutzt den Logo-fähigen Builder nicht.')
+assert.match(report, /addWorksheet\('Stundenzettel'/, 'Separates Stundenzettel-Arbeitsblatt fehlt.')
+assert.match(report, /addWorksheet\('Gesamtstunden'/, 'Gesamtstunden-Arbeitsblatt fehlt.')
+assert.doesNotMatch(report, /'Plan Beginn'|'Plan Ende'|'Ist Beginn'|'Ist Ende'/, 'Dienstplan-Spalten dürfen nicht im Stundenzettel stehen.')
 
 const appPath = 'frontend/src/App.jsx'
 let app = await readFile(appPath, 'utf8')
@@ -63,4 +31,4 @@ if (!styles.includes('/* FINAL_SCHEDULE_PDF_CLARITY */')) {
   await writeFile(stylesPath, styles)
 }
 
-console.log('Final production export and schedule fixes applied')
+console.log('Final production export and schedule fixes verified')
