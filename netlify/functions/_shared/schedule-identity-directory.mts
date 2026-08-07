@@ -1,6 +1,7 @@
 export type ScheduleIdentityUser = {
   id?: unknown
   email?: unknown
+  name?: unknown
   roles?: unknown
   role?: unknown
   appMetadata?: { roles?: unknown } | null
@@ -11,6 +12,14 @@ export type ScheduleAccessRecord = {
   userId?: unknown
   role?: unknown
   status?: unknown
+  fullName?: unknown
+  location?: unknown
+}
+
+export type ScheduleRegistrationRecord = {
+  id?: unknown
+  status?: unknown
+  role?: unknown
   fullName?: unknown
   location?: unknown
 }
@@ -27,6 +36,42 @@ const ACTIVE_ROLES = new Set(['owner', 'admin', 'manager', 'scheduler', 'employe
 
 function text(value: unknown) {
   return String(value ?? '').trim()
+}
+
+export function combineScheduleAccessRows(
+  accessRows: ScheduleAccessRecord[],
+  registrations: ScheduleRegistrationRecord[],
+): ScheduleAccessRecord[] {
+  const byUser = new Map<string, ScheduleAccessRecord>()
+
+  for (const registration of registrations) {
+    const userId = text(registration.id)
+    if (!userId || text(registration.status) !== 'approved') continue
+    const requestedRole = text(registration.role)
+    const role = ACTIVE_ROLES.has(requestedRole) ? requestedRole : 'employee'
+    byUser.set(userId, {
+      userId,
+      role,
+      status: 'active',
+      fullName: text(registration.fullName),
+      location: text(registration.location),
+    })
+  }
+
+  for (const row of accessRows) {
+    const userId = text(row.userId)
+    if (!userId) continue
+    const fallback = byUser.get(userId)
+    byUser.set(userId, {
+      ...fallback,
+      ...row,
+      userId,
+      fullName: text(row.fullName) || text(fallback?.fullName),
+      location: text(row.location) || text(fallback?.location),
+    })
+  }
+
+  return [...byUser.values()]
 }
 
 function identityRoles(user: ScheduleIdentityUser) {
@@ -74,7 +119,7 @@ export function mergeScheduleIdentityDirectory(
         : identityRoles(user)[0] || ''
     if (!ACTIVE_ROLES.has(role)) return []
 
-    const fullName = text(access?.fullName) || metadataText(user, 'full_name', 'fullName', 'name')
+    const fullName = text(access?.fullName) || text(user.name) || metadataText(user, 'full_name', 'fullName', 'name')
     if (!fullName) return []
 
     const location = text(access?.location) || metadataText(user, 'location')
