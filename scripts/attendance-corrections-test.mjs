@@ -13,5 +13,7 @@ assert.match(backend, /attendance_correction_decisions/)
 assert.match(backend, /attendance_audit_log/)
 assert.match(client, /Standortdaten können nicht verändert werden/)
 assert.match(client, /Die ursprüngliche Buchung bleibt unverändert erhalten/)
+assert.match(backend, /await sql\.query\(/, 'Attendance maintenance must use the Neon v1 query API')
+assert.doesNotMatch(backend, /await sql\(/, 'Legacy Neon sql(query, params) calls must not remain')
 
-console.log('Attendance correction tests passed · 9 assertions')
+console.log('Attendance correction tests passed · 11 assertions')
