@@ -3,11 +3,8 @@ import { getStore } from '@netlify/blobs';
 import { verifyRequestOrigin } from '@netlify/identity';
 import { proxyToProductionBackend } from "./_shared/proxy.mts";
 import { requirePortalRole } from "./_shared/portal-role.mts";
-import {
-  deactivateScheduleEmployee,
-  upsertScheduleEmployee,
-  type ScheduleEmployee,
-} from "./_shared/schedule-neon-repository.mts";
+import { deactivateScheduleEmployee } from './_shared/schedule-employee-management.mts';
+import { upsertScheduleEmployee, type ScheduleEmployee } from "./_shared/schedule-neon-repository.mts";
 
 type RateEntry = { count: number; resetAt: number };
 type AccessRole = 'owner' | 'admin' | 'manager' | 'employee' | 'pending';
