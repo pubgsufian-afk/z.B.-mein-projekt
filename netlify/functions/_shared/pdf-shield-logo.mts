@@ -6,21 +6,22 @@ import {
   moveTo,
   popGraphicsState,
   pushGraphicsState,
+  rgb,
   type PDFImage,
   type PDFPage,
 } from 'pdf-lib'
 
 const SOURCE_HEIGHT = 203
-const SHIELD_LEFT = 237
-const SHIELD_TOP = 39
-const SHIELD_WIDTH = 129
-const SHIELD_HEIGHT = 132
+const LOGO_CROP_LEFT = 236
+const LOGO_CROP_TOP = 44
+const LOGO_CROP_WIDTH = 125
+const LOGO_CROP_HEIGHT = 129
 
 export function shieldLogoPlacement(logo: Pick<PDFImage, 'width' | 'height'>, pageWidth: number, topY: number, targetWidth = 76) {
-  const scale = targetWidth / SHIELD_WIDTH
+  const scale = targetWidth / LOGO_CROP_WIDTH
   const centerX = pageWidth / 2
   const shieldLeft = centerX - targetWidth / 2
-  const shieldHeight = SHIELD_HEIGHT * scale
+  const shieldHeight = LOGO_CROP_HEIGHT * scale
   const shieldBottom = topY - shieldHeight
   return {
     centerX,
@@ -29,8 +30,8 @@ export function shieldLogoPlacement(logo: Pick<PDFImage, 'width' | 'height'>, pa
     shieldBottom,
     shieldWidth: targetWidth,
     shieldHeight,
-    imageX: shieldLeft - SHIELD_LEFT * scale,
-    imageY: shieldBottom - (SOURCE_HEIGHT - SHIELD_TOP - SHIELD_HEIGHT) * scale,
+    imageX: shieldLeft - LOGO_CROP_LEFT * scale,
+    imageY: shieldBottom - (SOURCE_HEIGHT - LOGO_CROP_TOP - LOGO_CROP_HEIGHT) * scale,
     imageWidth: logo.width * scale,
     imageHeight: logo.height * scale,
   }
@@ -43,17 +44,23 @@ export function drawCenteredShieldLogo(page: PDFPage, logo: PDFImage | null, pag
   const x1 = placement.shieldLeft + placement.shieldWidth
   const y0 = placement.shieldBottom
   const y1 = placement.shieldBottom + placement.shieldHeight
-  const center = placement.centerX
+
+  page.drawRectangle({
+    x: x0 - 3,
+    y: y0 - 3,
+    width: placement.shieldWidth + 6,
+    height: placement.shieldHeight + 6,
+    color: rgb(20 / 255, 20 / 255, 20 / 255),
+    borderColor: rgb(.48, .48, .48),
+    borderWidth: .6,
+  })
 
   page.pushOperators(
     pushGraphicsState(),
-    moveTo(x0 + placement.shieldWidth * 0.08, y1),
-    lineTo(x1 - placement.shieldWidth * 0.08, y1),
-    lineTo(x1 - placement.shieldWidth * 0.12, y0 + placement.shieldHeight * 0.47),
-    lineTo(center + placement.shieldWidth * 0.20, y0 + placement.shieldHeight * 0.20),
-    lineTo(center, y0),
-    lineTo(center - placement.shieldWidth * 0.20, y0 + placement.shieldHeight * 0.20),
-    lineTo(x0 + placement.shieldWidth * 0.12, y0 + placement.shieldHeight * 0.47),
+    moveTo(x0, y1),
+    lineTo(x1, y1),
+    lineTo(x1, y0),
+    lineTo(x0, y0),
     closePath(),
     clip(),
     endPath(),
