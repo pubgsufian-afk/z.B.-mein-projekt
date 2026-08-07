@@ -82,7 +82,7 @@ if (await patch('frontend/src/App.jsx', [
         latitude: position.coords.latitude.toFixed(7),
         longitude: position.coords.longitude.toFixed(7),
       }))
-      setNotice({ tone: 'success', text: `Aktueller Standort übernommen (Genauigkeit ca. ${Math.round(position.coords.accuracy || 0)} m). Bitte Einsatzort speichern.` })
+      setNotice({ tone: 'success', text: 'Aktueller Standort übernommen (Genauigkeit ca. ' + Math.round(position.coords.accuracy || 0) + ' m). Bitte Einsatzort speichern.' })
     } catch (error) {
       const text = error?.code === 1
         ? 'Standortzugriff ist für diese Webseite nicht erlaubt. Bitte den Standortzugriff im Browser erlauben und erneut versuchen.'
