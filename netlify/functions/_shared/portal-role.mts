@@ -25,10 +25,9 @@ export async function currentPortalActor() {
   const direct = typeof (user as { role?: unknown }).role === 'string'
     ? [(user as { role: string }).role]
     : []
-  const accessBlocked = access?.status === 'inactive' || access?.status === 'rejected'
   const role = owners.has(email)
     ? 'owner'
-    : accessBlocked
+    : access?.status === 'inactive' || access?.status === 'rejected'
       ? 'pending'
       : access?.status === 'active' && access.role && VALID_ROLES.has(access.role)
         ? access.role
