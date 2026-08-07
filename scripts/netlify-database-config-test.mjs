@@ -32,6 +32,32 @@ if (!migration.includes("'break-start'") || !migration.includes("'break-end'")) 
   throw new Error('Pausenaktionen fehlen in der Netlify-Migration.')
 }
 
+const scheduleMigrationPath = 'netlify/database/migrations/20260807160500_create-schedule-schema/migration.sql'
+if (!fs.existsSync(scheduleMigrationPath)) {
+  throw new Error(`Dienstplan-Datenbankmigration fehlt: ${scheduleMigrationPath}`)
+}
+const scheduleMigration = fs.readFileSync(scheduleMigrationPath, 'utf8')
+for (const table of ['schedule_employees', 'schedule_shifts', 'schedule_versions', 'schedule_migrations', 'schedule_audit_log']) {
+  if (!scheduleMigration.includes(`CREATE TABLE ${table}`)) {
+    throw new Error(`Dienstplan-Tabelle fehlt in der Netlify-Migration: ${table}`)
+  }
+}
+if (!scheduleMigration.includes('schedule_shifts_exact_duplicate_idx')) {
+  throw new Error('Datenbankseitiger Duplikatschutz für Dienstpläne fehlt.')
+}
+
+const chatPublisherMigrationPath = 'netlify/database/migrations/20260807162500_add-chat-schedule-publisher/migration.sql'
+if (!fs.existsSync(chatPublisherMigrationPath)) {
+  throw new Error(`ChatGPT-Dienstplanmigration fehlt: ${chatPublisherMigrationPath}`)
+}
+const chatPublisherMigration = fs.readFileSync(chatPublisherMigrationPath, 'utf8')
+if (!chatPublisherMigration.includes('portal_publish_chat_shift')) {
+  throw new Error('Der geschützte ChatGPT-Dienstplanbefehl fehlt.')
+}
+if (!chatPublisherMigration.includes("status = 'active'") || !chatPublisherMigration.includes("'duplicate'::text") || !chatPublisherMigration.includes("'published'::text")) {
+  throw new Error('Der ChatGPT-Dienstplanbefehl prüft aktive Mitarbeiter, Duplikate oder Veröffentlichung nicht vollständig.')
+}
+
 const helperPath = 'netlify/functions/_shared/database-connection.mts'
 if (!fs.existsSync(helperPath)) {
   throw new Error('Gemeinsame Laufzeit-Datenbankverbindung fehlt.')
@@ -39,6 +65,13 @@ if (!fs.existsSync(helperPath)) {
 const helper = fs.readFileSync(helperPath, 'utf8')
 if (!helper.includes("from '@netlify/database'") || !helper.includes('getConnectionString')) {
   throw new Error('Die offizielle Netlify-Laufzeitverbindung wird nicht verwendet.')
+}
+
+const scheduleRepositoryPath = 'netlify/functions/_shared/schedule-neon-repository.mts'
+if (!fs.existsSync(scheduleRepositoryPath)) throw new Error('Dienstplan-Datenbankrepository fehlt.')
+const scheduleRepository = fs.readFileSync(scheduleRepositoryPath, 'utf8')
+if (!scheduleRepository.includes("from '@netlify/database'") || !scheduleRepository.includes('getDatabase')) {
+  throw new Error('Dienstplan nutzt nicht die offizielle Netlify-Datenbankverbindung.')
 }
 
 for (const functionPath of [

@@ -1,6 +1,7 @@
 import type { Config, Context } from "@netlify/functions";
 import { proxyToProductionBackend } from "./_shared/proxy.mts";
 import { requirePortalRole } from "./_shared/portal-role.mts";
+import { upsertScheduleEmployee, type ScheduleEmployee } from "./_shared/schedule-neon-repository.mts";
 
 type RateEntry = { count: number; resetAt: number };
 const attempts = new Map<string, RateEntry>();
@@ -35,7 +36,24 @@ export default async (request: Request, context: Context) => {
       );
     }
   }
-  return proxyToProductionBackend(request, "/api/registrations");
+
+  const upstream = await proxyToProductionBackend(request, "/api/registrations");
+  if (request.method === 'PATCH' && upstream.ok) {
+    const data = await upstream.clone().json().catch(() => null) as Record<string, unknown> | null;
+    const employee = data?.employee as Record<string, unknown> | undefined;
+    const role = String(employee?.role || data?.role || 'employee');
+    const allowedRoles = new Set(['owner', 'admin', 'manager', 'scheduler', 'employee']);
+    if (employee?.userId && employee?.fullName && allowedRoles.has(role)) {
+      await upsertScheduleEmployee({
+        userId: String(employee.userId),
+        fullName: String(employee.fullName),
+        role: role as ScheduleEmployee['role'],
+        status: 'active',
+        location: String(employee.location || ''),
+      });
+    }
+  }
+  return upstream;
 };
 
 export const config: Config = { path: "/api/registrations" };
