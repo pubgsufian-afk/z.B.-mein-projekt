@@ -45,6 +45,15 @@ async function mockPortal(page, actorRole, targetRole = 'employee', targetId = '
   await page.route('**/api/attendance**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ phase: 'idle', events: [], schedules: [], entries: [] }) }))
   return { user, getLastPatch: () => lastPatch }
 }
+async function navigate(page, label) {
+  const menu = page.getByRole('button', { name: 'Menü öffnen' })
+  if (await menu.isVisible().catch(() => false)) {
+    await menu.click()
+    await expect(page.locator('.sidebar')).toHaveClass(/open/)
+  }
+  await page.getByRole('button', { name: label, exact: true }).click()
+  await expect(page.locator('.topbar h1')).toHaveText(label)
+}
 async function openEmployees(page, actorRole, targetRole = 'employee', targetId = 'employee-adel') {
   const portal = await mockPortal(page, actorRole, targetRole, targetId)
   await mockIdentity(page, portal.user)
@@ -52,10 +61,7 @@ async function openEmployees(page, actorRole, targetRole = 'employee', targetId 
   await page.getByLabel('E-Mail-Adresse').fill(portal.user.email)
   await page.getByLabel('Passwort').fill('TestPasswort123!')
   await page.getByRole('button', { name: 'Sicher anmelden' }).click()
-  const menu = page.getByRole('button', { name: 'Menü öffnen' })
-  if (await menu.isVisible().catch(() => false)) await menu.click()
-  await page.getByRole('button', { name: 'Mitarbeiter', exact: true }).click()
-  await expect(page.locator('.topbar h1')).toHaveText('Mitarbeiter')
+  await navigate(page, 'Mitarbeiter')
   return portal
 }
 
@@ -93,9 +99,7 @@ test('Hauptadmin own account stays protected', async ({ page }) => {
   await page.getByLabel('E-Mail-Adresse').fill(portal.user.email)
   await page.getByLabel('Passwort').fill('TestPasswort123!')
   await page.getByRole('button', { name: 'Sicher anmelden' }).click()
-  const menu = page.getByRole('button', { name: 'Menü öffnen' })
-  if (await menu.isVisible().catch(() => false)) await menu.click()
-  await page.getByRole('button', { name: 'Mitarbeiter', exact: true }).click()
+  await navigate(page, 'Mitarbeiter')
   await expect(page.getByText('Hauptadmin ist geschützt.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Konto deaktivieren' })).toHaveCount(0)
 })
