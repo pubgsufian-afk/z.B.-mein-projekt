@@ -2,13 +2,13 @@ import type { Config, Context } from "@netlify/functions";
 import { getStore } from '@netlify/blobs';
 import { verifyRequestOrigin } from '@netlify/identity';
 import { proxyToProductionBackend } from "./_shared/proxy.mts";
+import { employeeManagementPolicy, type EmployeeManagementAction } from './_shared/employee-management-policy.mts';
 import { requirePortalRole } from "./_shared/portal-role.mts";
 import { deactivateScheduleEmployee } from './_shared/schedule-employee-management.mts';
 import { upsertScheduleEmployee, type ScheduleEmployee } from "./_shared/schedule-neon-repository.mts";
 
 type RateEntry = { count: number; resetAt: number };
 type AccessRole = 'owner' | 'admin' | 'manager' | 'employee' | 'pending';
-type ManagementAction = 'update-role' | 'deactivate-account';
 type AccessRecord = {
   userId?: string;
   role?: AccessRole;
@@ -25,29 +25,6 @@ const attempts = new Map<string, RateEntry>();
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
 const ASSIGNABLE_ROLES = new Set(['employee', 'manager', 'admin']);
-
-export function employeeManagementPolicy(input: {
-  actorRole: string;
-  actorUserId: string;
-  targetRole: string;
-  targetUserId: string;
-  action: ManagementAction;
-  requestedRole?: string;
-}) {
-  if (!['owner', 'admin'].includes(input.actorRole)) {
-    return { allowed: false, status: 403, message: 'Nur Hauptadmin oder Admin dürfen Mitarbeiterkonten verwalten.' };
-  }
-  if (input.targetRole === 'owner' || (input.actorRole === 'owner' && input.actorUserId === input.targetUserId)) {
-    return { allowed: false, status: 403, message: 'Der Hauptadmin ist geschützt und kann nicht verändert oder deaktiviert werden.' };
-  }
-  if (input.actorRole === 'admin' && input.targetRole === 'admin') {
-    return { allowed: false, status: 403, message: 'Nur Hauptadmin darf Admin-Konten ändern oder deaktivieren.' };
-  }
-  if (input.action === 'update-role' && input.requestedRole === 'admin' && input.actorRole !== 'owner') {
-    return { allowed: false, status: 403, message: 'Nur Hauptadmin darf weitere Admins bestimmen.' };
-  }
-  return { allowed: true, status: 200, message: '' };
-}
 
 function allowRegistration(context: Context) {
   const key = context.ip || "unknown";
@@ -117,7 +94,7 @@ async function manageActiveEmployee(
   if (!access.current) return json({ message: 'Nicht angemeldet.' }, 401);
   try { verifyRequestOrigin(request); } catch { return json({ message: 'Ungültige Anfragequelle.' }, 403); }
 
-  const action = String(body.action || '') as ManagementAction;
+  const action = String(body.action || '') as EmployeeManagementAction;
   const id = String(body.id || '').trim();
   const requestedRole = String(body.role || '').trim();
   if (!id || !['update-role', 'deactivate-account'].includes(action)) {
