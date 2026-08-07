@@ -69,15 +69,46 @@ await assert.rejects(() => service.record(employee, { ...clockInPayload, clientE
 
 const clockOut = await service.record(employee, {
   action: 'clock-out', clientEventId: 'client-3', clientOccurredAt: '2026-08-06T17:00:00.000Z',
-  objectId: 'outside-site', scheduleId: 'shift-1', offlineCaptured: true,
+  objectId: 'inside-site', scheduleId: 'shift-1', offlineCaptured: false,
   location: { latitude: 52.375, longitude: 9.732, accuracyMeters: 20 },
 })
-assert.equal(clockOut.event.locationStatus, 'outside')
-assert.equal(clockOut.event.offlineCaptured, true)
+assert.equal(clockOut.event.locationStatus, 'inside')
 
-const state = await service.getState(employee)
+let state = await service.getState(employee)
 assert.equal(state.phase, 'completed')
 assert.equal(state.events.length, 2)
+
+const restart = await service.record(employee, {
+  action: 'clock-in', clientEventId: 'client-4', clientOccurredAt: '2026-08-06T17:05:00.000Z',
+  objectId: 'inside-site', scheduleId: 'shift-1', offlineCaptured: false,
+  location: { latitude: 52.375, longitude: 9.732, accuracyMeters: 10 },
+})
+assert.equal(restart.event.action, 'clock-in')
+state = await service.getState(employee)
+assert.equal(state.phase, 'working')
+assert.equal(state.events.length, 3)
+
+await assert.rejects(() => service.record(employee, {
+  action: 'clock-out', clientEventId: 'client-5', clientOccurredAt: '2026-08-06T17:10:00.000Z',
+  objectId: 'outside-site', scheduleId: 'shift-1', offlineCaptured: false,
+  location: { latitude: 52.375, longitude: 9.732, accuracyMeters: 15 },
+}), (error) => error?.code === 'OUTSIDE_WORKSITE')
+
+await assert.rejects(() => service.record(employee, {
+  action: 'clock-out', clientEventId: 'client-6', clientOccurredAt: '2026-08-06T17:11:00.000Z',
+  objectId: 'missing', scheduleId: 'shift-1', offlineCaptured: false, location: null,
+}), (error) => error?.code === 'WORKSITE_LOCATION_REQUIRED')
+
+const finalClockOut = await service.record(employee, {
+  action: 'clock-out', clientEventId: 'client-7', clientOccurredAt: '2026-08-06T17:12:00.000Z',
+  objectId: 'inside-site', scheduleId: 'shift-1', offlineCaptured: false,
+  location: { latitude: 52.375, longitude: 9.732, accuracyMeters: 12 },
+})
+assert.equal(finalClockOut.event.locationStatus, 'inside')
+state = await service.getState(employee)
+assert.equal(state.phase, 'completed')
+assert.equal(state.events.length, 4)
+
 await assert.rejects(() => service.getHistory(employee, { userId: 'employee-1' }), /Keine Berechtigung/)
 assert.deepEqual(await service.getHistory(manager, { userId: 'employee-1' }), { entries: repository.events })
 
@@ -86,9 +117,12 @@ const service2 = createAttendanceService({ repository: repository2, now: () => n
 await assert.rejects(() => service2.record(employee, {
   action: 'clock-out', clientEventId: 'client-x', clientOccurredAt: '2026-08-06T08:00:00.000Z', location: null,
 }), /Arbeitsende ohne Arbeitsbeginn/)
-const unavailable = await service2.record(employee, {
+await assert.rejects(() => service2.record(employee, {
   action: 'clock-in', clientEventId: 'client-y', clientOccurredAt: '2026-08-06T08:00:00.000Z', objectId: 'missing', location: null,
-})
-assert.equal(unavailable.event.locationStatus, 'unavailable')
+}), (error) => error?.code === 'WORKSITE_LOCATION_REQUIRED')
+await assert.rejects(() => service2.record(employee, {
+  action: 'clock-in', clientEventId: 'client-z', clientOccurredAt: '2026-08-06T08:00:00.000Z', objectId: 'outside-site',
+  location: { latitude: 52.375, longitude: 9.732, accuracyMeters: 10 },
+}), (error) => error?.code === 'OUTSIDE_WORKSITE')
 
-console.log('Attendance API contract tests passed · 25 assertions')
+console.log('Attendance API contract tests passed · strict worksite + repeat clocking')
