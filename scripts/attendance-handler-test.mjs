@@ -5,6 +5,7 @@ import {
   displayAttendancePhase,
   plannedSchedules,
   resolvePortalRole,
+  resolveScheduleWorksiteObjectId,
   selectPlannedSchedule,
 } from '../netlify/functions/attendance.mts'
 
@@ -33,6 +34,14 @@ assert.equal(selectPlannedSchedule(schedules, 'user-1', '2026-08-06', null, '202
 assert.equal(selectPlannedSchedule(schedules, 'user-1', '2026-08-06', null, '2026-08-06T17:30:00.000Z').id, 'shift-b')
 assert.equal(selectPlannedSchedule(schedules, 'user-1', '2026-08-07', null), null)
 
+const sites = [
+  { id: 'site-new', name: 'Abbott Laboratories GmbH', address: 'Werk 1' },
+  { id: 'site-other', name: 'Objekt Süd', address: 'Werk 2' },
+]
+assert.equal(resolveScheduleWorksiteObjectId({ objectId: 'site-new', location: 'Abbott Laboratories GmbH' }, sites), 'site-new')
+assert.equal(resolveScheduleWorksiteObjectId({ objectId: 'site-old', location: 'Abbott Laboratories GmbH' }, sites), 'site-new', 'stale shift object id must rebind by current worksite name')
+assert.equal(resolveScheduleWorksiteObjectId({ objectId: 'site-old', location: 'Unbekannt' }, sites), 'site-old', 'unknown location keeps original id')
+
 const fourteenToTwentyTwo = { id: 'shift-14-22', date: '2026-08-07', start: '14:00', end: '22:00' }
 assert.equal(clockingWindowForSchedule(fourteenToTwentyTwo, '2026-08-07T10:59:00.000Z').allowed, false, '12:59 Berlin must still be blocked')
 assert.equal(clockingWindowForSchedule(fourteenToTwentyTwo, '2026-08-07T11:00:00.000Z').allowed, true, '13:00 Berlin must open one hour before shift start')
@@ -54,4 +63,4 @@ assert.equal(markers.enforcesScheduleWindow, true)
 assert.equal(markers.reopensCompletedShift, true)
 assert.equal(markers.requiresInsideWorksite, true)
 
-console.log('Attendance handler tests passed · 28 assertions')
+console.log('Attendance handler tests passed · stale worksite rebinding covered')
