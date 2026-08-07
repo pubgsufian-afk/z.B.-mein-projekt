@@ -89,7 +89,7 @@ if (await patch('netlify/functions/attendance.mts', [
 
         const { getStore } = await import('@netlify/blobs')
         const scheduleStore = getStore({ name: 'portal-schedule-v2', consistency: 'strong' })
-        const stored = await scheduleStore.get(`objects/${objectId}`, { type: 'json' }) as Record<string, unknown> | null
+        const stored = await scheduleStore.get('objects/' + objectId, { type: 'json' }) as Record<string, unknown> | null
         if (!stored) return fromDatabase
         const latitude = stored.latitude === '' || stored.latitude == null ? null : Number(stored.latitude)
         const longitude = stored.longitude === '' || stored.longitude == null ? null : Number(stored.longitude)
