@@ -16,12 +16,6 @@ if (!schedulerBlock.includes(uniqueHeading)) {
   schedulerBlock = schedulerBlock.replace(genericHeading, uniqueHeading)
 }
 browserSource = beforeScheduler + schedulerBlock + afterScheduler
-
-const preparedTitle = "role === 'employee' ? 'Stempeluhr' : role === 'scheduler' ? 'Dienstplan' : 'Übersicht'"
-const preparationMarker = "role === 'employee' ? 'Stempeluhr' : 'Übersicht'"
-if (browserSource.includes(preparedTitle)) {
-  browserSource = browserSource.replace(preparedTitle, preparationMarker)
-}
 await writeFile(appPath, browserSource)
 
 const preparationPath = 'scripts/prepare-unified-e2e.mjs'
