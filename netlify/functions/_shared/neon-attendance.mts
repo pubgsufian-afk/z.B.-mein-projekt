@@ -39,6 +39,7 @@ export function mapAttendanceEventRow(row: Record<string, unknown>) {
   const latitude = numberOrNull(row.latitude)
   const longitude = numberOrNull(row.longitude)
   const accuracyMeters = numberOrNull(row.accuracy_meters)
+  const pauseMinutesAdjustment = numberOrNull(row.pause_minutes_adjustment)
   return {
     id: String(row.id),
     userId: String(row.user_id),
@@ -51,6 +52,7 @@ export function mapAttendanceEventRow(row: Record<string, unknown>) {
     objectId: textOrNull(row.object_id),
     locationStatus: String(row.location_status),
     offlineCaptured: Boolean(row.offline_captured),
+    ...(pauseMinutesAdjustment !== null ? { pauseMinutesAdjustment } : {}),
     location: latitude !== null && longitude !== null && accuracyMeters !== null
       ? { latitude, longitude, accuracyMeters, distanceMeters: numberOrNull(row.distance_meters) }
       : null,
@@ -81,9 +83,17 @@ const EVENT_SELECT = `
   SELECT e.id, e.user_id, e.client_event_id, e.action,
          e.server_occurred_at, e.client_occurred_at, e.event_date,
          e.schedule_id, e.object_id, e.location_status, e.offline_captured,
+         a.pause_minutes AS pause_minutes_adjustment,
          l.latitude, l.longitude, l.accuracy_meters, l.distance_meters
   FROM attendance_events e
   LEFT JOIN attendance_locations l ON l.event_id = e.id
+  LEFT JOIN LATERAL (
+    SELECT adjustment.pause_minutes
+      FROM attendance_adjustments adjustment
+     WHERE adjustment.event_id = e.id
+     ORDER BY adjustment.occurred_at DESC, adjustment.id DESC
+     LIMIT 1
+  ) a ON true
 `
 
 export async function createAttendanceRepository(connectionString: string) {
