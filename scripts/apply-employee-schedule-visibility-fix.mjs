@@ -21,7 +21,9 @@ if (!app.includes('const employeeSessionUserId = session.userId || session.id'))
 
 const browserPath = 'tests/e2e/unified-portal.spec.mjs'
 let browser = await readFile(browserPath, 'utf8')
-if (!browser.includes("role === 'employee' ? { id: 'employee-anna'")) {
+const employeeIdOnlyMockApplied = browser.includes("body: JSON.stringify(role === 'employee'")
+  && browser.includes("? { id: 'employee-anna', email: 'anna@example.test'")
+if (!employeeIdOnlyMockApplied) {
   const oldSession = `    body: JSON.stringify({ userId: role === 'employee' ? 'employee-anna' : 'admin-1', email: role === 'employee' ? 'anna@example.test' : 'admin@example.test', fullName: role === 'employee' ? 'Anna Beispiel' : 'Test Admin', role, employeeCount: employees.length, location: 'Objekt Nord' }),`
   const newSession = `    body: JSON.stringify(role === 'employee'\n      ? { id: 'employee-anna', email: 'anna@example.test', fullName: 'Anna Beispiel', role, employeeCount: employees.length, location: 'Objekt Nord' }\n      : { userId: 'admin-1', email: 'admin@example.test', fullName: 'Test Admin', role, employeeCount: employees.length, location: 'Objekt Nord' }),`
   assert.ok(browser.includes(oldSession), 'Browser-Session-Mock-Marker fehlt.')
