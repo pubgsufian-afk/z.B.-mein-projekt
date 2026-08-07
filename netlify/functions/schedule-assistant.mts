@@ -103,7 +103,7 @@ async function activePortalEmployees(): Promise<AssistantDirectoryEmployee[]> {
 
   let employees: AssistantDirectoryEmployee[] = []
   try {
-    const users = await admin.listUsers()
+    const users = await admin.listUsers({ page: 1, perPage: 1000 })
     employees = mergeScheduleIdentityDirectory(
       users as ScheduleIdentityUser[],
       combinedAccess,
