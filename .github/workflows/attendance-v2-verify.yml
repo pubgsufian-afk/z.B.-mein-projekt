@@ -35,5 +35,6 @@ jobs:
           path: |
             artifacts/unified-preview
             public/habun-logo.png
+            test-results
           if-no-files-found: error
           retention-days: 7
