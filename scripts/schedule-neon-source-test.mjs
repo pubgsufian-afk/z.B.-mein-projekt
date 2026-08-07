@@ -2,8 +2,9 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { mapScheduleShiftRow } from '../netlify/functions/_shared/schedule-neon-repository.mts'
 
-const [migration, repository, schedule, legacy, assist, directory, registrations, pdf] = await Promise.all([
+const [migration, chatMigration, repository, schedule, legacy, assist, directory, registrations, pdf] = await Promise.all([
   readFile('netlify/database/migrations/20260807160500_create-schedule-schema/migration.sql', 'utf8'),
+  readFile('netlify/database/migrations/20260807162500_add-chat-schedule-publisher/migration.sql', 'utf8'),
   readFile('netlify/functions/_shared/schedule-neon-repository.mts', 'utf8'),
   readFile('netlify/functions/schedule-v2-neon.mts', 'utf8'),
   readFile('netlify/functions/schedule-v2.mts', 'utf8'),
@@ -18,13 +19,13 @@ for (const table of ['schedule_employees', 'schedule_shifts', 'schedule_versions
 }
 assert.match(migration, /CREATE UNIQUE INDEX schedule_shifts_exact_duplicate_idx/)
 assert.match(migration, /source IN \('portal', 'chatgpt', 'legacy-blob'\)/)
-assert.match(migration, /CREATE OR REPLACE FUNCTION portal_publish_chat_shift/)
-assert.match(migration, /status = 'active'/)
-assert.match(migration, /RETURN QUERY SELECT 'duplicate'::text/)
-assert.match(migration, /RETURN QUERY SELECT 'published'::text/)
-assert.match(migration, /'shift-published'/)
-assert.match(migration, /'chatgpt'/)
-assert.match(migration, /p_pause_minutes integer DEFAULT 0/)
+assert.match(chatMigration, /CREATE OR REPLACE FUNCTION portal_publish_chat_shift/)
+assert.match(chatMigration, /status = 'active'/)
+assert.match(chatMigration, /RETURN QUERY SELECT 'duplicate'::text/)
+assert.match(chatMigration, /RETURN QUERY SELECT 'published'::text/)
+assert.match(chatMigration, /'shift-published'/)
+assert.match(chatMigration, /'chatgpt'/)
+assert.match(chatMigration, /p_pause_minutes integer DEFAULT 0/)
 
 assert.match(repository, /from '@netlify\/database'/)
 assert.match(repository, /findExactScheduleDuplicate/)
