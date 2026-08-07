@@ -4,31 +4,37 @@ import { readFile, writeFile } from 'node:fs/promises'
 const reportPath = 'netlify/functions/unified-reports-fixed.mts'
 let report = await readFile(reportPath, 'utf8')
 
-if (!report.includes('async function loadExcelLogoBytes(request: Request)')) {
+if (!report.includes("import { EXPORT_LOGO_PNG_BASE64 } from './_shared/export-logo.mts'")) {
+  const marker = "import { readCompanySettings } from './_shared/company-settings.mts'\n"
+  assert.ok(report.includes(marker), 'Firmen-Einstellungen-Import fehlt.')
+  report = report.replace(marker, `${marker}import { EXPORT_LOGO_PNG_BASE64 } from './_shared/export-logo.mts'\n`)
+}
+
+if (!report.includes('async function loadExcelLogoBytes()')) {
   const marker = '\nasync function buildExcel(rows: ReportRow[], from: string, to: string) {'
   assert.ok(report.includes(marker), 'Excel-Builder-Marker fehlt.')
-  const helper = `\nasync function loadExcelLogoBytes(request: Request) {\n  try {\n    const response = await fetch(new URL('/habun-logo.png', request.url), { cache: 'no-store' })\n    if (!response.ok) return null\n    return Buffer.from(await response.arrayBuffer())\n  } catch {\n    return null\n  }\n}\n\nasync function buildExcel(request: Request, rows: ReportRow[], from: string, to: string) {`
+  const helper = `\nasync function loadExcelLogoBytes() {\n  try {\n    return Buffer.from(EXPORT_LOGO_PNG_BASE64, 'base64')\n  } catch {\n    return null\n  }\n}\n\nasync function buildExcel(request: Request, rows: ReportRow[], from: string, to: string) {`
   report = report.replace(marker, helper)
 }
 
-if (!report.includes('const logoBytes = await loadExcelLogoBytes(request)')) {
+if (!report.includes('const logoBytes = await loadExcelLogoBytes()')) {
   const marker = "  workbook.created = new Date()\n  const sheet = workbook.addWorksheet('Arbeitszeiten', { views: [{ state: 'frozen', ySplit: 6 }] })\n"
   assert.ok(report.includes(marker), 'Excel-Arbeitsblatt-Marker fehlt.')
-  const replacement = `  workbook.created = new Date()\n  const logoBytes = await loadExcelLogoBytes(request)\n  const logoId = logoBytes ? workbook.addImage({ buffer: logoBytes, extension: 'png' }) : null\n  const sheet = workbook.addWorksheet('Arbeitszeiten', { views: [{ state: 'frozen', ySplit: 8 }] })\n  sheet.mergeCells('A1:J4')\n  sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF141414' } }\n  if (logoId !== null) sheet.addImage(logoId, { tl: { col: 2.35, row: 0.05 }, ext: { width: 360, height: 121 } })\n`
+  const replacement = `  workbook.created = new Date()\n  const logoBytes = await loadExcelLogoBytes()\n  const logoId = logoBytes ? workbook.addImage({ buffer: logoBytes, extension: 'png' }) : null\n  const sheet = workbook.addWorksheet('Arbeitszeiten', { views: [{ state: 'frozen', ySplit: 9 }] })\n  sheet.mergeCells('A1:J5')\n  if (logoId !== null) sheet.addImage(logoId, { tl: { col: 4.35, row: 0.15 }, ext: { width: 92, height: 100 } })\n`
   report = report.replace(marker, replacement)
 }
 
 if (!report.includes("sheet.addRow([clean(settings.companyName) || 'Habun Security']).font = { bold: true, size: 14 }")) {
   report = report.replace(
-    "  sheet.addRow([clean(settings.companyName) || 'Habun Security'])\n  sheet.addRow([clean(settings.phone), clean(settings.email), clean(settings.address)])\n  sheet.addRow([`Zeitraum ${from} bis ${to}`])\n  sheet.addRow([])\n  sheet.addRow(['Mitarbeiter', 'Datum', 'Plan Beginn', 'Plan Ende', 'Ist Beginn', 'Ist Ende', 'Pause Min.', 'Netto Std.', 'Einsatzort', 'Hinweis']).font = { bold: true }",
+    "  sheet.addRow([clean(settings.companyName) || 'Habun Security'])\n  sheet.addRow([clean(settings.phone), clean(settings.email)])\n  sheet.addRow([`Zeitraum ${from} bis ${to}`])\n  sheet.addRow([])\n  sheet.addRow(['Mitarbeiter', 'Datum', 'Plan Beginn', 'Plan Ende', 'Ist Beginn', 'Ist Ende', 'Pause Min.', 'Netto Std.', 'Einsatzort', 'Hinweis']).font = { bold: true }",
     "  sheet.addRow([clean(settings.companyName) || 'Habun Security']).font = { bold: true, size: 14 }\n  sheet.addRow([clean(settings.phone), clean(settings.email), clean(settings.address)])\n  sheet.addRow([`Zeitraum ${from} bis ${to}`])\n  sheet.addRow(['Mitarbeiter', 'Datum', 'Plan Beginn', 'Plan Ende', 'Ist Beginn', 'Ist Ende', 'Pause Min.', 'Netto Std.', 'Einsatzort', 'Hinweis']).font = { bold: true }",
   )
 }
 
-if (!report.includes("sumSheet.mergeCells('A1:B4')")) {
+if (!report.includes("sumSheet.mergeCells('A1:B5')")) {
   const marker = "  const sumSheet = workbook.addWorksheet('Summen')\n"
   assert.ok(report.includes(marker), 'Excel-Summenblatt-Marker fehlt.')
-  report = report.replace(marker, `${marker}  sumSheet.mergeCells('A1:B4')\n  sumSheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF141414' } }\n  if (logoId !== null) sumSheet.addImage(logoId, { tl: { col: 0.35, row: 0.05 }, ext: { width: 250, height: 84 } })\n`)
+  report = report.replace(marker, `${marker}  sumSheet.mergeCells('A1:B5')\n  if (logoId !== null) sumSheet.addImage(logoId, { tl: { col: 0.68, row: 0.15 }, ext: { width: 92, height: 100 } })\n`)
   report = report.replace(
     "  sumSheet.addRow([clean(settings.companyName) || 'Habun Security', 'Stundensummen'])\n  sumSheet.addRow([`Zeitraum ${from} bis ${to}`])\n  sumSheet.addRow([])\n  sumSheet.addRow(['Mitarbeiter', 'Stunden']).font = { bold: true }",
     "  sumSheet.addRow([clean(settings.companyName) || 'Habun Security', 'Stundensummen']).font = { bold: true, size: 14 }\n  sumSheet.addRow([clean(settings.phone), clean(settings.email)])\n  sumSheet.addRow([clean(settings.address), `Zeitraum ${from} bis ${to}`])\n  sumSheet.addRow(['Mitarbeiter', 'Stunden']).font = { bold: true }",
