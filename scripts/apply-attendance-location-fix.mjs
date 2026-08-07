@@ -17,6 +17,17 @@ const changed = []
 
 if (await patch('netlify/functions/_shared/attendance-service.mts', [
   {
+    from: `      const classification = boundaryAction
+        ? classifyLocation(distanceMeters, configured, available, object?.radiusMeters ?? 500)
+        : { status: 'unavailable', distanceMeters: null }`,
+    to: `      const classification = boundaryAction
+        ? classifyLocation(distanceMeters, configured, available, object?.radiusMeters ?? 500, payload.location?.accuracyMeters ?? 0)
+        : {
+            status: 'unavailable', configured: false, available: false, distanceMeters: null,
+            radiusMeters: 0, accuracyMeters: 0, accuracyToleranceMeters: 0, allowedDistanceMeters: 0,
+          }`,
+  },
+  {
     from: `      if (boundaryAction && classification.status !== 'inside') {
         if (!configured || !available) {
           throw new AttendanceServiceError(
@@ -46,8 +57,12 @@ if (await patch('netlify/functions/_shared/attendance-service.mts', [
             'DEVICE_LOCATION_REQUIRED',
           )
         }
+        const distanceText = Math.round(Number(classification.distanceMeters) || 0)
+        const accuracyText = Math.round(Number(classification.accuracyMeters) || 0)
+        const radiusText = Math.round(Number(classification.radiusMeters) || 0)
+        const allowedText = Math.round(Number(classification.allowedDistanceMeters) || radiusText)
         throw new AttendanceServiceError(
-          'Du befindest dich außerhalb des gespeicherten Einsatzortes. Die Zeitbuchung wurde nicht ausgeführt.',
+          \`Du befindest dich außerhalb des gespeicherten Einsatzortes. Entfernung: \${distanceText} m · GPS-Genauigkeit: ±\${accuracyText} m · Einsatzradius: \${radiusText} m · mit GPS-Toleranz erlaubt: \${allowedText} m. Die Zeitbuchung wurde nicht ausgeführt.\`,
           403,
           'OUTSIDE_WORKSITE',
         )
