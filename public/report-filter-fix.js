@@ -73,10 +73,12 @@
   function sync(select, widget) {
     const selected = [...select.selectedOptions]
     const summary = widget.querySelector('.habun-report-filter-summary')
-    if (summary) summary.textContent = selected.length ? `${selected.length} Mitarbeiter ausgewählt` : 'Alle Mitarbeiter'
+    const summaryText = selected.length ? `${selected.length} Mitarbeiter ausgewählt` : 'Alle Mitarbeiter'
+    if (summary && summary.textContent !== summaryText) summary.textContent = summaryText
     for (const button of widget.querySelectorAll('.habun-report-filter-option')) {
       const option = [...select.options].find((item) => item.value === button.dataset.value)
-      button.setAttribute('aria-checked', option?.selected ? 'true' : 'false')
+      const checked = option?.selected ? 'true' : 'false'
+      if (button.getAttribute('aria-checked') !== checked) button.setAttribute('aria-checked', checked)
     }
   }
 

@@ -27,6 +27,11 @@ const reportSource = await readFile('netlify/functions/unified-reports.mts', 'ut
 assert.match(reportSource, /attendanceEventNeedsReview/)
 assert.doesNotMatch(reportSource, /current\.events\.some\(\(event\) => event\.location_status !== 'inside' \|\| event\.offline_captured\)/)
 
+const reportFilterSource = await readFile('public/report-filter-fix.js', 'utf8')
+assert.match(reportFilterSource, /summary\.textContent !== summaryText/)
+assert.match(reportFilterSource, /button\.getAttribute\('aria-checked'\) !== checked/)
+assert.doesNotMatch(reportFilterSource, /if \(summary\) summary\.textContent = selected\.length/)
+
 const scheduleSource = await readFile('netlify/functions/schedule-v2.mts', 'utf8')
 assert.match(scheduleSource, /sameScheduleShift/)
 assert.match(scheduleSource, /if \(targetRows\.some\(\(entry\) => sameScheduleShift\(entry, copy\)\)\) continue/)
