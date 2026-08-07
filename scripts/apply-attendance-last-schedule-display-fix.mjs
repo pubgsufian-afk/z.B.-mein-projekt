@@ -5,10 +5,15 @@ const attendancePath = 'netlify/functions/attendance.mts'
 let attendance = await readFile(attendancePath, 'utf8')
 
 const oldFallback = `  const today = plannedSchedules(entries, userId, date)\n  return today.at(-1) || null\n}`
-const newFallback = `  const today = plannedSchedules(entries, userId, date)\n  if (today.length) return today.at(-1) || null\n  const previous = bounded\n    .filter((item) => item.bounds.endStamp < current.stamp)\n    .sort((left, right) => right.bounds.endStamp - left.bounds.endStamp)[0]\n  return previous?.entry || null\n}`
+const previousFallbackByEnd = `  const today = plannedSchedules(entries, userId, date)\n  if (today.length) return today.at(-1) || null\n  const previous = bounded\n    .filter((item) => item.bounds.endStamp < current.stamp)\n    .sort((left, right) => right.bounds.endStamp - left.bounds.endStamp)[0]\n  return previous?.entry || null\n}`
+const newFallback = `  const today = plannedSchedules(entries, userId, date)\n  if (today.length) return today.at(-1) || null\n  const previous = bounded\n    .filter((item) => item.bounds.endStamp < current.stamp)\n    .sort((left, right) => right.bounds.startStamp - left.bounds.startStamp)[0]\n  return previous?.entry || null\n}`
 if (!attendance.includes(newFallback)) {
-  assert.ok(attendance.includes(oldFallback), 'Fallback für den zuletzt geplanten Dienst wurde nicht gefunden.')
-  attendance = attendance.replace(oldFallback, newFallback)
+  if (attendance.includes(previousFallbackByEnd)) {
+    attendance = attendance.replace(previousFallbackByEnd, newFallback)
+  } else {
+    assert.ok(attendance.includes(oldFallback), 'Fallback für den zuletzt geplanten Dienst wurde nicht gefunden.')
+    attendance = attendance.replace(oldFallback, newFallback)
+  }
 }
 
 if (!attendance.includes('scheduleIsToday:')) {
