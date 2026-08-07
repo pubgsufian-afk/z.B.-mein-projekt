@@ -163,6 +163,22 @@ export function createAttendanceService({ repository, now = () => new Date(), ra
       const classification = boundaryAction
         ? classifyLocation(distanceMeters, configured, available, object?.radiusMeters ?? 500)
         : { status: 'unavailable', distanceMeters: null }
+
+      if (boundaryAction && classification.status !== 'inside') {
+        if (!configured || !available) {
+          throw new AttendanceServiceError(
+            'Arbeitsbeginn und Arbeitsende sind nur am gespeicherten Einsatzort mit verfügbarem Standort möglich.',
+            422,
+            'WORKSITE_LOCATION_REQUIRED',
+          )
+        }
+        throw new AttendanceServiceError(
+          'Du befindest dich außerhalb des gespeicherten Einsatzortes. Die Zeitbuchung wurde nicht ausgeführt.',
+          403,
+          'OUTSIDE_WORKSITE',
+        )
+      }
+
       const serverOccurredAt = now().toISOString()
       const eventId = `attendance:${randomUUID()}`
       const effectiveObjectId = boundaryAction ? object?.id || null : payload.objectId
