@@ -64,7 +64,7 @@ if (await patch('netlify/functions/_shared/attendance-service.mts', [
         const radiusText = Math.round(Number(classification.radiusMeters) || 0)
         const allowedText = Math.round(Number(classification.allowedDistanceMeters) || radiusText)
         throw new AttendanceServiceError(
-          `Du befindest dich außerhalb des gespeicherten Einsatzortes. Entfernung: ${distanceText} m · GPS-Genauigkeit: ±${accuracyText} m · Einsatzradius: ${radiusText} m · mit GPS-Toleranz erlaubt: ${allowedText} m. Die Zeitbuchung wurde nicht ausgeführt.`,
+          'Du befindest dich außerhalb des gespeicherten Einsatzortes. Entfernung: ' + distanceText + ' m · GPS-Genauigkeit: ±' + accuracyText + ' m · Einsatzradius: ' + radiusText + ' m · mit GPS-Toleranz erlaubt: ' + allowedText + ' m. Die Zeitbuchung wurde nicht ausgeführt.',
           403,
           'OUTSIDE_WORKSITE',
         )
