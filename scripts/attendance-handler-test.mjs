@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import {
   attendanceFunctionMarkers,
+  clockingWindowForSchedule,
+  displayAttendancePhase,
   plannedSchedules,
   resolvePortalRole,
   selectPlannedSchedule,
@@ -31,11 +33,25 @@ assert.equal(selectPlannedSchedule(schedules, 'user-1', '2026-08-06', null, '202
 assert.equal(selectPlannedSchedule(schedules, 'user-1', '2026-08-06', null, '2026-08-06T17:30:00.000Z').id, 'shift-b')
 assert.equal(selectPlannedSchedule(schedules, 'user-1', '2026-08-07', null), null)
 
+const fourteenToTwentyTwo = { id: 'shift-14-22', date: '2026-08-07', start: '14:00', end: '22:00' }
+assert.equal(clockingWindowForSchedule(fourteenToTwentyTwo, '2026-08-07T10:59:00.000Z').allowed, false, '12:59 Berlin must still be blocked')
+assert.equal(clockingWindowForSchedule(fourteenToTwentyTwo, '2026-08-07T11:00:00.000Z').allowed, true, '13:00 Berlin must open one hour before shift start')
+assert.equal(clockingWindowForSchedule(fourteenToTwentyTwo, '2026-08-07T20:00:00.000Z').allowed, true, '22:00 Berlin must still be allowed')
+assert.equal(clockingWindowForSchedule(fourteenToTwentyTwo, '2026-08-07T20:01:00.000Z').allowed, false, '22:01 Berlin must be blocked')
+assert.equal(clockingWindowForSchedule(null, '2026-08-07T12:00:00.000Z').code, 'NO_PUBLISHED_SHIFT')
+assert.equal(displayAttendancePhase('completed', fourteenToTwentyTwo, '2026-08-07T17:00:00.000Z'), 'idle', 'completed shift must reopen while its clocking window is active')
+assert.equal(displayAttendancePhase('completed', fourteenToTwentyTwo, '2026-08-07T20:01:00.000Z'), 'blocked')
+assert.equal(displayAttendancePhase('idle', fourteenToTwentyTwo, '2026-08-07T10:59:00.000Z'), 'blocked')
+assert.equal(displayAttendancePhase('working', fourteenToTwentyTwo, '2026-08-07T17:00:00.000Z'), 'working')
+
 const markers = attendanceFunctionMarkers()
 assert.equal(markers.verifiesRequestOrigin, true)
 assert.equal(markers.bindsScheduleServerSide, true)
 assert.equal(markers.employeeSelfScope, true)
 assert.equal(markers.liveManagementOnly, true)
 assert.equal(markers.multipleDailyShifts, true)
+assert.equal(markers.enforcesScheduleWindow, true)
+assert.equal(markers.reopensCompletedShift, true)
+assert.equal(markers.requiresInsideWorksite, true)
 
-console.log('Attendance handler tests passed · 16 assertions')
+console.log('Attendance handler tests passed · 28 assertions')
