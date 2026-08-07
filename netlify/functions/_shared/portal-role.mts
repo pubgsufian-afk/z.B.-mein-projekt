@@ -25,12 +25,15 @@ export async function currentPortalActor() {
   const direct = typeof (user as { role?: unknown }).role === 'string'
     ? [(user as { role: string }).role]
     : []
+  const accessBlocked = access?.status === 'inactive' || access?.status === 'rejected'
   const role = owners.has(email)
     ? 'owner'
-    : access?.status === 'active' && access.role && VALID_ROLES.has(access.role)
-      ? access.role
-      : ([...(user.roles || []), ...metadata, ...direct]
-          .find((value) => VALID_ROLES.has(value as PortalRole)) as PortalRole || 'pending')
+    : accessBlocked
+      ? 'pending'
+      : access?.status === 'active' && access.role && VALID_ROLES.has(access.role)
+        ? access.role
+        : ([...(user.roles || []), ...metadata, ...direct]
+            .find((value) => VALID_ROLES.has(value as PortalRole)) as PortalRole || 'pending')
 
   return { user, userId: user.id, email, role }
 }
