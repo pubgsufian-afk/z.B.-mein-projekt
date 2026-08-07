@@ -93,18 +93,18 @@ export async function createAttendanceRepository(connectionString: string) {
   const sql = neon(databaseUrl)
 
   async function findIdempotency(userId: string, clientEventId: string) {
-    const rows = await sql(`SELECT request_hash, response_data FROM attendance_idempotency WHERE user_id = $1 AND client_event_id = $2`, [userId, clientEventId])
+    const rows = await sql.query(`SELECT request_hash, response_data FROM attendance_idempotency WHERE user_id = $1 AND client_event_id = $2`, [userId, clientEventId])
     const row = rows[0]
     return row ? { requestHash: row.request_hash, response: row.response_data } : null
   }
 
   async function listEvents(userId: string) {
-    const rows = await sql(`${EVENT_SELECT} WHERE e.user_id = $1 ORDER BY e.client_occurred_at, e.server_occurred_at, e.id`, [userId])
+    const rows = await sql.query(`${EVENT_SELECT} WHERE e.user_id = $1 ORDER BY e.client_occurred_at, e.server_occurred_at, e.id`, [userId])
     return rows.map(mapAttendanceEventRow)
   }
 
   async function findObject(objectId: string) {
-    const rows = await sql(`SELECT id, latitude, longitude, accuracy_meters, radius_meters FROM attendance_objects WHERE id = $1`, [objectId])
+    const rows = await sql.query(`SELECT id, latitude, longitude, accuracy_meters, radius_meters FROM attendance_objects WHERE id = $1`, [objectId])
     return mapAttendanceObjectRow(rows[0] || null)
   }
 
@@ -135,7 +135,7 @@ export async function createAttendanceRepository(connectionString: string) {
       auditId,
     ]
 
-    const rows = await sql(
+    const rows = await sql.query(
       `WITH lock_user AS MATERIALIZED (
          SELECT pg_advisory_xact_lock(hashtext($1)) AS locked
        ),
@@ -245,7 +245,7 @@ export async function createAttendanceRepository(connectionString: string) {
 
   async function listHistory(rawFilters: Record<string, unknown> = {}) {
     const filters = normalizeAttendanceFilters(rawFilters)
-    const rows = await sql(
+    const rows = await sql.query(
       `${EVENT_SELECT}
        WHERE ($1::text IS NULL OR e.user_id = $1)
          AND ($2::date IS NULL OR e.event_date >= $2::date)
@@ -258,7 +258,7 @@ export async function createAttendanceRepository(connectionString: string) {
 
   async function listLive(rawFilters: Record<string, unknown> = {}) {
     const filters = normalizeAttendanceFilters(rawFilters)
-    const rows = await sql(
+    const rows = await sql.query(
       `${EVENT_SELECT}
        WHERE e.event_date = COALESCE($1::date, (now() AT TIME ZONE 'Europe/Berlin')::date)
          AND ($2::text IS NULL OR e.object_id = $2)
