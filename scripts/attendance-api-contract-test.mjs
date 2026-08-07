@@ -88,26 +88,30 @@ state = await service.getState(employee)
 assert.equal(state.phase, 'working')
 assert.equal(state.events.length, 3)
 
-await assert.rejects(() => service.record(employee, {
+const outsideClockOut = await service.record(employee, {
   action: 'clock-out', clientEventId: 'client-5', clientOccurredAt: '2026-08-06T17:10:00.000Z',
   objectId: 'outside-site', scheduleId: 'shift-1', offlineCaptured: false,
   location: { latitude: 52.375, longitude: 9.732, accuracyMeters: 15 },
-}), (error) => error?.code === 'OUTSIDE_WORKSITE')
-
-await assert.rejects(() => service.record(employee, {
-  action: 'clock-out', clientEventId: 'client-6', clientOccurredAt: '2026-08-06T17:11:00.000Z',
-  objectId: 'inside-site', scheduleId: 'shift-1', offlineCaptured: false, location: null,
-}), (error) => error?.code === 'DEVICE_LOCATION_REQUIRED')
-
-const finalClockOut = await service.record(employee, {
-  action: 'clock-out', clientEventId: 'client-7', clientOccurredAt: '2026-08-06T17:12:00.000Z',
-  objectId: 'inside-site', scheduleId: 'shift-1', offlineCaptured: false,
-  location: { latitude: 52.375, longitude: 9.732, accuracyMeters: 12 },
 })
-assert.equal(finalClockOut.event.locationStatus, 'inside')
+assert.equal(outsideClockOut.event.locationStatus, 'outside')
+assert.ok(Number(outsideClockOut.location.distanceMeters) > 500)
+
+const secondRestart = await service.record(employee, {
+  action: 'clock-in', clientEventId: 'client-6', clientOccurredAt: '2026-08-06T17:11:00.000Z',
+  objectId: 'inside-site', scheduleId: 'shift-1', offlineCaptured: false,
+  location: { latitude: 52.375, longitude: 9.732, accuracyMeters: 10 },
+})
+assert.equal(secondRestart.event.action, 'clock-in')
+
+const noLocationClockOut = await service.record(employee, {
+  action: 'clock-out', clientEventId: 'client-7', clientOccurredAt: '2026-08-06T17:12:00.000Z',
+  objectId: 'inside-site', scheduleId: 'shift-1', offlineCaptured: false, location: null,
+})
+assert.equal(noLocationClockOut.event.locationStatus, 'unavailable')
+assert.equal(noLocationClockOut.location, null)
 state = await service.getState(employee)
 assert.equal(state.phase, 'completed')
-assert.equal(state.events.length, 4)
+assert.equal(state.events.length, 6)
 
 await assert.rejects(() => service.getHistory(employee, { userId: 'employee-1' }), /Keine Berechtigung/)
 assert.deepEqual(await service.getHistory(manager, { userId: 'employee-1' }), { entries: repository.events })
@@ -126,4 +130,4 @@ await assert.rejects(() => service2.record(employee, {
   location: { latitude: 52.375, longitude: 9.732, accuracyMeters: 10 },
 }), (error) => error?.code === 'OUTSIDE_WORKSITE')
 
-console.log('Attendance API contract tests passed · strict worksite + repeat clocking + precise location errors')
+console.log('Attendance API contract tests passed · strict clock-in + flexible clock-out + repeat clocking')
