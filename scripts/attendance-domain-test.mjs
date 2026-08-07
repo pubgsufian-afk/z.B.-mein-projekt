@@ -14,6 +14,9 @@ assert.deepEqual(classifyLocation(500, true, true, 500), {
   available: true,
   distanceMeters: 500,
   radiusMeters: 500,
+  accuracyMeters: 0,
+  accuracyToleranceMeters: 0,
+  allowedDistanceMeters: 500,
 })
 
 assert.equal(classifyLocation(500.01, true, true, 500).status, 'outside')
@@ -69,4 +72,4 @@ assert.deepEqual(
   },
 )
 
-console.log('Attendance domain tests passed · 17 assertions')
+console.log('Attendance domain tests passed · GPS-aware location assertions included')

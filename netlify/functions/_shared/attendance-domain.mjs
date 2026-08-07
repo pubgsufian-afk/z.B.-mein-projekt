@@ -4,6 +4,7 @@ const AUDIT_KEYS = new Set([
 ])
 
 const ACTIONS = new Set(['clock-in', 'break-start', 'break-end', 'clock-out'])
+const LOCATION_ACCURACY_TOLERANCE_CAP_METERS = 250
 
 export function distanceMetersBetween(latitudeA, longitudeA, latitudeB, longitudeB) {
   const values = [latitudeA, longitudeA, latitudeB, longitudeB].map(Number)
@@ -19,17 +20,23 @@ export function distanceMetersBetween(latitudeA, longitudeA, latitudeB, longitud
   return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-export function classifyLocation(distanceMeters, configured, available, radiusMeters = 500) {
+export function classifyLocation(distanceMeters, configured, available, radiusMeters = 500, accuracyMeters = 0) {
   const radius = Number.isFinite(Number(radiusMeters)) && Number(radiusMeters) >= 0 ? Number(radiusMeters) : 500
   const distance = distanceMeters === null || distanceMeters === undefined ? null : Number(distanceMeters)
+  const accuracy = Number.isFinite(Number(accuracyMeters)) && Number(accuracyMeters) >= 0 ? Number(accuracyMeters) : 0
+  const accuracyTolerance = Math.min(accuracy, LOCATION_ACCURACY_TOLERANCE_CAP_METERS)
+  const allowedDistance = radius + accuracyTolerance
   const hasLocation = Boolean(available) && Number.isFinite(distance)
   const isConfigured = Boolean(configured)
   return {
-    status: isConfigured && hasLocation && distance <= radius ? 'inside' : isConfigured && hasLocation ? 'outside' : 'unavailable',
+    status: isConfigured && hasLocation && distance <= allowedDistance ? 'inside' : isConfigured && hasLocation ? 'outside' : 'unavailable',
     configured: isConfigured,
     available: hasLocation,
     distanceMeters: hasLocation ? distance : null,
     radiusMeters: radius,
+    accuracyMeters: accuracy,
+    accuracyToleranceMeters: accuracyTolerance,
+    allowedDistanceMeters: allowedDistance,
   }
 }
 
