@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import {
   mapAttendanceEventRow,
   mapAttendanceObjectRow,
@@ -39,4 +40,8 @@ assert.equal(markers.auditTrail, true)
 assert.equal(markers.locationExpiryMonths, 6)
 assert.equal(markers.attendanceExpiryMonths, 24)
 
-console.log('Attendance repository tests passed · 13 assertions')
+const repositorySource = await readFile(new URL('../netlify/functions/_shared/neon-attendance.mts', import.meta.url), 'utf8')
+assert.doesNotMatch(repositorySource, /await\s+sql\s*\(/, 'Neon serverless v1 darf nicht als normale Funktion sql(query, params) aufgerufen werden.')
+assert.match(repositorySource, /await\s+sql\.query\s*\(/, 'Dynamische Neon-Abfragen müssen sql.query(query, params) verwenden.')
+
+console.log('Attendance repository tests passed · 15 assertions')
