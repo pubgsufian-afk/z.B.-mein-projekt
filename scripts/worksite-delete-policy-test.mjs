@@ -11,7 +11,13 @@ assert.match(schedule, /Nur die Administration darf Einsatzorte löschen/)
 assert.match(schedule, /const key = `objects\/\$\{id\}`/)
 assert.match(schedule, /store\(\)\.delete\(key\)/)
 assert.doesNotMatch(schedule, /object-delete[\s\S]{0,1200}shifts\//)
-assert.match(app, /Einsatzort löschen/)
+
+assert.match(app, /function selectScheduleObject\(event\)/)
+assert.match(app, /objectId,/)
+assert.match(app, /location: object \? object\.name : ''/)
+assert.match(app, /onChange=\{selectScheduleObject\}/)
 assert.match(app, /Bezeichnung des Einsatzortes/)
+
+assert.match(app, /Einsatzort löschen/)
 
 console.log('Worksite delete and autofill policy tests passed')
