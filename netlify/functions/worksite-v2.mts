@@ -2,6 +2,7 @@ import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { getUser, verifyRequestOrigin } from '@netlify/identity'
 import { databaseConnectionString } from './_shared/database-connection.mts'
+import { resolveGoogleMapsLocation } from './_shared/google-maps-location.mts'
 
 type Role = 'owner' | 'admin' | 'manager' | 'employee' | 'pending'
 type AccessRecord = { role?: Role; status?: string } | null
@@ -42,6 +43,17 @@ export default async function worksiteV2(request: Request, _context: Context) {
   if (!['owner', 'admin'].includes(current.role)) return json({ message: 'Nur die Administration darf Einsatzort-Koordinaten ändern.' }, 403)
   const body = await request.json().catch(() => null) as Record<string, unknown> | null
   if (!body) return json({ message: 'Ungültige Anfrage.' }, 400)
+
+  if (String(body.action || '') === 'resolve-map') {
+    try {
+      const resolved = await resolveGoogleMapsLocation(String(body.url || ''))
+      return json(resolved)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Der Google-Maps-Link konnte nicht verarbeitet werden.'
+      return json({ message }, /Koordinaten/.test(message) ? 422 : 400)
+    }
+  }
+
   const id = String(body.id || crypto.randomUUID()).trim()
   const name = String(body.name || '').trim()
   const address = String(body.address || '').trim()
@@ -53,7 +65,7 @@ export default async function worksiteV2(request: Request, _context: Context) {
     ? Math.max(0, Number.isFinite(Number(body.accuracyMeters)) ? Number(body.accuracyMeters) : 0)
     : null
   const radiusMeters = Number(body.radiusMeters || 500)
-  if (!name || !address) return json({ message: 'Name und Adresse sind erforderlich.' }, 400)
+  if (!name) return json({ message: 'Der Name des Einsatzortes ist erforderlich.' }, 400)
   if (hasCoordinates && !coordinatesComplete) return json({ message: 'Breiten- und Längengrad müssen gemeinsam angegeben werden.' }, 400)
   if ((latitude !== null && (!Number.isFinite(latitude) || Math.abs(latitude) > 90)) || (longitude !== null && (!Number.isFinite(longitude) || Math.abs(longitude) > 180))) {
     return json({ message: 'Die Koordinaten sind ungültig.' }, 400)

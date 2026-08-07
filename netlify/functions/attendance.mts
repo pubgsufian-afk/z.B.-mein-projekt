@@ -96,6 +96,7 @@ export function displayAttendancePhase(
   schedule: ScheduleEntry | null | undefined,
   occurredAt: string | Date | null | undefined,
 ) {
+  if (phase === 'working' || phase === 'paused') return phase
   const window = clockingWindowForSchedule(schedule, occurredAt)
   if (!window.allowed) return 'blocked'
   if (phase === 'completed') return 'idle'
@@ -147,6 +148,7 @@ export function attendanceFunctionMarkers() {
     enforcesScheduleWindow: true,
     reopensCompletedShift: true,
     requiresInsideWorksite: true,
+    clockOutAllowedAfterShiftEnd: true,
   }
 }
 
@@ -241,7 +243,7 @@ function clockingDeniedError(window: ReturnType<typeof clockingWindowForSchedule
     )
   }
   return new AttendanceServiceError(
-    'Zeitbuchungen sind erst eine Stunde vor Dienstbeginn bis zum geplanten Dienstende möglich.',
+    'Der Arbeitsbeginn ist erst eine Stunde vor Dienstbeginn bis zum geplanten Dienstende möglich.',
     403,
     'OUTSIDE_SHIFT_WINDOW',
   )
@@ -324,8 +326,7 @@ export default async function attendance(request: Request, _context: Context) {
     const eventDate = eventDateInBerlin(serverNow)
     const schedules = await loadSchedules()
     const schedule = selectPlannedSchedule(schedules, actor.userId, eventDate, normalized.scheduleId, serverNow)
-    const boundaryAction = normalized.action === 'clock-in' || normalized.action === 'clock-out'
-    if (boundaryAction) {
+    if (normalized.action === 'clock-in') {
       const window = clockingWindowForSchedule(schedule, serverNow)
       if (!window.allowed) throw clockingDeniedError(window)
     }

@@ -49,7 +49,11 @@ if (source.includes('async function getLocation()')) {
 
 const oldAttendanceCall = `const location = needsLocation ? await getLocation() : null`
 const newAttendanceCall = `const location = needsLocation ? await requestCurrentDeviceLocation() : null`
-if (!source.includes(newAttendanceCall)) {
+const flexibleClockOutCall = source.includes("if (action === 'clock-in') {")
+  && source.includes('location = await requestCurrentDeviceLocation()')
+  && source.includes("else if (action === 'clock-out') {")
+  && source.includes('try { location = await requestCurrentDeviceLocation() } catch { location = null }')
+if (!source.includes(newAttendanceCall) && !flexibleClockOutCall) {
   assert.ok(source.includes(oldAttendanceCall), 'Standortaufruf der Zeiterfassung fehlt.')
   source = source.replace(oldAttendanceCall, newAttendanceCall)
   changed = true
@@ -78,7 +82,7 @@ if (captureFunction.test(source) && !source.includes('const location = await req
 }
 
 assert.ok(source.includes('function requestCurrentDeviceLocation()'), 'Gemeinsame Standortfunktion fehlt nach dem Patch.')
-assert.ok(source.includes(newAttendanceCall), 'Zeiterfassung nutzt die gemeinsame Standortfunktion nicht.')
+assert.ok(source.includes(newAttendanceCall) || flexibleClockOutCall, 'Zeiterfassung nutzt die gemeinsame Standortfunktion nicht.')
 assert.ok(source.includes('const location = await requestCurrentDeviceLocation()'), 'Einsatzort-Verwaltung nutzt die gemeinsame Standortfunktion nicht.')
 
 if (changed) await writeFile(path, source)

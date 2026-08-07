@@ -28,6 +28,10 @@ assert.match(app, /Standortzugriff[^\n]+nicht erlaubt/)
 
 assert.match(scheduleNeon, /attendance_objects/)
 assert.match(attendance, /portal-schedule-v2/)
-assert.match(attendance, /objects\/\$\{objectId\}/)
+assert.match(
+  attendance,
+  /scheduleStore\.get\((?:`objects\/\$\{objectId\}`|'objects\/'\s*\+\s*objectId)/,
+  'Attendance muss den aktuellen Einsatzort über objects/<objectId> nachladen.',
+)
 
 console.log('Worksite delete, geolocation and attendance sync policy tests passed')
