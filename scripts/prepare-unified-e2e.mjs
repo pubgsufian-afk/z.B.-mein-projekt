@@ -101,7 +101,7 @@ replaceOnce(
 )
 replaceOnce(
 "  await expect(page.getByTitle('PDF-Vorschau')).toBeVisible()",
-"  await expect(page.getByTitle('PDF-Vorschau')).toBeVisible()\n  if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/04-berichte-iphone.png', fullPage: true })",
+"  if (testInfo.project.name === 'iphone-chromium') {\n    await expect(page.locator('[data-ios-pdf-fallback=\\\"true\\\"]')).toBeVisible()\n    await expect(page.getByRole('link', { name: 'PDF öffnen' })).toBeVisible()\n  } else {\n    await expect(page.getByTitle('PDF-Vorschau')).toBeVisible()\n  }\n  if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/04-berichte-iphone.png', fullPage: true })",
 'reports screenshot',
 )
 replaceOnce(
