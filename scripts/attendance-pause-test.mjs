@@ -26,7 +26,8 @@ const [service, repository, migration] = await Promise.all([
   readFile('migrations/20260806_attendance_break_events.sql', 'utf8'),
 ])
 assert.match(service, /break-start.*break-end/s)
-assert.match(service, /boundaryAction/)
+assert.match(service, /locationAction/)
+assert.match(service, /requiresInsideWorksite/)
 assert.match(repository, /BREAK_MUST_END_FIRST/)
 assert.match(migration, /'clock-in', 'break-start', 'break-end', 'clock-out'/)
 
