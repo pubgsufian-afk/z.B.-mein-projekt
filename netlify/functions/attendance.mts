@@ -26,6 +26,7 @@ type ScheduleEntry = {
 }
 
 const VALID_ROLES = new Set<PortalRole>(['owner', 'admin', 'manager', 'employee', 'pending'])
+const CLOCKING_EARLY_MINUTES = 60
 
 export function resolvePortalRole({
   email,
@@ -63,7 +64,42 @@ function timeMinutes(value: string | Date | null | undefined) {
 
 function scheduleTime(value: string | undefined) {
   const [hour, minute] = String(value || '').split(':').map(Number)
-  return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : null
+  return Number.isFinite(hour) && Number.isFinite(minute) && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59
+    ? hour * 60 + minute
+    : null
+}
+
+export function clockingWindowForSchedule(
+  entry: ScheduleEntry | null | undefined,
+  occurredAt: string | Date | null | undefined,
+  earlyMinutes = CLOCKING_EARLY_MINUTES,
+) {
+  if (!entry) return { allowed: false, code: 'NO_PUBLISHED_SHIFT', opensAtMinute: null, closesAtMinute: null }
+  const currentMinute = timeMinutes(occurredAt)
+  const start = scheduleTime(entry.start)
+  const end = scheduleTime(entry.end)
+  const early = Number.isFinite(Number(earlyMinutes)) && Number(earlyMinutes) >= 0 ? Math.round(Number(earlyMinutes)) : CLOCKING_EARLY_MINUTES
+  if (currentMinute === null || start === null || end === null) {
+    return { allowed: false, code: 'INVALID_SHIFT_WINDOW', opensAtMinute: null, closesAtMinute: null }
+  }
+
+  const opensAtMinute = (start - early + 1440) % 1440
+  const wrapsMidnight = end < start || start < early
+  const allowed = wrapsMidnight
+    ? currentMinute >= opensAtMinute || currentMinute <= end
+    : currentMinute >= opensAtMinute && currentMinute <= end
+  return { allowed, code: allowed ? 'CLOCKING_ALLOWED' : 'OUTSIDE_SHIFT_WINDOW', opensAtMinute, closesAtMinute: end }
+}
+
+export function displayAttendancePhase(
+  phase: string | null | undefined,
+  schedule: ScheduleEntry | null | undefined,
+  occurredAt: string | Date | null | undefined,
+) {
+  const window = clockingWindowForSchedule(schedule, occurredAt)
+  if (!window.allowed) return 'blocked'
+  if (phase === 'completed') return 'idle'
+  return phase || 'idle'
 }
 
 export function plannedSchedules(entries: ScheduleEntry[], userId: string, date: string) {
@@ -108,6 +144,9 @@ export function attendanceFunctionMarkers() {
     scheduleV2First: true,
     currentDayScope: true,
     multipleDailyShifts: true,
+    enforcesScheduleWindow: true,
+    reopensCompletedShift: true,
+    requiresInsideWorksite: true,
   }
 }
 
@@ -193,6 +232,21 @@ function enrichLiveEntries(entries: Array<Record<string, unknown>>, schedules: S
   })
 }
 
+function clockingDeniedError(window: ReturnType<typeof clockingWindowForSchedule>) {
+  if (window.code === 'NO_PUBLISHED_SHIFT') {
+    return new AttendanceServiceError(
+      'Für heute ist kein freigegebener Dienst hinterlegt. Eine Zeitbuchung ist deshalb nicht möglich.',
+      403,
+      'NO_PUBLISHED_SHIFT',
+    )
+  }
+  return new AttendanceServiceError(
+    'Zeitbuchungen sind erst eine Stunde vor Dienstbeginn bis zum geplanten Dienstende möglich.',
+    403,
+    'OUTSIDE_SHIFT_WINDOW',
+  )
+}
+
 export default async function attendance(request: Request, _context: Context) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204 })
   if (!['GET', 'POST'].includes(request.method)) return response({ message: 'Methode nicht erlaubt.' }, 405)
@@ -212,14 +266,30 @@ export default async function attendance(request: Request, _context: Context) {
       const resource = url.searchParams.get('resource') || 'state'
       if (resource === 'state') {
         const state = await service.getState(actor)
-        if (actor.role === 'employee') return response({ phase: state.phase })
         const schedules = await loadSchedules()
         const now = new Date()
         const today = eventDateInBerlin(now)
         const requestedScheduleId = url.searchParams.get('scheduleId')
         const candidates = plannedSchedules(schedules, actor.userId, today)
         const schedule = selectPlannedSchedule(schedules, actor.userId, today, requestedScheduleId, now)
-        return response({ ...state, schedule: schedulePayload(schedule), schedules: candidates.map((entry) => schedulePayload(entry)) })
+        const clocking = clockingWindowForSchedule(schedule, now)
+        const visiblePhase = displayAttendancePhase(state.phase, schedule, now)
+        if (actor.role === 'employee') {
+          return response({
+            phase: visiblePhase,
+            rawPhase: state.phase,
+            schedule: schedulePayload(schedule),
+            clocking,
+          })
+        }
+        return response({
+          ...state,
+          phase: visiblePhase,
+          rawPhase: state.phase,
+          schedule: schedulePayload(schedule),
+          schedules: candidates.map((entry) => schedulePayload(entry)),
+          clocking,
+        })
       }
       if (resource === 'history') {
         if (actor.role === 'employee') return response({ message: 'Keine Berechtigung.', code: 'FORBIDDEN' }, 403)
@@ -250,9 +320,15 @@ export default async function attendance(request: Request, _context: Context) {
     if (body.resource) return response({ message: 'Diese Aktion ist noch nicht verfügbar.' }, 400)
 
     const normalized = normalizeClockRequest(body)
-    const eventDate = eventDateInBerlin(normalized.clientOccurredAt)
+    const serverNow = new Date()
+    const eventDate = eventDateInBerlin(serverNow)
     const schedules = await loadSchedules()
-    const schedule = selectPlannedSchedule(schedules, actor.userId, eventDate, normalized.scheduleId, normalized.clientOccurredAt)
+    const schedule = selectPlannedSchedule(schedules, actor.userId, eventDate, normalized.scheduleId, serverNow)
+    const boundaryAction = normalized.action === 'clock-in' || normalized.action === 'clock-out'
+    if (boundaryAction) {
+      const window = clockingWindowForSchedule(schedule, serverNow)
+      if (!window.allowed) throw clockingDeniedError(window)
+    }
     const safeBody = { ...body, scheduleId: schedule?.id || null, objectId: schedule?.objectId || null }
     const recorded = await service.record(actor, safeBody)
     return response(actor.role === 'employee' ? { saved: true, action: normalized.action } : recorded, 201)
