@@ -104,9 +104,11 @@ async function activePortalEmployees(requestedNames: string[] = []): Promise<Ass
   const owners = ownerEmails()
 
   let identityUsers: ScheduleIdentityUser[] = []
+  let identityLookupSucceeded = false
   let employees: AssistantDirectoryEmployee[] = []
   try {
     identityUsers = await admin.listUsers() as ScheduleIdentityUser[]
+    identityLookupSucceeded = true
     employees = mergeScheduleIdentityDirectory(identityUsers, combinedAccess, owners)
   } catch (error) {
     console.warn('schedule-assistant Identity directory unavailable; using approved registration fallback', error)
@@ -125,6 +127,23 @@ async function activePortalEmployees(requestedNames: string[] = []): Promise<Ass
     if (!byUserId.has(employee.userId)) byUserId.set(employee.userId, employee)
   }
   employees = [...byUserId.values()].sort((left, right) => left.fullName.localeCompare(right.fullName, 'de'))
+
+  if (requestedNames.length) {
+    await writeScheduleAudit({
+      actorId: ACTOR_ID,
+      actorType: 'chatgpt',
+      action: 'directory-diagnostics',
+      details: {
+        identityUserCount: identityUsers.length,
+        accessCount: accessRows.length,
+        registrationCount: registrations.length,
+        combinedAccessCount: combinedAccess.length,
+        employeeCount: employees.length,
+        requestedCount: requestedNames.length,
+        identityLookupSucceeded,
+      },
+    })
+  }
 
   await syncScheduleEmployees(employees.map((employee) => ({
     userId: employee.userId,
