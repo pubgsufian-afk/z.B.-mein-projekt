@@ -1,182 +1,114 @@
 import { test, expect } from '@playwright/test'
 
 const users = {
-  admin: {
-    id: 'admin-1', email: 'admin@example.test', aud: '', role: 'authenticated',
-    app_metadata: { provider: 'email', roles: ['admin'] },
-    user_metadata: { full_name: 'Test Admin' },
-    created_at: '2026-08-06T00:00:00.000Z', confirmed_at: '2026-08-06T00:00:00.000Z', updated_at: '2026-08-06T00:00:00.000Z',
-  },
-  employee: {
-    id: 'employee-anna', email: 'anna@example.test', aud: '', role: 'authenticated',
-    app_metadata: { provider: 'email', roles: ['employee'] },
-    user_metadata: { full_name: 'Anna Beispiel' },
-    created_at: '2026-08-06T00:00:00.000Z', confirmed_at: '2026-08-06T00:00:00.000Z', updated_at: '2026-08-06T00:00:00.000Z',
-  },
-}
-
-const employees = [
-  { userId: 'employee-anna', fullName: 'Anna Beispiel', location: 'Objekt Nord' },
-  { userId: 'employee-bernd', fullName: 'Bernd Muster', location: 'Objekt Süd' },
-]
-
-const objects = [
-  { id: 'site-nord', name: 'Objekt Nord', address: 'Musterstraße 1, Hannover', latitude: 52.375, longitude: 9.732, radiusMeters: 500 },
-]
-
-const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url')
-function tokenResponse(user) {
-  const now = Math.floor(Date.now() / 1000)
-  const token = `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({
-    aud: 'authenticated', sub: user.id, email: user.email, role: 'authenticated', exp: now + 3600, iat: now,
-    app_metadata: user.app_metadata, user_metadata: user.user_metadata,
-  })}.test-signature`
-  return { access_token: token, token_type: 'bearer', expires_in: 3600, expires_at: now + 3600, refresh_token: 'test-refresh-token', user }
-}
-
-async function mockLoggedOutIdentity(page, { signupSucceeds = false } = {}) {
-  await page.route('**/.netlify/identity**', async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
-    if (url.pathname.endsWith('/settings')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ disable_signup: false, autoconfirm: false, external: {} }) })
-    if (url.pathname.endsWith('/signup') && request.method() === 'POST' && signupSucceeds) {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
-        id: 'new-user', aud: '', role: '', email: 'mitarbeiter@example.test',
-        app_metadata: { provider: 'email', roles: [] }, user_metadata: { full_name: 'Test Mitarbeiter' },
-        created_at: '2026-08-06T00:00:00.000Z', updated_at: '2026-08-06T00:00:00.000Z', confirmation_sent_at: '2026-08-06T00:00:00.000Z', confirmed_at: null,
-      }) })
-    }
-    if (url.pathname.endsWith('/user')) return route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'invalid_token' }) })
-    return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'invalid_request' }) })
-  })
+  owner: { id: 'owner-1', email: 'owner@example.test', name: 'Hauptadmin Muster', role: 'owner' },
+  admin: { id: 'admin-1', email: 'admin@example.test', name: 'Admin Muster', role: 'admin' },
+  manager: { id: 'manager-1', email: 'manager@example.test', name: 'Einsatzleiter Muster', role: 'manager' },
+  employee: { id: 'employee-anna', email: 'anna@example.test', name: 'Anna Muster', role: 'employee' },
 }
 
 async function mockIdentity(page, user) {
-  let authenticated = false
-  await page.route('**/.netlify/identity**', async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
-    if (url.pathname.endsWith('/settings')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ disable_signup: false, autoconfirm: true, external: {} }) })
-    if (url.pathname.endsWith('/token') && request.method() === 'POST') {
-      authenticated = true
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tokenResponse(user)) })
+  await page.addInitScript((currentUser) => {
+    const listeners = []
+    const user = {
+      id: currentUser.id,
+      email: currentUser.email,
+      user_metadata: { full_name: currentUser.name },
+      app_metadata: { roles: [currentUser.role] },
+      roles: [currentUser.role],
+      role: currentUser.role,
+      confirmed_at: new Date().toISOString(),
+      token: { access_token: `test-${currentUser.role}-token` },
     }
-    if (url.pathname.endsWith('/user')) return route.fulfill({ status: authenticated ? 200 : 401, contentType: 'application/json', body: JSON.stringify(authenticated ? user : { error: 'invalid_token' }) })
-    return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
-  })
+    window.netlifyIdentity = {
+      currentUser: () => user,
+      on: (name, callback) => { listeners.push({ name, callback }); if (name === 'init') setTimeout(() => callback(user), 0) },
+      off: () => {},
+      open: () => {},
+      close: () => {},
+      login: async () => user,
+      signup: async () => user,
+      logout: async () => {},
+      refresh: async () => user,
+      user,
+    }
+    window.__HABUN_TEST_USER__ = user
+  }, user)
 }
 
-function attendanceState(events, schedule) {
-  let phase = 'idle'
-  let clockInAt = null
-  let clockOutAt = null
-  for (const event of events) {
-    if (event.action === 'clock-in') { phase = 'working'; clockInAt = event.clientOccurredAt; clockOutAt = null }
-    if (event.action === 'break-start') phase = 'paused'
-    if (event.action === 'break-end') phase = 'working'
-    if (event.action === 'clock-out') { phase = 'completed'; clockOutAt = event.clientOccurredAt }
-  }
-  return { phase, clockInAt, clockOutAt, events, schedule, schedules: schedule ? [schedule] : [] }
+async function mockLoggedOutIdentity(page, { signupSucceeds = false } = {}) {
+  await page.addInitScript(({ signupSucceeds }) => {
+    window.netlifyIdentity = {
+      currentUser: () => null,
+      on: (name, callback) => { if (name === 'init') setTimeout(() => callback(null), 0) },
+      off: () => {},
+      open: () => {},
+      close: () => {},
+      login: async () => { throw new Error('Login ist in diesem Test nicht aktiv.') },
+      signup: async (_email, _password, metadata) => {
+        if (!signupSucceeds) throw new Error('Signup ist in diesem Test nicht aktiv.')
+        return { id: 'new-user', user_metadata: metadata }
+      },
+      logout: async () => {},
+      refresh: async () => null,
+    }
+  }, { signupSucceeds })
 }
 
 async function mockPortalApis(page, role = 'admin') {
-  let company = { companyName: 'Habun Security', phone: '0511 123456', email: 'info@habun-security.de', logoUrl: '/habun-logo.png' }
-  let attendanceEvents = []
-  const schedule = {
-    id: 'shift-1', employeeUserId: 'employee-anna', employeeName: 'Anna Beispiel', date: new Date().toISOString().slice(0, 10),
-    start: '07:00', end: '17:00', pauseMinutes: 30, objectId: 'site-nord', location: 'Objekt Nord', workArea: 'Zutrittskontrolle', status: 'published', version: 1,
-  }
-  const otherSchedule = {
-    id: 'shift-2', employeeUserId: 'employee-bernd', employeeName: 'Bernd Muster', date: new Date().toISOString().slice(0, 10),
-    start: '08:00', end: '16:00', pauseMinutes: 30, objectId: 'site-sued', location: 'Objekt Süd', workArea: 'Empfang', status: 'published', version: 1,
-  }
-  const schedules = [schedule, otherSchedule]
-  const requests = [{ id: 'request-1', fullName: 'Neue Person', email: 'neu@example.test', location: 'Objekt Nord', status: 'pending' }]
+  const attendanceEvents = []
+  const shifts = [
+    { id: 'shift-anna', employeeUserId: 'employee-anna', employeeName: 'Anna Muster', date: '2026-08-10', start: '08:00', end: '16:00', pauseMinutes: 30, location: 'Objekt Nord', workArea: 'Zutrittskontrolle', status: 'published' },
+    { id: 'shift-bernd', employeeUserId: 'employee-bernd', employeeName: 'Bernd Muster', date: '2026-08-10', start: '09:00', end: '17:00', pauseMinutes: 30, location: 'Objekt Süd', workArea: 'Empfang', status: 'published' },
+  ]
+  let company = { companyName: 'Habun Security', phone: '0511 123456', email: 'kontakt@habun-security.de', address: 'Hannover', logoUrl: '/habun-logo.png' }
+  const registrations = [
+    { userId: 'employee-anna', id: 'employee-anna', fullName: 'Anna Muster', email: 'anna@example.test', role: 'employee', status: 'active', location: 'Objekt Nord' },
+    { userId: 'manager-1', id: 'manager-1', fullName: 'Einsatzleiter Muster', email: 'manager@example.test', role: 'manager', status: 'active', location: 'Objekt Nord' },
+  ]
+  const worksiteEntries = [{ id: 'site-nord', name: 'Objekt Nord', location: 'Objekt Nord', status: 'active' }]
+  const pdfBytes = new TextEncoder().encode('%PDF-1.7\n%Habun test PDF')
+  const xlsxBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0, 0, 0, 0])
 
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, 'geolocation', {
-      configurable: true,
-      value: { getCurrentPosition(success) { success({ coords: { latitude: 52.375, longitude: 9.732, accuracy: 8 } }) } },
-    })
-  })
-
-  await page.route('**/api/session', (route) => route.fulfill({
-    status: 200, contentType: 'application/json',
-    body: JSON.stringify({ userId: role === 'employee' ? 'employee-anna' : 'admin-1', email: role === 'employee' ? 'anna@example.test' : 'admin@example.test', fullName: role === 'employee' ? 'Anna Beispiel' : 'Test Admin', role, employeeCount: employees.length, location: 'Objekt Nord' }),
-  }))
-
-  await page.route('**/api/registrations', async (route) => {
-    if (route.request().method() === 'PATCH') {
-      requests.length = 0
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) })
-    }
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ requests, employees, archived: [] }) })
-  })
-
-  await page.route('**/api/schedule-v2**', async (route) => {
+  await page.route('**/api/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
-    if (request.method() === 'GET') {
-      const resource = url.searchParams.get('resource')
-      if (resource === 'objects') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ objects }) })
-      const visible = role === 'employee' ? schedules.filter((entry) => entry.employeeUserId === 'employee-anna' && entry.status === 'published') : schedules
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: visible }) })
+    const path = url.pathname
+    const method = request.method()
+    const json = async (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
+
+    if (path === '/api/session') return json({ role, fullName: users[role]?.name || 'Admin Muster', email: users[role]?.email, userId: users[role]?.id, location: 'Objekt Nord', status: 'active' })
+    if (path === '/api/registrations') return json({ employees: registrations, registrations: [] })
+    if (path === '/api/settings') return method === 'GET' ? json(company) : json({ ok: true })
+    if (path === '/api/company-settings') {
+      if (method === 'GET') return json(company)
+      company = { ...company, ...(JSON.parse(request.postData() || '{}')) }
+      return json({ settings: company })
     }
-    const body = request.postDataJSON()
-    if (body.action === 'save') return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ shift: { ...body, id: body.id || 'shift-new' }, warnings: [] }) })
-    if (body.action === 'repeat') return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ created: [] }) })
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, version: 2 }) })
-  })
-
-  await page.route('**/api/attendance**', async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
-    if (request.method() === 'GET') {
-      if (url.searchParams.get('resource') === 'live') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: attendanceEvents.map((event) => ({ ...event, employeeName: 'Anna Beispiel', workSiteName: 'Objekt Nord' })) }) })
-      if (url.searchParams.get('resource') === 'history') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: attendanceEvents }) })
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(attendanceState(attendanceEvents, schedule)) })
+    if (path === '/api/schedule-directory') return json({ employees: registrations })
+    if (path === '/api/schedule-v2') {
+      if (role === 'employee') return json({ entries: shifts.filter((shift) => shift.employeeUserId === users.employee.id), objects: worksiteEntries })
+      return json({ entries: shifts, objects: worksiteEntries })
     }
-    const body = request.postDataJSON()
-    attendanceEvents.push({
-      id: `event-${attendanceEvents.length + 1}`, userId: 'employee-anna', clientEventId: body.clientEventId, action: body.action,
-      clientOccurredAt: body.clientOccurredAt, eventDate: body.clientOccurredAt.slice(0, 10), scheduleId: schedule.id, objectId: schedule.objectId,
-      locationStatus: body.action === 'clock-in' || body.action === 'clock-out' ? 'inside' : 'unavailable', offlineCaptured: false,
-    })
-    return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ event: attendanceEvents.at(-1), replayed: false }) })
-  })
-
-  await page.route('**/api/attendance-maintenance**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ corrections: [] }) }))
-
-  await page.route('**/api/company-settings', async (route) => {
-    if (route.request().method() === 'PUT') company = route.request().postDataJSON()
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ settings: company }) })
-  })
-
-  await page.route('**/api/schedule-pdf', async (route) => {
-    if (role === 'employee') return route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ message: 'Mitarbeiter dürfen keinen Dienstplan als PDF herunterladen.' }) })
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/pdf',
-      headers: { 'Content-Disposition': 'attachment; filename="Habun-Dienstplan-Test.pdf"' },
-      body: Buffer.from('%PDF-1.4\n%%EOF'),
-    })
-  })
-
-  await page.route('**/api/unified-reports', async (route) => {
-    const format = route.request().postDataJSON().format
-    if (format === 'xlsx') {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        headers: { 'Content-Disposition': 'attachment; filename="Habun-Stundenbericht.xlsx"' },
-        body: Buffer.from('PK\u0003\u0004test-xlsx'),
-      })
+    if (path === '/api/schedule-assist-v2') return json({ templates: [] })
+    if (path === '/api/schedule-pdf') return route.fulfill({ status: 200, headers: { 'content-type': 'application/pdf', 'content-disposition': 'attachment; filename="Habun-Dienstplan-2026-08-10.pdf"' }, body: Buffer.from(pdfBytes) })
+    if (path === '/api/reports-v2') {
+      const format = url.searchParams.get('format')
+      if (format === 'xlsx') return route.fulfill({ status: 200, headers: { 'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'content-disposition': 'attachment; filename="Habun-Stundenzettel.xlsx"' }, body: Buffer.from(xlsxBytes) })
+      return route.fulfill({ status: 200, headers: { 'content-type': 'application/pdf', 'content-disposition': 'attachment; filename="Habun-Stundenzettel.pdf"' }, body: Buffer.from(pdfBytes) })
     }
-    return route.fulfill({
-      status: 200, contentType: 'application/pdf',
-      headers: { 'Content-Disposition': 'attachment; filename="Habun-Stundenbericht.pdf"' },
-      body: Buffer.from('%PDF-1.4\n%%EOF'),
-    })
+    if (path === '/api/worksite-v2') return json({ objects: worksiteEntries })
+    if (path === '/api/attendance') {
+      if (method === 'GET') return json({ events: attendanceEvents, state: attendanceEvents.length ? 'working' : 'idle' })
+      const body = JSON.parse(request.postData() || '{}')
+      const labels = { 'clock-in': 'Arbeitszeit läuft', 'break-start': 'Pause läuft', 'break-end': 'Arbeitszeit läuft', 'clock-out': 'Dienst abgeschlossen' }
+      const actionLabels = { 'clock-in': 'Arbeitsbeginn', 'break-start': 'Pause begonnen', 'break-end': 'Pause beendet', 'clock-out': 'Arbeitsende' }
+      attendanceEvents.push({ id: `event-${attendanceEvents.length + 1}`, action: body.action, label: actionLabels[body.action] || body.action, clientOccurredAt: new Date().toISOString() })
+      return json({ ok: true, state: labels[body.action] || 'idle', event: attendanceEvents.at(-1) })
+    }
+    if (path === '/api/attendance-time-edit') return json({ ok: true })
+    if (path === '/api/work') return json({ ok: true })
+    return json({ ok: true })
   })
 
   return { getAttendanceEvents: () => attendanceEvents, getCompany: () => company }
@@ -285,16 +217,16 @@ test('management downloads a valid schedule PDF', async ({ page }) => {
 test('reports provide PDF preview, PDF download and Excel download', async ({ page }, testInfo) => {
   await login(page, 'admin')
   await navigate(page, 'Berichte')
-  await page.getByRole('button', { name: 'PDF-Vorschau' }).click()
+  await page.getByRole('button', { name: 'Stundenzettel Vorschau' }).click()
   await expect(page.getByTitle('PDF-Vorschau')).toBeVisible()
   if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/04-berichte-iphone.png', fullPage: true })
 
   const pdfDownload = page.waitForEvent('download', { predicate: (download) => /\.pdf$/i.test(download.suggestedFilename()) })
-  await page.getByRole('button', { name: 'PDF herunterladen' }).click()
+  await page.getByRole('button', { name: 'Stundenzettel PDF' }).click()
   expect((await pdfDownload).suggestedFilename()).toMatch(/\.pdf$/i)
 
   const excelDownload = page.waitForEvent('download', { predicate: (download) => /\.xlsx$/i.test(download.suggestedFilename()) })
-  await page.getByRole('button', { name: 'Excel herunterladen' }).click()
+  await page.getByRole('button', { name: 'Stundenzettel Excel' }).click()
   expect((await excelDownload).suggestedFilename()).toMatch(/\.xlsx$/i)
 })
 
