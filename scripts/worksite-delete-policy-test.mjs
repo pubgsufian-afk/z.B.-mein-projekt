@@ -8,7 +8,8 @@ const [schedule, app] = await Promise.all([
 
 assert.match(schedule, /action === 'object-delete'/)
 assert.match(schedule, /Nur die Administration darf Einsatzorte löschen/)
-assert.match(schedule, /store\(\)\.delete\(`objects\/\$\{id\}`\)/)
+assert.match(schedule, /const key = `objects\/\$\{id\}`/)
+assert.match(schedule, /store\(\)\.delete\(key\)/)
 assert.doesNotMatch(schedule, /object-delete[\s\S]{0,1200}shifts\//)
 assert.match(app, /Einsatzort löschen/)
 assert.match(app, /Bezeichnung des Einsatzortes/)
