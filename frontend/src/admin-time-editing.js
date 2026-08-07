@@ -1,4 +1,4 @@
-const ADMIN_ROLES = new Set(['owner', 'admin'])
+const TIME_EDIT_ROLES = new Set(['owner', 'admin', 'manager'])
 
 const uiState = {
   role: null,
@@ -43,6 +43,13 @@ function currentFilters() {
   }
 }
 
+function finalizeOpenSession(current, sessions) {
+  if (!current) return
+  current.netMinutes = 0
+  current.isOpen = true
+  sessions.push(current)
+}
+
 function buildSessions(entries) {
   const ordered = [...entries].sort((a, b) => String(a.clientOccurredAt || '').localeCompare(String(b.clientOccurredAt || '')))
   const openByUser = new Map()
@@ -54,6 +61,7 @@ function buildSessions(entries) {
     let current = openByUser.get(userId) || null
 
     if (event.action === 'clock-in') {
+      if (current) finalizeOpenSession(current, sessions)
       current = {
         userId,
         date: event.eventDate,
@@ -63,6 +71,7 @@ function buildSessions(entries) {
         clockOutAt: null,
         breakMinutes: 0,
         breakStart: null,
+        isOpen: true,
       }
       openByUser.set(userId, current)
       continue
@@ -81,6 +90,7 @@ function buildSessions(entries) {
     if (event.action === 'clock-out') {
       current.clockOutEventId = event.id
       current.clockOutAt = event.clientOccurredAt
+      current.isOpen = false
       if (event.pauseMinutesAdjustment !== null && event.pauseMinutesAdjustment !== undefined) {
         current.breakMinutes = Math.max(0, Number(event.pauseMinutesAdjustment) || 0)
       }
@@ -91,6 +101,7 @@ function buildSessions(entries) {
     }
   }
 
+  for (const current of openByUser.values()) finalizeOpenSession(current, sessions)
   return sessions.sort((a, b) => String(a.clockInAt).localeCompare(String(b.clockInAt)))
 }
 
@@ -124,6 +135,7 @@ function applyAdjustedValues(cards, sessions) {
 }
 
 function toLocalInput(value) {
+  if (!value) return ''
   const date = new Date(value)
   if (!Number.isFinite(date.getTime())) return ''
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
@@ -169,20 +181,21 @@ function openEditor(session, reloadButton) {
   removeEditor()
   const timesPanel = document.querySelector('.times-list')?.closest('.panel')
   if (!timesPanel) return
+  const openSession = !session.clockOutEventId
 
   const editor = document.createElement('section')
   editor.dataset.adminTimeEditor = 'true'
   editor.className = 'panel editor-panel'
   editor.innerHTML = `
     <div class="page-heading">
-      <div><h2>Arbeitszeit bearbeiten</h2><p>Änderungen werden im Kontrollverlauf protokolliert.</p></div>
+      <div><h2>Arbeitszeit bearbeiten</h2><p>${openSession ? 'Der Mitarbeiter ist aktuell eingecheckt. Beginn kann sofort korrigiert werden; mit einem Arbeitsende können auch Ende und Pause festgelegt werden.' : 'Änderungen werden im Kontrollverlauf protokolliert.'}</p></div>
       <button type="button" class="secondary-button compact" data-admin-time-close>Schließen</button>
     </div>
     <form class="schedule-form" data-admin-time-form>
       <div class="form-grid three">
         <label>Beginn<input type="datetime-local" data-admin-time-start required></label>
-        <label>Ende<input type="datetime-local" data-admin-time-end required></label>
-        <label>Pause in Minuten<input type="number" min="0" step="1" data-admin-time-pause required></label>
+        <label>Ende<input type="datetime-local" data-admin-time-end ${openSession ? '' : 'required'}><small>${openSession ? 'Leer lassen, wenn der Mitarbeiter weiterarbeitet.' : 'Bei abgeschlossenem Dienst erforderlich.'}</small></label>
+        <label>Pause in Minuten<input type="number" min="0" step="1" data-admin-time-pause required><small data-admin-time-pause-help></small></label>
       </div>
       <label>Begründung<textarea rows="3" data-admin-time-reason required placeholder="Warum wird die Arbeitszeit geändert?"></textarea></label>
       <div class="form-actions">
@@ -194,10 +207,28 @@ function openEditor(session, reloadButton) {
   const start = editor.querySelector('[data-admin-time-start]')
   const end = editor.querySelector('[data-admin-time-end]')
   const pause = editor.querySelector('[data-admin-time-pause]')
+  const pauseHelp = editor.querySelector('[data-admin-time-pause-help]')
   const reason = editor.querySelector('[data-admin-time-reason]')
   start.value = toLocalInput(session.clockInAt)
   end.value = toLocalInput(session.clockOutAt)
   pause.value = String(session.breakMinutes || 0)
+
+  const syncOpenControls = () => {
+    if (!openSession) {
+      pause.readOnly = false
+      if (pauseHelp) pauseHelp.textContent = ''
+      return
+    }
+    const willClose = Boolean(end.value)
+    pause.readOnly = !willClose
+    if (pauseHelp) {
+      pauseHelp.textContent = willClose
+        ? 'Pause kann jetzt vollständig korrigiert werden.'
+        : 'Solange der Dienst offen bleibt, wird die bereits gebuchte Pause beibehalten.'
+    }
+  }
+  end.addEventListener('input', syncOpenControls)
+  syncOpenControls()
 
   editor.querySelector('[data-admin-time-close]').addEventListener('click', removeEditor)
   editor.querySelector('[data-admin-time-cancel]').addEventListener('click', removeEditor)
@@ -208,26 +239,31 @@ function openEditor(session, reloadButton) {
     saveButton.textContent = 'Wird gespeichert …'
     try {
       const clockInAt = new Date(start.value)
-      const clockOutAt = new Date(end.value)
+      const clockOutAt = end.value ? new Date(end.value) : null
       const pauseMinutes = Number(pause.value)
-      if (!Number.isFinite(clockInAt.getTime()) || !Number.isFinite(clockOutAt.getTime())) throw new Error('Beginn und Ende sind ungültig.')
+      if (!Number.isFinite(clockInAt.getTime())) throw new Error('Der Arbeitsbeginn ist ungültig.')
+      if (!openSession && (!clockOutAt || !Number.isFinite(clockOutAt.getTime()))) throw new Error('Bei einem abgeschlossenen Dienst ist ein gültiges Arbeitsende erforderlich.')
+      if (clockOutAt && !Number.isFinite(clockOutAt.getTime())) throw new Error('Das Arbeitsende ist ungültig.')
       if (!Number.isInteger(pauseMinutes) || pauseMinutes < 0) throw new Error('Die Pause muss eine ganze Minute ab 0 sein.')
-      if (clockOutAt.getTime() < clockInAt.getTime()) throw new Error('Das Arbeitsende darf nicht vor dem Arbeitsbeginn liegen.')
-      const grossMinutes = Math.round((clockOutAt.getTime() - clockInAt.getTime()) / 60000)
-      if (pauseMinutes > grossMinutes) throw new Error('Die Pause darf nicht länger als die Arbeitszeit sein.')
+      if (clockOutAt && clockOutAt.getTime() <= clockInAt.getTime()) throw new Error('Das Arbeitsende darf nicht vor dem Arbeitsbeginn liegen.')
+      if (clockOutAt) {
+        const grossMinutes = Math.round((clockOutAt.getTime() - clockInAt.getTime()) / 60000)
+        if (pauseMinutes > grossMinutes) throw new Error('Die Pause darf nicht länger als die Arbeitszeit sein.')
+      } else if (openSession && pauseMinutes !== Number(session.breakMinutes || 0)) {
+        throw new Error('Für eine Pausenkorrektur bei einem laufenden Dienst bitte zuerst ein Arbeitsende eintragen.')
+      }
       if (reason.value.trim().length < 2) throw new Error('Bitte eine kurze Begründung eintragen.')
 
-      await fetch('/api/attendance-maintenance', {
+      await fetch('/api/attendance-time-edit', {
         method: 'POST',
         credentials: 'same-origin',
         cache: 'no-store',
         headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'admin-time-edit',
           clockInEventId: session.clockInEventId,
-          clockOutEventId: session.clockOutEventId,
+          clockOutEventId: session.clockOutEventId || null,
           clockInAt: clockInAt.toISOString(),
-          clockOutAt: clockOutAt.toISOString(),
+          clockOutAt: clockOutAt ? clockOutAt.toISOString() : null,
           pauseMinutes,
           reason: reason.value.trim(),
         }),
@@ -238,7 +274,9 @@ function openEditor(session, reloadButton) {
       })
 
       removeEditor()
-      showToast('Arbeitszeit wurde aktualisiert und im Kontrollverlauf protokolliert.')
+      showToast(openSession && clockOutAt
+        ? 'Laufender Dienst wurde korrigiert und abgeschlossen.'
+        : 'Arbeitszeit wurde aktualisiert und im Kontrollverlauf protokolliert.')
       invalidateRenderedSessions()
       reloadButton?.click()
       scheduleRefresh(350)
@@ -294,8 +332,8 @@ async function refreshButtons() {
 
     const role = await ensureRole()
     if (role === 'employee' || role === 'pending') return
-    const canEdit = ADMIN_ROLES.has(role)
-    if (!canEdit && role !== 'manager') return
+    const canEdit = TIME_EDIT_ROLES.has(role)
+    if (!canEdit) return
 
     const filters = currentFilters()
     const cards = [...document.querySelectorAll('.times-list > article')]
@@ -314,18 +352,17 @@ async function refreshButtons() {
     cards.forEach((card) => { card.dataset.adminTimeEditChecked = key })
 
     if (!filters.userId && userIds.size > 1) {
-      if (canEdit && timesPanel) showSelectEmployeeHint(timesPanel)
+      if (timesPanel) showSelectEmployeeHint(timesPanel)
       return
     }
     removeHint()
 
     const sessions = buildSessions(entries)
     applyAdjustedValues(cards, sessions)
-    if (!canEdit) return
 
     cards.forEach((card, index) => {
       const session = sessions[index]
-      if (!session?.clockInEventId || !session?.clockOutEventId) return
+      if (!session?.clockInEventId) return
       const header = card.querySelector('header')
       if (!header) return
       const button = document.createElement('button')
@@ -337,7 +374,7 @@ async function refreshButtons() {
       header.append(button)
     })
   } catch (error) {
-    console.error('Habun Admin-Zeitbearbeitung', error)
+    console.error('Habun Zeitbearbeitung', error)
   } finally {
     uiState.refreshRunning = false
     if (uiState.refreshQueued) {

@@ -9,7 +9,7 @@ function userFor(role) {
     aud: '',
     role: 'authenticated',
     app_metadata: { provider: 'email', roles: [role] },
-    user_metadata: { full_name: role === 'admin' ? 'Test Admin' : 'Test Einsatzleiter' },
+    user_metadata: { full_name: role === 'admin' ? 'Test Admin' : role === 'manager' ? 'Test Einsatzleiter' : 'Test Hauptadmin' },
     created_at: '2026-08-07T00:00:00.000Z',
     confirmed_at: '2026-08-07T00:00:00.000Z',
     updated_at: '2026-08-07T00:00:00.000Z',
@@ -40,7 +40,7 @@ async function mockIdentity(page, user) {
   })
 }
 
-async function mockPortal(page, role, initialPauseAdjustment = null) {
+async function mockPortal(page, role, initialPauseAdjustment = null, mode = 'completed') {
   const user = userFor(role)
   const today = new Date().toISOString().slice(0, 10)
   let lastEditBody = null
@@ -50,13 +50,15 @@ async function mockPortal(page, role, initialPauseAdjustment = null) {
       clientOccurredAt: `${today}T07:00:00.000Z`, serverOccurredAt: `${today}T07:00:01.000Z`, eventDate: today,
       scheduleId: 'shift-1', objectId: 'site-1', locationStatus: 'inside', offlineCaptured: false,
     },
-    {
+  ]
+  if (mode === 'completed') {
+    entries.push({
       id: 'clock-out-1', userId: 'employee-anna', clientEventId: 'out-1', action: 'clock-out',
       clientOccurredAt: `${today}T08:00:00.000Z`, serverOccurredAt: `${today}T08:00:01.000Z`, eventDate: today,
       scheduleId: 'shift-1', objectId: 'site-1', locationStatus: 'inside', offlineCaptured: false,
       ...(initialPauseAdjustment === null ? {} : { pauseMinutesAdjustment: initialPauseAdjustment }),
-    },
-  ]
+    })
+  }
 
   await page.route('**/api/session', (route) => route.fulfill({
     status: 200,
@@ -69,23 +71,34 @@ async function mockPortal(page, role, initialPauseAdjustment = null) {
     body: JSON.stringify({ requests: [], employees: [{ userId: 'employee-anna', fullName: 'Anna Beispiel', location: 'Objekt Nord' }], archived: [] }),
   }))
   await page.route('**/api/schedule-v2**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [], objects: [] }) }))
-  await page.route('**/api/attendance-maintenance**', async (route) => {
-    const request = route.request()
-    if (request.method() === 'POST') {
-      const body = request.postDataJSON()
-      if (body.action === 'admin-time-edit') {
-        lastEditBody = body
-        const clockIn = entries.find((entry) => entry.id === body.clockInEventId)
-        const clockOut = entries.find((entry) => entry.id === body.clockOutEventId)
-        clockIn.clientOccurredAt = body.clockInAt
-        clockIn.eventDate = body.clockInAt.slice(0, 10)
+  await page.route('**/api/attendance-maintenance**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ corrections: [] }) }))
+  await page.route('**/api/attendance-time-edit', async (route) => {
+    const body = route.request().postDataJSON()
+    lastEditBody = body
+    const clockIn = entries.find((entry) => entry.id === body.clockInEventId)
+    clockIn.clientOccurredAt = body.clockInAt
+    clockIn.eventDate = body.clockInAt.slice(0, 10)
+
+    let clockOut = body.clockOutEventId ? entries.find((entry) => entry.id === body.clockOutEventId) : null
+    if (body.clockOutAt) {
+      if (!clockOut) {
+        clockOut = {
+          id: 'managed-clock-out-1', userId: 'employee-anna', clientEventId: 'managed-out-1', action: 'clock-out',
+          clientOccurredAt: body.clockOutAt, serverOccurredAt: body.clockOutAt, eventDate: body.clockOutAt.slice(0, 10),
+          scheduleId: 'shift-1', objectId: 'site-1', locationStatus: 'unavailable', offlineCaptured: false,
+        }
+        entries.push(clockOut)
+      } else {
         clockOut.clientOccurredAt = body.clockOutAt
         clockOut.eventDate = body.clockOutAt.slice(0, 10)
-        clockOut.pauseMinutesAdjustment = body.pauseMinutes
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ saved: true, clockInEventId: clockIn.id, clockOutEventId: clockOut.id }) })
       }
+      clockOut.pauseMinutesAdjustment = body.pauseMinutes
     }
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ corrections: [] }) })
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ saved: true, clockInEventId: clockIn.id, clockOutEventId: clockOut?.id || null, open: !clockOut }),
+    })
   })
   await page.route('**/api/attendance**', async (route) => {
     const url = new URL(route.request().url())
@@ -96,11 +109,11 @@ async function mockPortal(page, role, initialPauseAdjustment = null) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ phase: 'idle', events: [], schedules: [] }) })
   })
 
-  return { user, getLastEditBody: () => lastEditBody }
+  return { user, today, getLastEditBody: () => lastEditBody }
 }
 
-async function loginAndOpenTimes(page, role, initialPauseAdjustment = null) {
-  const portal = await mockPortal(page, role, initialPauseAdjustment)
+async function loginAndOpenTimes(page, role, initialPauseAdjustment = null, mode = 'completed') {
+  const portal = await mockPortal(page, role, initialPauseAdjustment, mode)
   await mockIdentity(page, portal.user)
   await page.goto('/')
   await page.getByLabel('E-Mail-Adresse').fill(portal.user.email)
@@ -133,7 +146,6 @@ test('admin edits a completed session and corrected totals are shown', async ({ 
   await expect(page.locator('.metric-strip.compact-metrics').getByText('0:45 Std.', { exact: true })).toBeVisible()
 
   expect(portal.getLastEditBody()).toMatchObject({
-    action: 'admin-time-edit',
     clockInEventId: 'clock-in-1',
     clockOutEventId: 'clock-out-1',
     pauseMinutes: 15,
@@ -141,10 +153,48 @@ test('admin edits a completed session and corrected totals are shown', async ({ 
   })
 })
 
-test('manager sees corrected time but has no direct edit button', async ({ page }) => {
-  await loginAndOpenTimes(page, 'manager', 20)
+test('manager can directly edit a completed employee session', async ({ page }) => {
+  const portal = await loginAndOpenTimes(page, 'manager', 20)
   const card = page.locator('.times-list > article').first()
   await expect(card.getByText('20 Min.', { exact: true })).toBeVisible()
-  await expect(card.getByText('0:40 Std.', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Bearbeiten', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Bearbeiten', exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Bearbeiten', exact: true }).click()
+  await page.getByLabel('Pause in Minuten').fill('10')
+  await page.getByLabel('Begründung').fill('Korrektur durch Einsatzleiter')
+  await page.getByRole('button', { name: 'Änderung speichern', exact: true }).click()
+
+  await expect(page.getByText(/Arbeitszeit wurde aktualisiert/)).toBeVisible()
+  await expect(card.getByText('10 Min.', { exact: true })).toBeVisible()
+  expect(portal.getLastEditBody()).toMatchObject({ pauseMinutes: 10, reason: 'Korrektur durch Einsatzleiter' })
+})
+
+test('manager can edit an already checked-in running session and close it with pause', async ({ page }) => {
+  const portal = await loginAndOpenTimes(page, 'manager', null, 'open')
+  const card = page.locator('.times-list > article').first()
+  await expect(card).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Bearbeiten', exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Bearbeiten', exact: true }).click()
+  const end = page.getByLabel('Ende')
+  const pause = page.getByLabel('Pause in Minuten')
+  await expect(end).toHaveValue('')
+  await expect(pause).toHaveJSProperty('readOnly', true)
+
+  await end.fill(`${portal.today}T08:00`)
+  await expect(pause).toHaveJSProperty('readOnly', false)
+  await pause.fill('10')
+  await page.getByLabel('Begründung').fill('Laufenden Dienst korrigiert')
+  await page.getByRole('button', { name: 'Änderung speichern', exact: true }).click()
+
+  await expect(page.getByText(/Laufender Dienst wurde korrigiert und abgeschlossen/)).toBeVisible()
+  await expect(card.getByText('10 Min.', { exact: true })).toBeVisible()
+  await expect(card.getByText('0:50 Std.', { exact: true })).toBeVisible()
+  expect(portal.getLastEditBody()).toMatchObject({
+    clockInEventId: 'clock-in-1',
+    clockOutEventId: null,
+    pauseMinutes: 10,
+    reason: 'Laufenden Dienst korrigiert',
+  })
+  expect(portal.getLastEditBody().clockOutAt).toContain(`${portal.today}T08:00`)
 })
