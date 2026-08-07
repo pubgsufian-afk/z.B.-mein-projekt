@@ -73,8 +73,8 @@ if (await patch('netlify/functions/session.mts', [
     to: "import { proxyToProductionBackend } from \"./_shared/proxy.mts\";\nimport { currentPortalActor } from \"./_shared/portal-role.mts\";",
   },
   {
-    from: "export default async (request: Request, _context: Context) => {\n  const upstream",
-    to: "export default async (request: Request, _context: Context) => {\n  const local = await currentPortalActor();\n  if (local?.role === 'scheduler') {\n    return json({\n      userId: local.userId,\n      email: local.email,\n      fullName: String(local.user.userMetadata?.full_name || 'Dienstplan-Support'),\n      role: 'scheduler',\n    });\n  }\n\n  const upstream",
+    from: "export default async (request: Request, _context: Context) => {",
+    to: "export default async (request: Request, _context: Context) => {\n  const local = await currentPortalActor();\n  if (local?.role === 'scheduler') {\n    return json({\n      userId: local.userId,\n      email: local.email,\n      fullName: String(local.user.userMetadata?.full_name || 'Dienstplan-Support'),\n      role: 'scheduler',\n    });\n  }",
   },
 ])) changed.push('netlify/functions/session.mts')
 
