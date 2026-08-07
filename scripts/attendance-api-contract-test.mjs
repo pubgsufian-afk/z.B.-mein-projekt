@@ -96,8 +96,8 @@ await assert.rejects(() => service.record(employee, {
 
 await assert.rejects(() => service.record(employee, {
   action: 'clock-out', clientEventId: 'client-6', clientOccurredAt: '2026-08-06T17:11:00.000Z',
-  objectId: 'missing', scheduleId: 'shift-1', offlineCaptured: false, location: null,
-}), (error) => error?.code === 'WORKSITE_LOCATION_REQUIRED')
+  objectId: 'inside-site', scheduleId: 'shift-1', offlineCaptured: false, location: null,
+}), (error) => error?.code === 'DEVICE_LOCATION_REQUIRED')
 
 const finalClockOut = await service.record(employee, {
   action: 'clock-out', clientEventId: 'client-7', clientOccurredAt: '2026-08-06T17:12:00.000Z',
@@ -118,11 +118,12 @@ await assert.rejects(() => service2.record(employee, {
   action: 'clock-out', clientEventId: 'client-x', clientOccurredAt: '2026-08-06T08:00:00.000Z', location: null,
 }), /Arbeitsende ohne Arbeitsbeginn/)
 await assert.rejects(() => service2.record(employee, {
-  action: 'clock-in', clientEventId: 'client-y', clientOccurredAt: '2026-08-06T08:00:00.000Z', objectId: 'missing', location: null,
-}), (error) => error?.code === 'WORKSITE_LOCATION_REQUIRED')
+  action: 'clock-in', clientEventId: 'client-y', clientOccurredAt: '2026-08-06T08:00:00.000Z', objectId: 'missing',
+  location: { latitude: 52.375, longitude: 9.732, accuracyMeters: 10 },
+}), (error) => error?.code === 'WORKSITE_NOT_CONFIGURED')
 await assert.rejects(() => service2.record(employee, {
   action: 'clock-in', clientEventId: 'client-z', clientOccurredAt: '2026-08-06T08:00:00.000Z', objectId: 'outside-site',
   location: { latitude: 52.375, longitude: 9.732, accuracyMeters: 10 },
 }), (error) => error?.code === 'OUTSIDE_WORKSITE')
 
-console.log('Attendance API contract tests passed · strict worksite + repeat clocking')
+console.log('Attendance API contract tests passed · strict worksite + repeat clocking + precise location errors')
