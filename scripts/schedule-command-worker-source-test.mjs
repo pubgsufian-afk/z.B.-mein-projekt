@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 
 const source = await readFile('netlify/functions/schedule-command-worker.mts', 'utf8')
 
-assert.match(source, /SCHEDULE_ASSISTANT_COMMAND/)
+assert.match(source, /SCHEDULE_ASSISTANT_COMMAND_RUNTIME/)
 assert.match(source, /SCHEDULE_ASSISTANT_TOKEN/)
 assert.match(source, /parseScheduleCommand/)
 assert.match(source, /getStore\(\{ name: 'schedule-command-worker'/)
