@@ -18,6 +18,13 @@ for (const table of ['schedule_employees', 'schedule_shifts', 'schedule_versions
 }
 assert.match(migration, /CREATE UNIQUE INDEX schedule_shifts_exact_duplicate_idx/)
 assert.match(migration, /source IN \('portal', 'chatgpt', 'legacy-blob'\)/)
+assert.match(migration, /CREATE OR REPLACE FUNCTION portal_publish_chat_shift/)
+assert.match(migration, /status = 'active'/)
+assert.match(migration, /RETURN QUERY SELECT 'duplicate'::text/)
+assert.match(migration, /RETURN QUERY SELECT 'published'::text/)
+assert.match(migration, /'shift-published'/)
+assert.match(migration, /'chatgpt'/)
+assert.match(migration, /p_pause_minutes integer DEFAULT 0/)
 
 assert.match(repository, /from '@netlify\/database'/)
 assert.match(repository, /findExactScheduleDuplicate/)
