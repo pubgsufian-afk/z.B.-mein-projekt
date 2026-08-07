@@ -101,8 +101,8 @@ replaceOnce(
 )
 replaceOnce(
 "  await expect(page.getByTitle('PDF-Vorschau')).toBeVisible()",
-"  await expect(page.getByTitle('PDF-Vorschau')).toBeVisible()\n  if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/04-berichte-iphone.png', fullPage: true })",
-'reports screenshot',
+"  if (testInfo.project.name === 'iphone-chromium') {\n    await expect(page.getByTitle('PDF-Vorschau')).toBeHidden()\n    await expect(page.locator('[data-ios-pdf-fallback=\"true\"]')).toBeVisible()\n    await expect(page.locator('[data-ios-pdf-open=\"true\"]')).toHaveAttribute('href', /^blob:/)\n  } else {\n    await expect(page.getByTitle('PDF-Vorschau')).toBeVisible()\n  }\n  if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/04-berichte-iphone.png', fullPage: true })",
+'reports iPhone PDF fallback and screenshot',
 )
 replaceOnce(
 "  const pdfDownload = page.waitForEvent('download')",
@@ -114,6 +114,38 @@ replaceOnce(
 "  const excelDownload = page.waitForEvent('download', { predicate: (download) => /\\.xlsx$/i.test(download.suggestedFilename()) })",
 'Excel download predicate',
 )
+
+const attendanceEditMarker = "test('admin can edit an employee attendance session directly'"
+if (!source.includes(attendanceEditMarker)) {
+  source += `
+
+test('admin can edit an employee attendance session directly', async ({ page }) => {
+  await login(page, 'admin')
+  await navigate(page, 'Zeiterfassung')
+  await page.getByRole('button', { name: /Arbeit beginnen/ }).click()
+  await page.getByRole('button', { name: 'Arbeit beenden' }).click()
+
+  let editPayload = null
+  await page.route('**/api/attendance-edit', async (route) => {
+    editPayload = route.request().postDataJSON()
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ saved: true, ...editPayload }) })
+  })
+  page.on('dialog', (browserDialog) => browserDialog.accept())
+
+  await navigate(page, 'Zeiten')
+  await page.getByLabel('Mitarbeiter').selectOption('employee-anna')
+  await expect(page.getByRole('button', { name: 'Bearbeiten' }).first()).toBeVisible()
+  await page.getByRole('button', { name: 'Bearbeiten' }).first().click()
+  await expect(page.getByRole('heading', { name: 'Arbeitszeit bearbeiten' })).toBeVisible()
+  await page.getByLabel('Pause in Minuten').fill('1')
+  await page.getByRole('button', { name: 'Änderungen speichern' }).click()
+  await expect.poll(() => editPayload).not.toBeNull()
+  expect(editPayload.action).toBe('edit-session')
+  expect(editPayload.userId).toBe('employee-anna')
+  expect(editPayload.pauseMinutes).toBe(1)
+})
+`
+}
 
 await writeFile(path, source)
 console.log('Unified portal browser tests prepared')
