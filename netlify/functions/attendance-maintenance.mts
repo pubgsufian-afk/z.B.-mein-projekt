@@ -202,6 +202,11 @@ async function adminTimeEdit(sql: Awaited<ReturnType<typeof connection>>, curren
   if (clockInEvent.action !== 'clock-in' || clockOutEvent.action !== 'clock-out' || clockInEvent.user_id !== clockOutEvent.user_id) {
     return json({ message: 'Beginn und Ende gehören nicht zum selben gültigen Arbeitszeiteintrag.' }, 409)
   }
+  const originalClockInAt = new Date(clockInEvent.client_occurred_at)
+  const originalClockOutAt = new Date(clockOutEvent.client_occurred_at)
+  if (originalClockInAt.getTime() > originalClockOutAt.getTime()) {
+    return json({ message: 'Der gespeicherte Arbeitsbeginn liegt nach dem Arbeitsende.' }, 409)
+  }
 
   const betweenBoundaries = await sql.query(
     `SELECT id FROM attendance_events
@@ -241,6 +246,13 @@ async function adminTimeEdit(sql: Awaited<ReturnType<typeof connection>>, curren
       [clockInEvent.user_id, clockInEvent.client_occurred_at, clockOutEvent.client_occurred_at],
     ),
   ])
+  const breakOutsideEditedRange = breakRows.some((row) => {
+    const occurredAt = new Date(String(row.client_occurred_at))
+    return !Number.isFinite(occurredAt.getTime()) || occurredAt.getTime() < clockInAt.getTime() || occurredAt.getTime() > clockOutAt.getTime()
+  })
+  if (breakOutsideEditedRange) {
+    return json({ message: 'Die neue Arbeitszeit darf bestehende Pausenbuchungen nicht ausschließen.' }, 409)
+  }
   const previousPause = adjustmentRows[0]?.pause_minutes === undefined || adjustmentRows[0]?.pause_minutes === null
     ? minutesFromBreakEvents(breakRows)
     : Number(adjustmentRows[0].pause_minutes)
