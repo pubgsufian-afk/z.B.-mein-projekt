@@ -1,1 +1,1 @@
-sync-9ead8adc-9bb1-4d3f-b190-82ad1a317998
+release-identity-directory
