@@ -13,7 +13,7 @@
     "build:frontend": "node scripts/build-frontend.mjs",
     "build": "npm run verify && npm run build:frontend && node scripts/build.mjs",
     "check": "npm run verify",
-    "test:e2e": "node scripts/prepare-unified-e2e.mjs && playwright test tests/e2e/unified-portal.spec.mjs"
+    "test:e2e": "node scripts/prepare-unified-e2e.mjs && playwright test tests/e2e/unified-portal.spec.mjs tests/e2e/worksite-feature.spec.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.1",
