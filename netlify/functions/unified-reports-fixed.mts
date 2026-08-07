@@ -18,11 +18,18 @@ type Schedule = {
   pauseMinutes?: number
   location?: string
 }
+type SessionRow = {
+  employeeName: string
+  actualStart: string
+  actualEnd: string
+  pauseMinutes: number
+  netMinutes: number
+  location: string
+  warning: boolean
+}
 type ReportRow = {
   employeeName: string
   date: string
-  plannedStart: string
-  plannedEnd: string
   actualStart: string
   actualEnd: string
   pauseMinutes: number
@@ -99,6 +106,14 @@ async function loadNames(request: Request) {
 
 function buildRows(events: ReportEventRow[], schedules: Schedule[], names: Map<string, string>): ReportRow[] {
   const scheduleById = new Map(schedules.map((shift) => [String(shift.id || ''), shift]))
+  const schedulesByDay = new Map<string, Schedule[]>()
+  for (const shift of schedules) {
+    const key = `${shift.employeeUserId || ''}:${shift.date || ''}`
+    if (!schedulesByDay.has(key)) schedulesByDay.set(key, [])
+    schedulesByDay.get(key)!.push(shift)
+  }
+  for (const list of schedulesByDay.values()) list.sort((a, b) => String(a.start || '').localeCompare(String(b.start || '')))
+
   const byDay = new Map<string, ReportEventRow[]>()
   for (const event of events) {
     const key = `${event.user_id}:${dateOnly(event.event_date)}`
@@ -107,42 +122,41 @@ function buildRows(events: ReportEventRow[], schedules: Schedule[], names: Map<s
   }
 
   const rows: ReportRow[] = []
-  const usedSchedules = new Set<string>()
   for (const [key, items] of byDay) {
     const separator = key.indexOf(':')
     const userId = key.slice(0, separator)
     const date = key.slice(separator + 1)
     const ordered = [...items].sort((a, b) => new Date(a.client_occurred_at).getTime() - new Date(b.client_occurred_at).getTime())
+    const daySchedules = schedulesByDay.get(key) || []
+    const sessions: SessionRow[] = []
     let start: ReportEventRow | null = null
     let breakStart: ReportEventRow | null = null
     let breakMinutes = 0
     let sessionEvents: ReportEventRow[] = []
+    let sessionIndex = 0
 
     const finish = (end: ReportEventRow | null) => {
       if (!start) return
-      const shift = scheduleById.get(String(start.schedule_id || end?.schedule_id || ''))
-      if (shift?.id) usedSchedules.add(String(shift.id))
+      const shift = scheduleById.get(String(start.schedule_id || end?.schedule_id || '')) || daySchedules[sessionIndex]
       const gross = end ? Math.max(0, Math.round((new Date(end.client_occurred_at).getTime() - new Date(start.client_occurred_at).getTime()) / 60000)) : 0
       const adjustedPause = end?.pause_minutes_adjustment
       const pause = adjustedPause !== null && adjustedPause !== undefined
         ? Math.max(0, Number(adjustedPause) || 0)
         : breakMinutes || Number(shift?.pauseMinutes || 0)
-      rows.push({
+      sessions.push({
         employeeName: names.get(userId) || clean(shift?.employeeName) || 'Mitarbeiter',
-        date,
-        plannedStart: clean(shift?.start) || '-',
-        plannedEnd: clean(shift?.end) || '-',
         actualStart: timeOnly(start.client_occurred_at),
         actualEnd: end ? timeOnly(end.client_occurred_at) : '-',
         pauseMinutes: pause,
         netMinutes: end ? Math.max(0, gross - pause) : 0,
         location: clean(shift?.location || start.object_id) || '-',
-        warning: sessionEvents.some(attendanceEventNeedsReview),
+        warning: !end || sessionEvents.some(attendanceEventNeedsReview),
       })
       start = null
       breakStart = null
       breakMinutes = 0
       sessionEvents = []
+      sessionIndex += 1
     }
 
     for (const event of ordered) {
@@ -161,24 +175,23 @@ function buildRows(events: ReportEventRow[], schedules: Schedule[], names: Map<s
       }
     }
     finish(null)
-  }
 
-  for (const shift of schedules) {
-    if (shift.id && usedSchedules.has(String(shift.id))) continue
+    if (!sessions.length) continue
+    const uniqueLocations = [...new Set(sessions.map((session) => session.location).filter((value) => value && value !== '-'))]
+    const complete = sessions.every((session) => session.actualEnd !== '-')
     rows.push({
-      employeeName: clean(shift.employeeName) || names.get(String(shift.employeeUserId || '')) || 'Mitarbeiter',
-      date: clean(shift.date),
-      plannedStart: clean(shift.start) || '-',
-      plannedEnd: clean(shift.end) || '-',
-      actualStart: '-',
-      actualEnd: '-',
-      pauseMinutes: Number(shift.pauseMinutes || 0),
-      netMinutes: 0,
-      location: clean(shift.location) || '-',
-      warning: false,
+      employeeName: sessions[0].employeeName,
+      date,
+      actualStart: sessions[0].actualStart,
+      actualEnd: complete ? sessions[sessions.length - 1].actualEnd : '-',
+      pauseMinutes: sessions.reduce((sum, session) => sum + session.pauseMinutes, 0),
+      netMinutes: sessions.reduce((sum, session) => sum + session.netMinutes, 0),
+      location: uniqueLocations.length ? uniqueLocations.join(', ') : '-',
+      warning: sessions.some((session) => session.warning),
     })
   }
-  return rows.sort((a, b) => `${a.employeeName}-${a.date}-${a.plannedStart}`.localeCompare(`${b.employeeName}-${b.date}-${b.plannedStart}`, 'de'))
+
+  return rows.sort((a, b) => `${a.employeeName}-${a.date}`.localeCompare(`${b.employeeName}-${b.date}`, 'de'))
 }
 
 function totals(rows: ReportRow[]) {
@@ -201,7 +214,7 @@ async function buildPdf(request: Request, rows: ReportRow[], from: string, to: s
   const width = 842
   const height = 595
   const margin = 34
-  const columns = [34, 155, 220, 292, 366, 425, 492, 700]
+  const columns = [34, 160, 235, 305, 375, 450, 535, 730]
   let page: ReturnType<typeof pdf.addPage>
   let y = 0
   let pageNumber = 0
@@ -216,10 +229,10 @@ async function buildPdf(request: Request, rows: ReportRow[], from: string, to: s
     page.drawText(company, { x: centeredTextX(bold, company, 16, width), y: 482, size: 16, font: bold, color: rgb(.08, .08, .08) })
     page.drawText(phone, { x: centeredTextX(regular, phone, 8.5, width), y: 466, size: 8.5, font: regular })
     page.drawText(email, { x: centeredTextX(regular, email, 8.5, width), y: 453, size: 8.5, font: regular })
-    page.drawText('Stundenbericht', { x: margin, y: 424, size: 15, font: bold })
+    page.drawText('Stundenzettel', { x: margin, y: 424, size: 15, font: bold })
     page.drawText(pdfText(`Zeitraum ${from} bis ${to} - Seite ${pageNumber}`), { x: margin, y: 408, size: 8.5, font: regular })
     y = 378
-    ;['Name', 'Datum', 'Plan', 'Ist', 'Pause', 'Netto', 'Einsatzort', 'Hinweis'].forEach((header, index) => page.drawText(header, { x: columns[index], y, size: 8, font: bold }))
+    ;['Name', 'Datum', 'Beginn', 'Ende', 'Pause', 'Tagesstunden', 'Einsatzort', 'Hinweis'].forEach((header, index) => page.drawText(header, { x: columns[index], y, size: 8, font: bold }))
     y -= 8
     page.drawLine({ start: { x: margin, y }, end: { x: width - margin, y }, thickness: .7, color: rgb(.45, .45, .45) })
     y -= 15
@@ -228,7 +241,16 @@ async function buildPdf(request: Request, rows: ReportRow[], from: string, to: s
   newPage()
   for (const row of rows) {
     if (y < 58) newPage()
-    const values = [pdfText(row.employeeName, 22), row.date, `${row.plannedStart}-${row.plannedEnd}`, `${row.actualStart}-${row.actualEnd}`, `${row.pauseMinutes} Min.`, `${hours(row.netMinutes)} Std.`, pdfText(row.location, 28), row.warning ? 'Pruefen' : '']
+    const values = [
+      pdfText(row.employeeName, 22),
+      row.date,
+      row.actualStart,
+      row.actualEnd,
+      `${row.pauseMinutes} Min.`,
+      `${hours(row.netMinutes)} Std.`,
+      pdfText(row.location, 30),
+      row.warning ? 'Pruefen' : '',
+    ]
     values.forEach((value, index) => page.drawText(value, { x: columns[index], y, size: 7.4, font: regular }))
     y -= 18
   }
@@ -237,14 +259,14 @@ async function buildPdf(request: Request, rows: ReportRow[], from: string, to: s
   if (y < 110) newPage()
   page.drawLine({ start: { x: margin, y }, end: { x: width - margin, y }, thickness: .8 })
   y -= 20
-  page.drawText('Summen', { x: margin, y, size: 11, font: bold })
+  page.drawText('Gesamtstunden', { x: margin, y, size: 11, font: bold })
   for (const [name, total] of summary.employees) {
     y -= 16
     if (y < 55) newPage()
     page.drawText(pdfText(`${name}: ${hours(total)} Stunden`, 100), { x: margin, y, size: 9, font: regular })
   }
   y -= 20
-  page.drawText(pdfText(`Gesamtsumme: ${hours(summary.grand)} Stunden`), { x: margin, y, size: 11, font: bold })
+  page.drawText(pdfText(`Gesamtsumme aller ausgewaehlten Mitarbeiter: ${hours(summary.grand)} Stunden`), { x: margin, y, size: 11, font: bold })
   return pdf.save()
 }
 
@@ -256,24 +278,25 @@ async function buildExcel(rows: ReportRow[], from: string, to: string) {
   const workbook = new Workbook()
   workbook.creator = clean(settings.companyName) || 'Habun Security'
   workbook.created = new Date()
-  const sheet = workbook.addWorksheet('Arbeitszeiten', { views: [{ state: 'frozen', ySplit: 6 }] })
+  const sheet = workbook.addWorksheet('Stundenzettel', { views: [{ state: 'frozen', ySplit: 6 }] })
   sheet.addRow([clean(settings.companyName) || 'Habun Security'])
   sheet.addRow([clean(settings.phone), clean(settings.email)])
-  sheet.addRow([`Zeitraum ${from} bis ${to}`])
+  sheet.addRow([`Stundenzettel - Zeitraum ${from} bis ${to}`])
   sheet.addRow([])
-  sheet.addRow(['Mitarbeiter', 'Datum', 'Plan Beginn', 'Plan Ende', 'Ist Beginn', 'Ist Ende', 'Pause Min.', 'Netto Std.', 'Einsatzort', 'Hinweis']).font = { bold: true }
-  for (const row of rows) sheet.addRow([row.employeeName, row.date, row.plannedStart, row.plannedEnd, row.actualStart, row.actualEnd, row.pauseMinutes, Number((row.netMinutes / 60).toFixed(2)), row.location, row.warning ? 'Prüfen' : ''])
-  sheet.columns = [{ width: 28 }, { width: 13 }, { width: 13 }, { width: 13 }, { width: 13 }, { width: 13 }, { width: 12 }, { width: 12 }, { width: 30 }, { width: 12 }]
-  const sumSheet = workbook.addWorksheet('Summen')
-  sumSheet.addRow([clean(settings.companyName) || 'Habun Security', 'Stundensummen'])
+  sheet.addRow(['Mitarbeiter', 'Datum', 'Arbeitsbeginn', 'Arbeitsende', 'Pause Min.', 'Tagesstunden', 'Einsatzort', 'Hinweis']).font = { bold: true }
+  for (const row of rows) sheet.addRow([row.employeeName, row.date, row.actualStart, row.actualEnd, row.pauseMinutes, Number((row.netMinutes / 60).toFixed(2)), row.location, row.warning ? 'Prüfen' : ''])
+  sheet.columns = [{ width: 28 }, { width: 13 }, { width: 16 }, { width: 16 }, { width: 12 }, { width: 15 }, { width: 34 }, { width: 12 }]
+
+  const sumSheet = workbook.addWorksheet('Gesamtstunden')
+  sumSheet.addRow([clean(settings.companyName) || 'Habun Security', 'Stundenzettel'])
   sumSheet.addRow([`Zeitraum ${from} bis ${to}`])
   sumSheet.addRow([])
-  sumSheet.addRow(['Mitarbeiter', 'Stunden']).font = { bold: true }
+  sumSheet.addRow(['Mitarbeiter', 'Gesamtstunden']).font = { bold: true }
   const summary = totals(rows)
   for (const [name, total] of summary.employees) sumSheet.addRow([name, Number((total / 60).toFixed(2))])
   sumSheet.addRow([])
   sumSheet.addRow(['Gesamtsumme', Number((summary.grand / 60).toFixed(2))]).font = { bold: true }
-  sumSheet.columns = [{ width: 30 }, { width: 15 }]
+  sumSheet.columns = [{ width: 30 }, { width: 18 }]
   return workbook.xlsx.writeBuffer()
 }
 
@@ -303,17 +326,17 @@ export default async function unifiedReportsFixed(request: Request, _context: Co
   const [allSchedules, names] = await Promise.all([loadSchedules(request, from, to), loadNames(request)])
   const schedules = userIds.length ? allSchedules.filter((shift) => userIds.includes(String(shift.employeeUserId || ''))) : allSchedules
   const rows = buildRows(events, schedules, names)
-  if (!rows.length) return json({ message: 'Für den ausgewählten Zeitraum wurden keine Daten gefunden.', code: 'NO_DATA' }, 404)
+  if (!rows.length) return json({ message: 'Für den ausgewählten Zeitraum wurden keine gebuchten Arbeitszeiten gefunden.', code: 'NO_DATA' }, 404)
 
   try {
     if (format === 'xlsx') {
       const bytes = await buildExcel(rows, from, to)
-      return new Response(bytes as BodyInit, { status: 200, headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="Habun-Stundenbericht-${from}-bis-${to}.xlsx"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex' } })
+      return new Response(bytes as BodyInit, { status: 200, headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="Habun-Stundenzettel-${from}-bis-${to}.xlsx"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex' } })
     }
     const bytes = await buildPdf(request, rows, from, to)
-    return new Response(bytes as BodyInit, { status: 200, headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="Habun-Stundenbericht-${from}-bis-${to}.pdf"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex' } })
+    return new Response(bytes as BodyInit, { status: 200, headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="Habun-Stundenzettel-${from}-bis-${to}.pdf"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex' } })
   } catch (error) {
     console.error('Habun fixed report rendering', error)
-    return json({ message: 'Die Berichtsdatei konnte nicht erzeugt werden.', code: 'REPORT_RENDER_FAILED' }, 500)
+    return json({ message: 'Der Stundenzettel konnte nicht erzeugt werden.', code: 'REPORT_RENDER_FAILED' }, 500)
   }
 }
