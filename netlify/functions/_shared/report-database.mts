@@ -10,17 +10,26 @@ export type ReportEventRow = {
   object_id: string | null
   location_status: string
   offline_captured: boolean
+  pause_minutes_adjustment: number | null
 }
 
 export function buildReportEventQuery(from: string, to: string, userIds: string[]) {
   const selected = userIds.map(String).map((value) => value.trim()).filter(Boolean)
   const placeholders = selected.map((_, index) => `$${index + 3}`).join(', ')
-  const employeeClause = selected.length ? ` AND user_id IN (${placeholders})` : ''
+  const employeeClause = selected.length ? ` AND e.user_id IN (${placeholders})` : ''
   return {
-    text: `SELECT id, user_id, schedule_id, action, client_occurred_at, event_date, object_id, location_status, offline_captured
-             FROM attendance_events
-            WHERE event_date BETWEEN $1::date AND $2::date${employeeClause}
-            ORDER BY user_id, event_date, client_occurred_at`,
+    text: `SELECT e.id, e.user_id, e.schedule_id, e.action, e.client_occurred_at, e.event_date, e.object_id, e.location_status, e.offline_captured,
+                  a.pause_minutes AS pause_minutes_adjustment
+             FROM attendance_events e
+             LEFT JOIN LATERAL (
+               SELECT adjustment.pause_minutes
+                 FROM attendance_adjustments adjustment
+                WHERE adjustment.event_id = e.id
+                ORDER BY adjustment.occurred_at DESC, adjustment.id DESC
+                LIMIT 1
+             ) a ON true
+            WHERE e.event_date BETWEEN $1::date AND $2::date${employeeClause}
+            ORDER BY e.user_id, e.event_date, e.client_occurred_at`,
     params: [from, to, ...selected],
   }
 }
