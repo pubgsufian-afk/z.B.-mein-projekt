@@ -41,9 +41,10 @@ expectIncludes(editor, 'clockInEventId', 'session builder must keep the clock-in
 expectIncludes(editor, 'clockOutEventId', 'session builder must keep the clock-out event id')
 expectIncludes(editor, 'pauseMinutesAdjustment', 'session builder must apply the effective pause adjustment')
 expectIncludes(editor, 'applyAdjustedValues', 'corrected pause/net values must be applied to rendered time cards and summary totals')
+expectIncludes(editor, 'const canEdit = ADMIN_ROLES.has(role)', 'owner/admin edit permission must be separated from read-only management display')
+expectIncludes(editor, 'if (!canEdit) return', 'manager must remain read-only after corrected totals are applied')
 expectIncludes(editor, "button.textContent = 'Bearbeiten'", 'completed time cards must expose an edit action to owner/admin')
 expectIncludes(editor, "action: 'admin-time-edit'", 'time editor must call the privileged maintenance action')
 expectIncludes(editor, "fetch('/api/attendance-maintenance'", 'time editor must save through the maintenance endpoint')
-expectIncludes(editor, "role === 'manager'", 'module must explicitly keep managers read-only')
 
 console.log('admin-time-editing-test: PASS')
