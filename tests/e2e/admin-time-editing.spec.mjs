@@ -89,6 +89,7 @@ async function mockPortal(page, role, initialPauseAdjustment = null) {
   })
   await page.route('**/api/attendance**', async (route) => {
     const url = new URL(route.request().url())
+    if (url.pathname !== '/api/attendance') return route.fallback()
     const resource = url.searchParams.get('resource')
     if (resource === 'history') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries }) })
     if (resource === 'live') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [] }) })
