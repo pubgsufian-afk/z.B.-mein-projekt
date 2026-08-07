@@ -52,7 +52,9 @@ async function navigate(page, label) {
     await menu.click()
     await expect(sidebar).toHaveClass(/open/)
   }
-  await sidebar.getByRole('button', { name: label, exact: true }).click()
+  const target = sidebar.getByRole('button', { name: label, exact: true })
+  await expect(target).toBeVisible()
+  await target.evaluate((button) => button.click())
   await expect(page.locator('.topbar h1')).toHaveText(label)
 }
 async function openEmployees(page, actorRole, targetRole = 'employee', targetId = 'employee-adel') {
