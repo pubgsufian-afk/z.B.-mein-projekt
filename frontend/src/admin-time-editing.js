@@ -94,6 +94,35 @@ function buildSessions(entries) {
   return sessions.sort((a, b) => String(a.clockInAt).localeCompare(String(b.clockInAt)))
 }
 
+function formatDuration(minutes) {
+  const total = Math.max(0, Number(minutes) || 0)
+  const hours = Math.floor(total / 60)
+  const rest = Math.round(total % 60)
+  return `${hours}:${String(rest).padStart(2, '0')} Std.`
+}
+
+function applyAdjustedValues(cards, sessions) {
+  let totalPause = 0
+  let totalNet = 0
+  cards.forEach((card, index) => {
+    const session = sessions[index]
+    if (!session) return
+    totalPause += Number(session.breakMinutes || 0)
+    totalNet += Number(session.netMinutes || 0)
+    const values = [...card.querySelectorAll('.time-values > div')]
+    const pauseValue = values.find((node) => node.querySelector('span')?.textContent?.trim() === 'Pause')?.querySelector('strong')
+    const netValue = values.find((node) => node.querySelector('span')?.textContent?.trim() === 'Netto')?.querySelector('strong')
+    if (pauseValue) pauseValue.textContent = `${Number(session.breakMinutes || 0)} Min.`
+    if (netValue) netValue.textContent = formatDuration(session.netMinutes)
+  })
+
+  const metrics = [...document.querySelectorAll('.metric-strip.compact-metrics > div')]
+  const pauseMetric = metrics.find((node) => node.querySelector('span')?.textContent?.trim() === 'Pausen')?.querySelector('strong')
+  const totalMetric = metrics.find((node) => node.querySelector('span')?.textContent?.trim() === 'Gesamt')?.querySelector('strong')
+  if (pauseMetric) pauseMetric.textContent = formatDuration(totalPause)
+  if (totalMetric) totalMetric.textContent = formatDuration(totalNet)
+}
+
 function toLocalInput(value) {
   const date = new Date(value)
   if (!Number.isFinite(date.getTime())) return ''
@@ -283,6 +312,7 @@ async function refreshButtons() {
     removeHint()
 
     const sessions = buildSessions(entries)
+    applyAdjustedValues(cards, sessions)
     cards.forEach((card, index) => {
       const session = sessions[index]
       if (!session?.clockInEventId || !session?.clockOutEventId) return
