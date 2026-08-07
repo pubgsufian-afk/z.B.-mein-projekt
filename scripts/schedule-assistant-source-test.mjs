@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 const source = await readFile('netlify/functions/schedule-assistant.mts', 'utf8')
 
 assert.match(source, /SCHEDULE_ASSISTANT_TOKEN/)
+assert.match(source, /SCHEDULE_ASSISTANT_BRIDGE_TOKEN/)
 assert.match(source, /Authorization/i)
 assert.match(source, /timingSafeEqual/)
 assert.match(source, /getStore\(\{ name: 'portal-access'/)
