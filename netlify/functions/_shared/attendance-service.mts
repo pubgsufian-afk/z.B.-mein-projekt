@@ -153,21 +153,22 @@ export function createAttendanceService({ repository, now = () => new Date(), ra
       const transition = validateAttendanceTransition(events, payload.action)
       if (!transition.ok) throw transitionError(transition.code)
 
-      const boundaryAction = payload.action === 'clock-in' || payload.action === 'clock-out'
-      const object = boundaryAction && payload.objectId ? await repository.findObject(payload.objectId) : null
+      const locationAction = payload.action === 'clock-in' || payload.action === 'clock-out'
+      const requiresInsideWorksite = payload.action === 'clock-in'
+      const object = locationAction && payload.objectId ? await repository.findObject(payload.objectId) : null
       const configured = Boolean(object && Number.isFinite(Number(object.latitude)) && Number.isFinite(Number(object.longitude)))
-      const available = boundaryAction && Boolean(payload.location)
+      const available = locationAction && Boolean(payload.location)
       const distanceMeters = configured && payload.location
         ? distanceMetersBetween(payload.location.latitude, payload.location.longitude, object.latitude, object.longitude)
         : null
-      const classification = boundaryAction
+      const classification = locationAction
         ? classifyLocation(distanceMeters, configured, available, object?.radiusMeters ?? 500, payload.location?.accuracyMeters ?? 0)
         : {
             status: 'unavailable', configured: false, available: false, distanceMeters: null,
             radiusMeters: 0, accuracyMeters: 0, accuracyToleranceMeters: 0, allowedDistanceMeters: 0,
           }
 
-      if (boundaryAction && classification.status !== 'inside') {
+      if (requiresInsideWorksite && classification.status !== 'inside') {
         if (!configured) {
           throw new AttendanceServiceError(
             'Für diesen Einsatzort sind noch keine gültigen Standort-Koordinaten gespeichert. Bitte den Einsatzort in der Administration öffnen und den aktuellen Standort übernehmen.',
@@ -187,7 +188,7 @@ export function createAttendanceService({ repository, now = () => new Date(), ra
         const radiusText = Math.round(Number(classification.radiusMeters) || 0)
         const allowedText = Math.round(Number(classification.allowedDistanceMeters) || radiusText)
         throw new AttendanceServiceError(
-          `Du befindest dich außerhalb des gespeicherten Einsatzortes. Entfernung: ${distanceText} m · GPS-Genauigkeit: ±${accuracyText} m · Einsatzradius: ${radiusText} m · mit GPS-Toleranz erlaubt: ${allowedText} m. Die Zeitbuchung wurde nicht ausgeführt.`,
+          `Du befindest dich außerhalb des gespeicherten Einsatzortes. Entfernung: ${distanceText} m · GPS-Genauigkeit: ±${accuracyText} m · Einsatzradius: ${radiusText} m · mit GPS-Toleranz erlaubt: ${allowedText} m. Der Arbeitsbeginn wurde nicht ausgeführt.`,
           403,
           'OUTSIDE_WORKSITE',
         )
@@ -195,7 +196,7 @@ export function createAttendanceService({ repository, now = () => new Date(), ra
 
       const serverOccurredAt = now().toISOString()
       const eventId = `attendance:${randomUUID()}`
-      const effectiveObjectId = boundaryAction ? object?.id || null : payload.objectId
+      const effectiveObjectId = locationAction ? object?.id || payload.objectId : payload.objectId
       const event = {
         id: eventId,
         userId: current.userId,
@@ -209,7 +210,7 @@ export function createAttendanceService({ repository, now = () => new Date(), ra
         locationStatus: classification.status,
         offlineCaptured: payload.offlineCaptured,
       }
-      const location = boundaryAction && payload.location
+      const location = locationAction && payload.location
         ? { eventId, userId: current.userId, objectId: effectiveObjectId, capturedAt: payload.clientOccurredAt, ...payload.location, distanceMeters: classification.distanceMeters }
         : null
 
