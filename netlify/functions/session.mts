@@ -21,7 +21,8 @@ export default async (request: Request, _context: Context) => {
 
   if (data.role === 'employee') {
     return json({
-      userId: data.userId,
+      userId: data.userId || data.id,
+      id: data.id || data.userId,
       email: data.email,
       fullName: data.fullName,
       role: 'employee',
