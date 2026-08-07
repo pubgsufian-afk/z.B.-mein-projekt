@@ -1,14 +1,6 @@
-const enabled = String(process.env.SCHEDULE_ASSISTANT_BUILD_BRIDGE_ENABLED || '').trim()
-const context = String(process.env.CONTEXT || '').trim()
-const branch = String(process.env.BRANCH || '').trim()
-
-if (enabled !== '1' || context !== 'production' || branch !== 'main') {
-  console.log('Schedule build bridge skipped outside enabled main production build')
-  process.exit(0)
-}
-
 const raw = String(process.env.SCHEDULE_ASSISTANT_COMMAND || '').trim()
 const bridgeToken = String(process.env.SCHEDULE_ASSISTANT_BRIDGE_TOKEN || '').trim()
+
 if (!raw) {
   console.log('Schedule build bridge skipped without command')
   process.exit(0)
