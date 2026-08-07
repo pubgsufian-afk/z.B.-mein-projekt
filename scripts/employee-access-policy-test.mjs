@@ -25,7 +25,8 @@ for (const key of ['overview', 'times', 'corrections']) {
 }
 assert.match(app, /employee-kiosk-shell/)
 assert.match(app, /employee-kiosk-nav/)
-assert.match(app, /entry\.employeeUserId === session\.userId && entry\.status === 'published'/)
+assert.match(app, /const employeeSessionUserId = session\.userId \|\| session\.id/)
+assert.match(app, /String\(entry\.employeeUserId \|\| ''\) === String\(employeeSessionUserId \|\| ''\) && entry\.status === 'published'/)
 assert.match(app, /session\.role === 'employee' \? 'attendance' : session\.role === 'scheduler' \? 'schedule' : 'overview'/)
 assert.match(app, /employeeOnly/)
 assert.match(app, /!employeeOnly && <section className="panel">/)
@@ -41,7 +42,7 @@ assert.match(logoStyles, /employee-kiosk-header \.brand-mark[\s\S]*?width:\s*76p
 assert.match(index, /viewport-fit=cover/)
 
 assert.match(sessionEndpoint, /data\.role === ['"]employee['"]/)
-assert.match(sessionEndpoint, /userId:\s*data\.userId/)
+assert.match(sessionEndpoint, /userId:\s*data\.userId\s*\|\|\s*data\.id/)
 assert.doesNotMatch(sessionEndpoint, /employeeCount:\s*data\.employeeCount/)
 assert.match(service, /getHistory[\s\S]*?if \(!MANAGEMENT_ROLES\.has\(current\.role\)\) throw new AttendanceServiceError\('Keine Berechtigung\.', 403, 'FORBIDDEN'\)/)
 assert.match(attendance, /resource === 'history'[\s\S]*?actor\.role === 'employee'[\s\S]*?FORBIDDEN/)
