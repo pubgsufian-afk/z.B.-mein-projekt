@@ -98,4 +98,60 @@ mark('netlify/functions/timesheet-reports.mts', await replaceInFile(
   'Stundenzettel-Report-Parameter',
 ))
 
+mark('frontend/src/TimesheetPage.jsx', await replaceInFile(
+  'frontend/src/TimesheetPage.jsx',
+  "import { buildActualSessions, buildPlannedRows, sumMinutes, totalsByEmployee } from './timesheet-utils.js'\n",
+  "import { buildActualSessions, buildPlannedRows, sumMinutes, totalsByEmployee } from './timesheet-utils.js'\nimport { berlinDate } from './berlin-date.mjs'\n",
+  'Stundenzettel-Berlin-Datum-Import',
+))
+
+mark('frontend/src/TimesheetPage.jsx', await replaceInFile(
+  'frontend/src/TimesheetPage.jsx',
+  "function formatDuration(minutes) {\n  const total = Math.max(0, Number(minutes) || 0)\n  const hours = Math.floor(total / 60)\n  const rest = Math.round(total % 60)\n  return `${hours}:${String(rest).padStart(2, '0')} Std.`\n}\n",
+  "function formatDuration(minutes) {\n  const total = Math.max(0, Number(minutes) || 0)\n  const hours = Math.floor(total / 60)\n  const rest = Math.round(total % 60)\n  return `${hours}:${String(rest).padStart(2, '0')} Std.`\n}\n\nfunction addDateDays(value, amount) {\n  const date = new Date(`${value}T12:00:00Z`)\n  date.setUTCDate(date.getUTCDate() + amount)\n  return date.toISOString().slice(0, 10)\n}\n",
+  'Stundenzettel-Datumsbereich-Helfer',
+))
+
+mark('frontend/src/TimesheetPage.jsx', await replaceInFile(
+  'frontend/src/TimesheetPage.jsx',
+  "  const today = new Date().toISOString().slice(0, 10)",
+  "  const today = berlinDate(new Date())",
+  'Stundenzettel-Berlin-Heute',
+))
+
+mark('frontend/src/TimesheetPage.jsx', await replaceInFile(
+  'frontend/src/TimesheetPage.jsx',
+  "  const [editor, setEditor] = useState(null)\n\n  const employeeNames = useMemo(() => {",
+  "  const [editor, setEditor] = useState(null)\n  const sessionUserId = session.userId || session.id || ''\n\n  const employeeNames = useMemo(() => {",
+  'Stundenzettel-Session-ID',
+))
+
+mark('frontend/src/TimesheetPage.jsx', await replaceInFile(
+  'frontend/src/TimesheetPage.jsx',
+  "    if (session.userId) names.set(String(session.userId), session.fullName || 'Mitarbeiter')\n    return names\n  }, [employees, session.fullName, session.userId])",
+  "    if (sessionUserId) names.set(String(sessionUserId), session.fullName || 'Mitarbeiter')\n    return names\n  }, [employees, session.fullName, sessionUserId])",
+  'Stundenzettel-Mitarbeitername-Session-ID',
+))
+
+mark('frontend/src/TimesheetPage.jsx', await replaceInFile(
+  'frontend/src/TimesheetPage.jsx',
+  "      const params = new URLSearchParams({ resource: 'history', from, to })\n      if (management && userId) params.set('userId', userId)\n      const data = await requestJson(`/api/attendance?${params}`)\n      setActual({ rows: buildActualSessions(data.entries || [], employeeNames), error: '' })",
+  "      const historyTo = addDateDays(to, 1)\n      const params = new URLSearchParams({ resource: 'history', from, to: historyTo })\n      if (management && userId) params.set('userId', userId)\n      const data = await requestJson(`/api/attendance?${params}`)\n      const rows = buildActualSessions(data.entries || [], employeeNames).filter((row) => row.date >= from && row.date <= to)\n      setActual({ rows, error: '' })",
+  'Stundenzettel-Nachtschicht-Historie',
+))
+
+mark('frontend/src/TimesheetPage.jsx', await replaceInFile(
+  'frontend/src/TimesheetPage.jsx',
+  "      if (!management) entries = entries.filter((entry) => String(entry.employeeUserId || '') === String(session.userId || '') && entry.status === 'published')",
+  "      if (!management) entries = entries.filter((entry) => String(entry.employeeUserId || '') === String(sessionUserId) && entry.status === 'published')",
+  'Stundenzettel-Mitarbeiter-Dienstplan-ID',
+))
+
+mark('frontend/src/TimesheetPage.jsx', await replaceInFile(
+  'frontend/src/TimesheetPage.jsx',
+  "  }, [employeeNames, from, management, session.userId, to, userId])",
+  "  }, [employeeNames, from, management, sessionUserId, to, userId])",
+  'Stundenzettel-Dienstplan-Abhängigkeiten',
+))
+
 console.log(changed.length ? `Stundenzettel feature applied: ${[...new Set(changed)].join(', ')}` : 'Stundenzettel feature already applied')
