@@ -278,16 +278,17 @@ export default async function scheduleAssistant(request: Request, _context: Cont
   if (!body) return json({ message: 'Ungültige Anfrage.' }, 400)
 
   try {
-    const action = text(body.action)
-    const requestedNames = action === 'resolve-employees'
-      ? (Array.isArray(body.names) ? body.names.map(text).filter(Boolean).slice(0, MAX_BATCH) : [])
-      : action === 'publish-shifts' && Array.isArray(body.shifts)
-        ? body.shifts.slice(0, MAX_BATCH).map((shift) => text((shift as Record<string, unknown> | null)?.employeeName)).filter(Boolean)
-        : []
+    const requestedNames = [
+      ...(Array.isArray(body.names) ? body.names.map(text) : []),
+      ...(Array.isArray(body.shifts)
+        ? body.shifts.map((shift) => text((shift as Record<string, unknown> | null)?.employeeName))
+        : []),
+    ].filter(Boolean).slice(0, MAX_BATCH)
     const employees = await activePortalEmployees(requestedNames)
+    const action = text(body.action)
 
     if (action === 'resolve-employees') {
-      const names = requestedNames
+      const names = Array.isArray(body.names) ? body.names.map(text).filter(Boolean).slice(0, MAX_BATCH) : []
       if (!names.length) return json({ message: 'Mindestens ein Mitarbeitername ist erforderlich.' }, 400)
       return json({
         integration: 'Dienstplan-Assistent',
