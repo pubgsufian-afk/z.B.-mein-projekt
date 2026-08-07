@@ -44,13 +44,13 @@ async function mockPortal(page, role, initialPauseAdjustment = null, mode = 'com
   const user = userFor(role)
   const today = new Date().toISOString().slice(0, 10)
   let lastEditBody = null
-  const entries = [
-    {
-      id: 'clock-in-1', userId: 'employee-anna', clientEventId: 'in-1', action: 'clock-in',
-      clientOccurredAt: `${today}T07:00:00.000Z`, serverOccurredAt: `${today}T07:00:01.000Z`, eventDate: today,
-      scheduleId: 'shift-1', objectId: 'site-1', locationStatus: 'inside', offlineCaptured: false,
-    },
-  ]
+  const clockIn = {
+    id: 'clock-in-1', userId: 'employee-anna', clientEventId: 'in-1', action: 'clock-in',
+    clientOccurredAt: `${today}T07:00:00.000Z`, serverOccurredAt: `${today}T07:00:01.000Z`, eventDate: today,
+    scheduleId: 'shift-1', objectId: 'site-1', locationStatus: 'inside', offlineCaptured: false,
+    ...(mode === 'open' && initialPauseAdjustment !== null ? { pauseMinutesAdjustment: initialPauseAdjustment } : {}),
+  }
+  const entries = [clockIn]
   if (mode === 'completed') {
     entries.push({
       id: 'clock-out-1', userId: 'employee-anna', clientEventId: 'out-1', action: 'clock-out',
@@ -72,12 +72,12 @@ async function mockPortal(page, role, initialPauseAdjustment = null, mode = 'com
   }))
   await page.route('**/api/schedule-v2**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [], objects: [] }) }))
   await page.route('**/api/attendance-maintenance**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ corrections: [] }) }))
-  await page.route('**/api/attendance-time-edit', async (route) => {
+  await page.route('**/api/attendance-time-edit-v2', async (route) => {
     const body = route.request().postDataJSON()
     lastEditBody = body
-    const clockIn = entries.find((entry) => entry.id === body.clockInEventId)
-    clockIn.clientOccurredAt = body.clockInAt
-    clockIn.eventDate = body.clockInAt.slice(0, 10)
+    const selectedClockIn = entries.find((entry) => entry.id === body.clockInEventId)
+    selectedClockIn.clientOccurredAt = body.clockInAt
+    selectedClockIn.eventDate = body.clockInAt.slice(0, 10)
 
     let clockOut = body.clockOutEventId ? entries.find((entry) => entry.id === body.clockOutEventId) : null
     if (body.clockOutAt) {
@@ -93,11 +93,13 @@ async function mockPortal(page, role, initialPauseAdjustment = null, mode = 'com
         clockOut.eventDate = body.clockOutAt.slice(0, 10)
       }
       clockOut.pauseMinutesAdjustment = body.pauseMinutes
+    } else {
+      selectedClockIn.pauseMinutesAdjustment = body.pauseMinutes
     }
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ saved: true, clockInEventId: clockIn.id, clockOutEventId: clockOut?.id || null, open: !clockOut }),
+      body: JSON.stringify({ saved: true, clockInEventId: selectedClockIn.id, clockOutEventId: clockOut?.id || null, open: !clockOut }),
     })
   })
   await page.route('**/api/attendance**', async (route) => {
@@ -127,7 +129,7 @@ async function loginAndOpenTimes(page, role, initialPauseAdjustment = null, mode
   return portal
 }
 
-test('admin edits a completed session and corrected totals are shown', async ({ page }) => {
+test('admin edits a completed session without entering a reason', async ({ page }) => {
   const portal = await loginAndOpenTimes(page, 'admin')
   const card = page.locator('.times-list > article').first()
   await expect(card).toBeVisible()
@@ -135,8 +137,8 @@ test('admin edits a completed session and corrected totals are shown', async ({ 
 
   await page.getByRole('button', { name: 'Bearbeiten', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Arbeitszeit bearbeiten', exact: true })).toBeVisible()
+  await expect(page.getByLabel('Begründung')).toHaveCount(0)
   await page.getByLabel('Pause in Minuten').fill('15')
-  await page.getByLabel('Begründung').fill('Korrektur durch Admin')
   await page.getByRole('button', { name: 'Änderung speichern', exact: true }).click()
 
   await expect(page.getByText(/Arbeitszeit wurde aktualisiert/)).toBeVisible()
@@ -149,42 +151,64 @@ test('admin edits a completed session and corrected totals are shown', async ({ 
     clockInEventId: 'clock-in-1',
     clockOutEventId: 'clock-out-1',
     pauseMinutes: 15,
-    reason: 'Korrektur durch Admin',
   })
+  expect(portal.getLastEditBody()).not.toHaveProperty('reason')
 })
 
-test('manager can directly edit a completed employee session', async ({ page }) => {
+test('manager can directly edit a completed employee session without a reason field', async ({ page }) => {
   const portal = await loginAndOpenTimes(page, 'manager', 20)
   const card = page.locator('.times-list > article').first()
   await expect(card.getByText('20 Min.', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Bearbeiten', exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Bearbeiten', exact: true }).click()
+  await expect(page.getByLabel('Begründung')).toHaveCount(0)
   await page.getByLabel('Pause in Minuten').fill('10')
-  await page.getByLabel('Begründung').fill('Korrektur durch Einsatzleiter')
   await page.getByRole('button', { name: 'Änderung speichern', exact: true }).click()
 
   await expect(page.getByText(/Arbeitszeit wurde aktualisiert/)).toBeVisible()
   await expect(card.getByText('10 Min.', { exact: true })).toBeVisible()
-  expect(portal.getLastEditBody()).toMatchObject({ pauseMinutes: 10, reason: 'Korrektur durch Einsatzleiter' })
+  expect(portal.getLastEditBody()).toMatchObject({ pauseMinutes: 10 })
+  expect(portal.getLastEditBody()).not.toHaveProperty('reason')
 })
 
-test('manager can edit an already checked-in running session and close it with pause', async ({ page }) => {
+test('manager can edit pause on a running session without ending the shift', async ({ page }) => {
   const portal = await loginAndOpenTimes(page, 'manager', null, 'open')
   const card = page.locator('.times-list > article').first()
   await expect(card).toBeVisible()
   await expect(page.getByRole('button', { name: 'Bearbeiten', exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Bearbeiten', exact: true }).click()
-  const end = page.getByLabel('Ende')
+  const end = page.locator('[data-admin-time-end]')
   const pause = page.getByLabel('Pause in Minuten')
   await expect(end).toHaveValue('')
-  await expect(pause).toHaveJSProperty('readOnly', true)
-
-  await end.fill(`${portal.today}T08:00`)
   await expect(pause).toHaveJSProperty('readOnly', false)
+  await expect(page.getByLabel('Begründung')).toHaveCount(0)
+
   await pause.fill('10')
-  await page.getByLabel('Begründung').fill('Laufenden Dienst korrigiert')
+  await page.getByRole('button', { name: 'Änderung speichern', exact: true }).click()
+
+  await expect(page.getByText(/Arbeitszeit wurde aktualisiert/)).toBeVisible()
+  await expect(card.getByText('10 Min.', { exact: true })).toBeVisible()
+  expect(portal.getLastEditBody()).toMatchObject({
+    clockInEventId: 'clock-in-1',
+    clockOutEventId: null,
+    clockOutAt: null,
+    pauseMinutes: 10,
+  })
+  expect(portal.getLastEditBody()).not.toHaveProperty('reason')
+})
+
+test('manager can still close a running session with a corrected pause', async ({ page }) => {
+  const portal = await loginAndOpenTimes(page, 'manager', null, 'open')
+  const card = page.locator('.times-list > article').first()
+  await expect(card).toBeVisible()
+  await page.getByRole('button', { name: 'Bearbeiten', exact: true }).click()
+
+  const end = page.locator('[data-admin-time-end]')
+  const pause = page.getByLabel('Pause in Minuten')
+  await end.fill(`${portal.today}T08:00`)
+  await pause.fill('10')
   await page.getByRole('button', { name: 'Änderung speichern', exact: true }).click()
 
   await expect(page.getByText(/Laufender Dienst wurde korrigiert und abgeschlossen/)).toBeVisible()
@@ -194,7 +218,7 @@ test('manager can edit an already checked-in running session and close it with p
     clockInEventId: 'clock-in-1',
     clockOutEventId: null,
     pauseMinutes: 10,
-    reason: 'Laufenden Dienst korrigiert',
   })
   expect(portal.getLastEditBody().clockOutAt).toContain(`${portal.today}T08:00`)
+  expect(portal.getLastEditBody()).not.toHaveProperty('reason')
 })
