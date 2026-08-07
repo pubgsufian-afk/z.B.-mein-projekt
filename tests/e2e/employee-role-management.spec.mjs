@@ -46,12 +46,13 @@ async function mockPortal(page, actorRole, targetRole = 'employee', targetId = '
   return { user, getLastPatch: () => lastPatch }
 }
 async function navigate(page, label) {
+  const sidebar = page.locator('.sidebar')
   const menu = page.getByRole('button', { name: 'Menü öffnen' })
   if (await menu.isVisible().catch(() => false)) {
     await menu.click()
-    await expect(page.locator('.sidebar')).toHaveClass(/open/)
+    await expect(sidebar).toHaveClass(/open/)
   }
-  await page.getByRole('button', { name: label, exact: true }).click()
+  await sidebar.getByRole('button', { name: label, exact: true }).click()
   await expect(page.locator('.topbar h1')).toHaveText(label)
 }
 async function openEmployees(page, actorRole, targetRole = 'employee', targetId = 'employee-adel') {
@@ -72,6 +73,7 @@ test('Hauptadmin may assign Admin and deactivate normal accounts', async ({ page
   await expect(select.locator('option[value="admin"]')).toHaveCount(1)
   await expect(page.getByRole('button', { name: 'Konto deaktivieren' })).toBeVisible()
   await select.selectOption('manager')
+  await expect(select).toHaveValue('manager')
   await page.getByRole('button', { name: 'Rolle ändern' }).click()
   await expect.poll(() => portal.getLastPatch()).toMatchObject({ id: 'employee-adel', action: 'update-role', role: 'manager' })
 })
