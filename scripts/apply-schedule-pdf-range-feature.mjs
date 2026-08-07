@@ -51,4 +51,14 @@ if (!styles.includes('/* SCHEDULE_PDF_RANGE */')) {
   await writeFile(stylesPath, styles)
 }
 
+const browserPath = 'tests/e2e/unified-portal.spec.mjs'
+let browser = await readFile(browserPath, 'utf8')
+if (!browser.includes('requestedScheduleRange')) {
+  const oldTest = `test('management downloads a valid schedule PDF', async ({ page }) => {\n  await login(page, 'admin')\n  await navigate(page, 'Dienstplan')\n  const downloadPromise = page.waitForEvent('download', { predicate: (download) => /Habun-Dienstplan.*\\.pdf$/i.test(download.suggestedFilename()) })\n  await page.getByRole('button', { name: 'Dienstplan als PDF' }).click()\n  const download = await downloadPromise\n  expect(download.suggestedFilename()).toMatch(/\\.pdf$/i)\n  await expect(page.getByText(/Dienstplan wurde als PDF erstellt/i)).toBeVisible()\n})`
+  const newTest = `test('management downloads a valid schedule PDF', async ({ page }) => {\n  await login(page, 'admin')\n  await navigate(page, 'Dienstplan')\n\n  let requestedScheduleRange = null\n  await page.unroute('**/api/schedule-pdf')\n  await page.route('**/api/schedule-pdf', async (route) => {\n    requestedScheduleRange = route.request().postDataJSON()\n    return route.fulfill({\n      status: 200,\n      contentType: 'application/pdf',\n      headers: { 'Content-Disposition': 'attachment; filename=\"Habun-Dienstplan-2026-08-01-bis-2026-08-31.pdf\"' },\n      body: Buffer.from('%PDF-1.4\\n%%EOF'),\n    })\n  })\n\n  await expect(page.getByLabel('Dienstplan PDF von')).toBeVisible()\n  await expect(page.getByLabel('Dienstplan PDF bis')).toBeVisible()\n\n  await page.getByLabel('Dienstplan PDF von').fill('2026-08-31')\n  await page.getByLabel('Dienstplan PDF bis').fill('2026-08-01')\n  await page.getByRole('button', { name: 'Dienstplan als PDF' }).click()\n  await expect(page.getByText('Das Bis-Datum darf nicht vor dem Von-Datum liegen.')).toBeVisible()\n  expect(requestedScheduleRange).toBeNull()\n\n  await page.getByLabel('Dienstplan PDF von').fill('2026-08-01')\n  await page.getByLabel('Dienstplan PDF bis').fill('2026-08-31')\n  const downloadPromise = page.waitForEvent('download', { predicate: (download) => /Habun-Dienstplan.*\\.pdf$/i.test(download.suggestedFilename()) })\n  await page.getByRole('button', { name: 'Dienstplan als PDF' }).click()\n  const download = await downloadPromise\n  expect(download.suggestedFilename()).toMatch(/\\.pdf$/i)\n  expect(requestedScheduleRange).toEqual({ from: '2026-08-01', to: '2026-08-31' })\n  await expect(page.getByText(/Dienstplan wurde als PDF erstellt/i)).toBeVisible()\n  await expectNoHorizontalPageOverflow(page)\n})`
+  assert.ok(browser.includes(oldTest), 'Dienstplan-PDF-Browsertest wurde nicht gefunden.')
+  browser = browser.replace(oldTest, newTest)
+  await writeFile(browserPath, browser)
+}
+
 console.log('Schedule PDF range feature applied')
