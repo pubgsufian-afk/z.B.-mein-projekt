@@ -27,6 +27,7 @@ if (await patch('netlify/functions/_shared/attendance-service.mts', [
             status: 'unavailable', configured: false, available: false, distanceMeters: null,
             radiusMeters: 0, accuracyMeters: 0, accuracyToleranceMeters: 0, allowedDistanceMeters: 0,
           }`,
+    already: `      const locationAction = payload.action === 'clock-in' || payload.action === 'clock-out'`,
   },
   {
     from: `      if (boundaryAction && classification.status !== 'inside') {
@@ -63,11 +64,12 @@ if (await patch('netlify/functions/_shared/attendance-service.mts', [
         const radiusText = Math.round(Number(classification.radiusMeters) || 0)
         const allowedText = Math.round(Number(classification.allowedDistanceMeters) || radiusText)
         throw new AttendanceServiceError(
-          \`Du befindest dich außerhalb des gespeicherten Einsatzortes. Entfernung: \${distanceText} m · GPS-Genauigkeit: ±\${accuracyText} m · Einsatzradius: \${radiusText} m · mit GPS-Toleranz erlaubt: \${allowedText} m. Die Zeitbuchung wurde nicht ausgeführt.\`,
+          `Du befindest dich außerhalb des gespeicherten Einsatzortes. Entfernung: ${distanceText} m · GPS-Genauigkeit: ±${accuracyText} m · Einsatzradius: ${radiusText} m · mit GPS-Toleranz erlaubt: ${allowedText} m. Die Zeitbuchung wurde nicht ausgeführt.`,
           403,
           'OUTSIDE_WORKSITE',
         )
       }`,
+    already: `      if (requiresInsideWorksite && classification.status !== 'inside') {`,
   },
 ])) changed.push('attendance-service.mts')
 
@@ -87,7 +89,7 @@ if (await patch('netlify/functions/attendance.mts', [
 
         const { getStore } = await import('@netlify/blobs')
         const scheduleStore = getStore({ name: 'portal-schedule-v2', consistency: 'strong' })
-        const stored = await scheduleStore.get(\`objects/\${objectId}\`, { type: 'json' }) as Record<string, unknown> | null
+        const stored = await scheduleStore.get(`objects/${objectId}`, { type: 'json' }) as Record<string, unknown> | null
         if (!stored) return fromDatabase
         const latitude = stored.latitude === '' || stored.latitude == null ? null : Number(stored.latitude)
         const longitude = stored.longitude === '' || stored.longitude == null ? null : Number(stored.longitude)
