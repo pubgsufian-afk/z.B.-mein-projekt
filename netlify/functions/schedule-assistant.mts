@@ -1,5 +1,6 @@
 import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
+import { admin } from '@netlify/identity'
 import { timingSafeEqual } from 'node:crypto'
 import {
   findExactScheduleDuplicate,
@@ -17,6 +18,11 @@ import {
   type AssistantDirectoryEmployee,
   type AssistantShiftInput,
 } from './_shared/schedule-assistant-core.mts'
+import {
+  mergeScheduleIdentityDirectory,
+  type ScheduleAccessRecord,
+  type ScheduleIdentityUser,
+} from './_shared/schedule-identity-directory.mts'
 
 type AccessRecord = {
   userId?: string
@@ -62,13 +68,17 @@ function secureTokenMatches(received: string, expected: string) {
   return timingSafeEqual(left, right)
 }
 
-async function activePortalEmployees(): Promise<AssistantDirectoryEmployee[]> {
-  const store = getStore({ name: 'portal-access', consistency: 'strong' })
-  const listed = await store.list({ prefix: 'access/' })
-  const rows = await Promise.all(
-    listed.blobs.map((blob) => store.get(blob.key, { type: 'json' }) as Promise<AccessRecord>),
+function ownerEmails() {
+  return new Set(
+    (Netlify.env.get('PORTAL_OWNER_EMAILS') || '')
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean),
   )
-  const employees = rows
+}
+
+function legacyAccessEmployees(rows: AccessRecord[]): AssistantDirectoryEmployee[] {
+  return rows
     .filter((row): row is NonNullable<AccessRecord> => Boolean(
       row?.userId && row.status === 'active' && row.role && ALLOWED_ROLES.has(String(row.role)) && text(row.fullName),
     ))
@@ -79,6 +89,28 @@ async function activePortalEmployees(): Promise<AssistantDirectoryEmployee[]> {
       status: 'active',
       location: text(row.location),
     }))
+}
+
+async function activePortalEmployees(): Promise<AssistantDirectoryEmployee[]> {
+  const store = getStore({ name: 'portal-access', consistency: 'strong' })
+  const listed = await store.list({ prefix: 'access/' })
+  const rows = await Promise.all(
+    listed.blobs.map((blob) => store.get(blob.key, { type: 'json' }) as Promise<AccessRecord>),
+  )
+
+  let employees: AssistantDirectoryEmployee[] = []
+  try {
+    const users = await admin.listUsers()
+    employees = mergeScheduleIdentityDirectory(
+      users as ScheduleIdentityUser[],
+      rows.filter((row): row is NonNullable<AccessRecord> => Boolean(row)) as ScheduleAccessRecord[],
+      ownerEmails(),
+    )
+  } catch (error) {
+    console.warn('schedule-assistant Identity directory unavailable; using portal-access fallback', error)
+  }
+
+  if (!employees.length) employees = legacyAccessEmployees(rows)
 
   await syncScheduleEmployees(employees.map((employee) => ({
     userId: employee.userId,
