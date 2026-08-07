@@ -56,7 +56,7 @@ async function connection() {
 }
 
 async function listCorrections(sql: Awaited<ReturnType<typeof connection>>, current: NonNullable<Awaited<ReturnType<typeof actor>>>) {
-  const rows = await sql(
+  const rows = await sql.query(
     `SELECT c.id, c.event_id, c.requested_by, c.reason, c.before_data, c.after_data,
             c.occurred_at, c.expires_at,
             d.decision, d.reason AS decision_reason, d.after_data AS decision_after_data,
@@ -78,7 +78,7 @@ async function requestCorrection(sql: Awaited<ReturnType<typeof connection>>, cu
   const eventId = String(body.eventId || '').trim()
   const reason = String(body.reason || '').trim()
   if (!eventId || reason.length < 3) return json({ message: 'Buchung und nachvollziehbarer Grund sind erforderlich.' }, 400)
-  const events = await sql(`SELECT * FROM attendance_events WHERE id = $1 AND user_id = $2`, [eventId, current.userId])
+  const events = await sql.query(`SELECT * FROM attendance_events WHERE id = $1 AND user_id = $2`, [eventId, current.userId])
   if (!events[0]) return json({ message: 'Die Buchung wurde nicht gefunden oder gehört nicht zu diesem Konto.' }, 404)
   const afterData = cleanRequestedData(body.requestedData)
   if (!Object.keys(afterData).length) return json({ message: 'Mindestens eine gewünschte Korrektur ist erforderlich.' }, 400)
@@ -90,14 +90,14 @@ async function requestCorrection(sql: Awaited<ReturnType<typeof connection>>, cu
     objectId: events[0].object_id,
     locationStatus: events[0].location_status,
   }
-  await sql(
+  await sql.query(
     `INSERT INTO attendance_corrections
        (id, event_id, requested_by, actor_id, actor_email, actor_role, reason,
         before_data, after_data, occurred_at, expires_at)
      VALUES ($1,$2,$3,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::timestamptz,$9::timestamptz + interval '24 months')`,
     [id, eventId, current.userId, current.email, current.role, reason, JSON.stringify(before), JSON.stringify(afterData), now],
   )
-  await sql(
+  await sql.query(
     `INSERT INTO attendance_audit_log
        (id, occurred_at, actor_id, actor_email, actor_role, action, entity_type, entity_id, reason, before_data, after_data, expires_at)
      VALUES ($1,$2::timestamptz,$3,$4,$5,'correction-request','attendance_correction',$6,$7,$8::jsonb,$9::jsonb,$2::timestamptz + interval '24 months')`,
@@ -114,10 +114,10 @@ async function decideCorrection(sql: Awaited<ReturnType<typeof connection>>, cur
   if (!correctionId || !['approved', 'rejected', 'clarification'].includes(decision) || reason.length < 2) {
     return json({ message: 'Korrektur, Entscheidung und Begründung sind erforderlich.' }, 400)
   }
-  const corrections = await sql(`SELECT * FROM attendance_corrections WHERE id = $1`, [correctionId])
+  const corrections = await sql.query(`SELECT * FROM attendance_corrections WHERE id = $1`, [correctionId])
   const correction = corrections[0]
   if (!correction) return json({ message: 'Korrekturantrag nicht gefunden.' }, 404)
-  const latest = await sql(
+  const latest = await sql.query(
     `SELECT decision FROM attendance_correction_decisions WHERE correction_id = $1 ORDER BY occurred_at DESC, id DESC LIMIT 1`,
     [correctionId],
   )
@@ -137,7 +137,7 @@ async function decideCorrection(sql: Awaited<ReturnType<typeof connection>>, cur
   }
   const id = `attendance-decision:${crypto.randomUUID()}`
   const now = new Date().toISOString()
-  await sql(
+  await sql.query(
     `INSERT INTO attendance_correction_decisions
        (id, correction_id, decision, actor_id, actor_email, actor_role, reason,
         request_data, before_data, after_data, occurred_at, expires_at)
@@ -145,7 +145,7 @@ async function decideCorrection(sql: Awaited<ReturnType<typeof connection>>, cur
     [id, correctionId, decision, current.userId, current.email, current.role, reason,
       JSON.stringify(requestData), JSON.stringify(correction.before_data), JSON.stringify(afterData), now],
   )
-  await sql(
+  await sql.query(
     `INSERT INTO attendance_audit_log
        (id, occurred_at, actor_id, actor_email, actor_role, action, entity_type, entity_id, reason, before_data, after_data, expires_at)
      VALUES ($1,$2::timestamptz,$3,$4,$5,$6,'attendance_correction',$7,$8,$9::jsonb,$10::jsonb,$2::timestamptz + interval '24 months')`,
@@ -157,22 +157,22 @@ async function decideCorrection(sql: Awaited<ReturnType<typeof connection>>, cur
 
 async function retention(sql: Awaited<ReturnType<typeof connection>>, current: NonNullable<Awaited<ReturnType<typeof actor>>>, apply: boolean) {
   if (!['owner', 'admin'].includes(current.role)) return json({ message: 'Nur die Administration darf Aufbewahrungsdaten bereinigen.' }, 403)
-  const locationCount = await sql(
+  const locationCount = await sql.query(
     `SELECT count(*)::int AS count FROM attendance_locations l
       WHERE l.expires_at <= now()
         AND NOT EXISTS (SELECT 1 FROM attendance_legal_holds h WHERE h.entity_type = 'attendance_event' AND h.entity_id = l.event_id AND h.held)`,
   )
-  const eventCount = await sql(
+  const eventCount = await sql.query(
     `SELECT count(*)::int AS count FROM attendance_events e
       WHERE e.expires_at <= now()
         AND NOT EXISTS (SELECT 1 FROM attendance_legal_holds h WHERE h.entity_type = 'attendance_event' AND h.entity_id = e.id AND h.held)`,
   )
   if (apply) {
-    await sql(
+    await sql.query(
       `DELETE FROM attendance_locations l WHERE l.expires_at <= now()
         AND NOT EXISTS (SELECT 1 FROM attendance_legal_holds h WHERE h.entity_type = 'attendance_event' AND h.entity_id = l.event_id AND h.held)`,
     )
-    await sql(
+    await sql.query(
       `DELETE FROM attendance_events e WHERE e.expires_at <= now()
         AND NOT EXISTS (SELECT 1 FROM attendance_legal_holds h WHERE h.entity_type = 'attendance_event' AND h.entity_id = e.id AND h.held)`,
     )
