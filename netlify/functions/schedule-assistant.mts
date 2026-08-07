@@ -19,18 +19,12 @@ import {
   type AssistantShiftInput,
 } from './_shared/schedule-assistant-core.mts'
 import {
+  combineScheduleAccessRows,
   mergeScheduleIdentityDirectory,
   type ScheduleAccessRecord,
   type ScheduleIdentityUser,
+  type ScheduleRegistrationRecord,
 } from './_shared/schedule-identity-directory.mts'
-
-type AccessRecord = {
-  userId?: string
-  role?: string
-  status?: string
-  fullName?: string
-  location?: string
-} | null
 
 type PublishInput = AssistantShiftInput & {
   employeeName?: unknown
@@ -77,40 +71,49 @@ function ownerEmails() {
   )
 }
 
-function legacyAccessEmployees(rows: AccessRecord[]): AssistantDirectoryEmployee[] {
+function legacyAccessEmployees(rows: ScheduleAccessRecord[]): AssistantDirectoryEmployee[] {
   return rows
-    .filter((row): row is NonNullable<AccessRecord> => Boolean(
-      row?.userId && row.status === 'active' && row.role && ALLOWED_ROLES.has(String(row.role)) && text(row.fullName),
+    .filter((row) => Boolean(
+      text(row.userId) && text(row.status) === 'active' && ALLOWED_ROLES.has(text(row.role)) && text(row.fullName),
     ))
     .map((row) => ({
-      userId: String(row.userId),
+      userId: text(row.userId),
       fullName: text(row.fullName),
-      role: String(row.role),
+      role: text(row.role),
       status: 'active',
       location: text(row.location),
     }))
 }
 
 async function activePortalEmployees(): Promise<AssistantDirectoryEmployee[]> {
-  const store = getStore({ name: 'portal-access', consistency: 'strong' })
-  const listed = await store.list({ prefix: 'access/' })
-  const rows = await Promise.all(
-    listed.blobs.map((blob) => store.get(blob.key, { type: 'json' }) as Promise<AccessRecord>),
+  const accessStore = getStore({ name: 'portal-access', consistency: 'strong' })
+  const accessListed = await accessStore.list({ prefix: 'access/' })
+  const rawAccessRows = await Promise.all(
+    accessListed.blobs.map((blob) => accessStore.get(blob.key, { type: 'json' }) as Promise<ScheduleAccessRecord | null>),
   )
+  const accessRows = rawAccessRows.filter((row): row is ScheduleAccessRecord => Boolean(row))
+
+  const registrationStore = getStore({ name: 'portal-registrations', consistency: 'strong' })
+  const registrationListed = await registrationStore.list({ prefix: 'registration/' })
+  const rawRegistrations = await Promise.all(
+    registrationListed.blobs.map((blob) => registrationStore.get(blob.key, { type: 'json' }) as Promise<ScheduleRegistrationRecord | null>),
+  )
+  const registrations = rawRegistrations.filter((row): row is ScheduleRegistrationRecord => Boolean(row))
+  const combinedAccess = combineScheduleAccessRows(accessRows, registrations)
 
   let employees: AssistantDirectoryEmployee[] = []
   try {
     const users = await admin.listUsers()
     employees = mergeScheduleIdentityDirectory(
       users as ScheduleIdentityUser[],
-      rows.filter((row): row is NonNullable<AccessRecord> => Boolean(row)) as ScheduleAccessRecord[],
+      combinedAccess,
       ownerEmails(),
     )
   } catch (error) {
-    console.warn('schedule-assistant Identity directory unavailable; using portal-access fallback', error)
+    console.warn('schedule-assistant Identity directory unavailable; using approved registration fallback', error)
   }
 
-  if (!employees.length) employees = legacyAccessEmployees(rows)
+  if (!employees.length) employees = legacyAccessEmployees(combinedAccess)
 
   await syncScheduleEmployees(employees.map((employee) => ({
     userId: employee.userId,
