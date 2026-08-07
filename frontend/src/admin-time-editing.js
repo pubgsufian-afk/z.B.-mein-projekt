@@ -236,7 +236,7 @@ function openEditor(session, reloadButton) {
         if (pauseMinutes > grossMinutes) throw new Error('Die Pause darf nicht länger als die Arbeitszeit sein.')
       }
 
-      await fetch('/api/attendance-time-edit', {
+      await fetch('/api/attendance-time-edit-v2', {
         method: 'POST',
         credentials: 'same-origin',
         cache: 'no-store',
