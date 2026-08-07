@@ -1,4 +1,5 @@
 const SHORT_GOOGLE_MAP_HOSTS = new Set(['maps.app.goo.gl', 'goo.gl'])
+const MAX_REDIRECTS = 6
 
 function isAllowedGoogleMapsHost(hostname: string) {
   const host = hostname.toLowerCase().replace(/\.$/, '')
@@ -55,6 +56,34 @@ export function parseGoogleMapsCoordinates(rawUrl: string) {
   return null
 }
 
+async function resolveShortUrl(initialUrl: URL, fetchImpl: typeof fetch) {
+  let current = initialUrl
+  for (let attempt = 0; attempt <= MAX_REDIRECTS; attempt += 1) {
+    let response: Response
+    try {
+      response = await fetchImpl(current.href, {
+        method: 'GET',
+        redirect: 'manual',
+        headers: { 'User-Agent': 'Habun-Security-Worksite-Resolver/1.0' },
+      })
+    } catch {
+      throw new TypeError('Der Google-Maps-Kurzlink konnte nicht aufgelöst werden. Bitte erneut versuchen oder einen direkten Google-Maps-Link verwenden.')
+    }
+
+    const locationHeader = response.headers?.get('location')
+    if (response.status >= 300 && response.status < 400 && locationHeader) {
+      if (attempt === MAX_REDIRECTS) throw new TypeError('Der Google-Maps-Kurzlink enthält zu viele Weiterleitungen.')
+      const next = parseUrl(new URL(locationHeader, current).href)
+      current = next
+      continue
+    }
+
+    const finalUrl = response.url && response.url !== current.href ? parseUrl(response.url) : current
+    return finalUrl
+  }
+  throw new TypeError('Der Google-Maps-Kurzlink konnte nicht aufgelöst werden.')
+}
+
 export async function resolveGoogleMapsLocation(
   rawUrl: string,
   fetchImpl: typeof fetch = fetch,
@@ -67,18 +96,7 @@ export async function resolveGoogleMapsLocation(
     throw new TypeError('In diesem Google-Maps-Link konnten keine Koordinaten erkannt werden. Bitte in Google Maps einen Pin setzen und den Link erneut kopieren.')
   }
 
-  let response: { url?: string; ok?: boolean }
-  try {
-    response = await fetchImpl(initialUrl.href, {
-      method: 'GET',
-      redirect: 'follow',
-      headers: { 'User-Agent': 'Habun-Security-Worksite-Resolver/1.0' },
-    }) as unknown as { url?: string; ok?: boolean }
-  } catch {
-    throw new TypeError('Der Google-Maps-Kurzlink konnte nicht aufgelöst werden. Bitte erneut versuchen oder einen direkten Google-Maps-Link verwenden.')
-  }
-
-  const resolvedUrl = parseUrl(String(response?.url || ''))
+  const resolvedUrl = await resolveShortUrl(initialUrl, fetchImpl)
   const coordinates = parseGoogleMapsCoordinates(resolvedUrl.href)
   if (!coordinates) throw new TypeError('Im aufgelösten Google-Maps-Link konnten keine Koordinaten erkannt werden.')
   return { ...coordinates, resolvedUrl: resolvedUrl.href }
