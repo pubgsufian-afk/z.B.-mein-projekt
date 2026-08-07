@@ -39,6 +39,7 @@ export function mapAttendanceEventRow(row: Record<string, unknown>) {
   const latitude = numberOrNull(row.latitude)
   const longitude = numberOrNull(row.longitude)
   const accuracyMeters = numberOrNull(row.accuracy_meters)
+  const pauseMinutesAdjustment = numberOrNull(row.pause_minutes_adjustment)
   return {
     id: String(row.id),
     userId: String(row.user_id),
@@ -51,7 +52,7 @@ export function mapAttendanceEventRow(row: Record<string, unknown>) {
     objectId: textOrNull(row.object_id),
     locationStatus: String(row.location_status),
     offlineCaptured: Boolean(row.offline_captured),
-    pauseMinutesAdjustment: numberOrNull(row.pause_minutes_adjustment),
+    ...(pauseMinutesAdjustment !== null ? { pauseMinutesAdjustment } : {}),
     location: latitude !== null && longitude !== null && accuracyMeters !== null
       ? { latitude, longitude, accuracyMeters, distanceMeters: numberOrNull(row.distance_meters) }
       : null,
