@@ -3,8 +3,9 @@ import { readFile, writeFile } from 'node:fs/promises'
 async function patch(path, replacements) {
   let source = await readFile(path, 'utf8')
   let changed = false
-  for (const { from, to } of replacements) {
+  for (const { from, to, already } of replacements) {
     if (source.includes(to)) continue
+    if (already && source.includes(already)) continue
     if (!source.includes(from)) throw new Error(`Attendance location patch marker fehlt in ${path}: ${from.slice(0, 100)}`)
     source = source.replace(from, to)
     changed = true
@@ -100,6 +101,7 @@ if (await patch('netlify/functions/attendance.mts', [
       },
     }
     const service = createAttendanceService({ repository })`,
+    already: `    const baseRepository = await createAttendanceRepository(connectionString)`,
   },
 ])) changed.push('attendance.mts')
 
