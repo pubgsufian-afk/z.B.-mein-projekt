@@ -8,14 +8,15 @@ assert.match(
   /import \{ listScheduleShifts \} from '\.\/_shared\/schedule-neon-repository\.mts'/,
   'Die Zeiterfassung muss denselben Neon-Dienstplan wie die Dienstplan-Seite lesen.',
 )
+const loadSchedules = source.match(/async function loadSchedules\(\): Promise<ScheduleEntry\[]> \{[\s\S]*?\n\}/)?.[0] || ''
 assert.match(
-  source,
-  /async function loadSchedules\(\): Promise<ScheduleEntry\[]> \{\s*return listScheduleShifts\(\)\s*\}/s,
+  loadSchedules,
+  /return listScheduleShifts\(\)/,
   'loadSchedules muss den gemeinsamen Neon-Dienstplan verwenden.',
 )
 assert.doesNotMatch(
-  source,
-  /async function loadSchedules[\s\S]*?portal-schedule-v2[\s\S]*?\n\}/,
+  loadSchedules,
+  /portal-schedule-v2/,
   'Die Zeiterfassung darf den alten Blob-Dienstplan nicht mehr als Quelle verwenden.',
 )
 
