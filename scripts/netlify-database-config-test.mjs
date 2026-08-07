@@ -46,6 +46,18 @@ if (!scheduleMigration.includes('schedule_shifts_exact_duplicate_idx')) {
   throw new Error('Datenbankseitiger Duplikatschutz für Dienstpläne fehlt.')
 }
 
+const chatPublisherMigrationPath = 'netlify/database/migrations/20260807162500_add-chat-schedule-publisher/migration.sql'
+if (!fs.existsSync(chatPublisherMigrationPath)) {
+  throw new Error(`ChatGPT-Dienstplanmigration fehlt: ${chatPublisherMigrationPath}`)
+}
+const chatPublisherMigration = fs.readFileSync(chatPublisherMigrationPath, 'utf8')
+if (!chatPublisherMigration.includes('portal_publish_chat_shift')) {
+  throw new Error('Der geschützte ChatGPT-Dienstplanbefehl fehlt.')
+}
+if (!chatPublisherMigration.includes("status = 'active'") || !chatPublisherMigration.includes("'duplicate'::text") || !chatPublisherMigration.includes("'published'::text")) {
+  throw new Error('Der ChatGPT-Dienstplanbefehl prüft aktive Mitarbeiter, Duplikate oder Veröffentlichung nicht vollständig.')
+}
+
 const helperPath = 'netlify/functions/_shared/database-connection.mts'
 if (!fs.existsSync(helperPath)) {
   throw new Error('Gemeinsame Laufzeit-Datenbankverbindung fehlt.')
