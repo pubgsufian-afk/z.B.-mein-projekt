@@ -44,12 +44,18 @@ export default async function scheduleCommandWorker(_request: Request, context: 
   }
 
   const command = parsed.command
-  const store = getStore({ name: 'schedule-command-worker', consistency: 'strong' })
   const processedKey = `processed/${command.commandId}`
-  const existing = await store.get(processedKey, { type: 'json' })
-  if (existing) {
-    console.log(`schedule-command-worker already processed ${command.commandId}`)
-    return
+  let store: ReturnType<typeof getStore> | null = null
+  try {
+    store = getStore({ name: 'schedule-command-worker', consistency: 'strong' })
+    const existing = await store.get(processedKey, { type: 'json' })
+    if (existing) {
+      console.log(`schedule-command-worker already processed ${command.commandId}`)
+      return
+    }
+  } catch (error) {
+    console.warn('schedule-command-worker state store unavailable; continuing with schedule duplicate protection', error)
+    store = null
   }
 
   const token = Netlify.env.get('SCHEDULE_ASSISTANT_TOKEN') || ''
@@ -78,7 +84,13 @@ export default async function scheduleCommandWorker(_request: Request, context: 
   }
 
   const result = summarize(command.commandId, command.action, data)
-  await store.setJSON(processedKey, result)
+  if (store) {
+    try {
+      await store.setJSON(processedKey, result)
+    } catch (error) {
+      console.warn('schedule-command-worker could not persist processed marker; duplicate protection remains active in schedule service', error)
+    }
+  }
   console.log(`schedule-command-worker processed ${command.commandId}`)
 }
 
