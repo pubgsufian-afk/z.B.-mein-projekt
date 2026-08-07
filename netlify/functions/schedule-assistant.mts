@@ -87,19 +87,30 @@ function legacyAccessEmployees(rows: ScheduleAccessRecord[]): AssistantDirectory
 }
 
 async function activePortalEmployees(requestedNames: string[] = []): Promise<AssistantDirectoryEmployee[]> {
-  const accessStore = getStore({ name: 'portal-access', consistency: 'strong' })
-  const accessListed = await accessStore.list({ prefix: 'access/' })
-  const rawAccessRows = await Promise.all(
-    accessListed.blobs.map((blob) => accessStore.get(blob.key, { type: 'json' }) as Promise<ScheduleAccessRecord | null>),
-  )
-  const accessRows = rawAccessRows.filter((row): row is ScheduleAccessRecord => Boolean(row))
+  let accessRows: ScheduleAccessRecord[] = []
+  try {
+    const accessStore = getStore({ name: 'portal-access', consistency: 'strong' })
+    const accessListed = await accessStore.list({ prefix: 'access/' })
+    const rawAccessRows = await Promise.all(
+      accessListed.blobs.map((blob) => accessStore.get(blob.key, { type: 'json' }) as Promise<ScheduleAccessRecord | null>),
+    )
+    accessRows = rawAccessRows.filter((row): row is ScheduleAccessRecord => Boolean(row))
+  } catch (error) {
+    console.warn('schedule-assistant portal-access unavailable; continuing with Identity', error)
+  }
 
-  const registrationStore = getStore({ name: 'portal-registrations', consistency: 'strong' })
-  const registrationListed = await registrationStore.list({ prefix: 'registration/' })
-  const rawRegistrations = await Promise.all(
-    registrationListed.blobs.map((blob) => registrationStore.get(blob.key, { type: 'json' }) as Promise<ScheduleRegistrationRecord | null>),
-  )
-  const registrations = rawRegistrations.filter((row): row is ScheduleRegistrationRecord => Boolean(row))
+  let registrations: ScheduleRegistrationRecord[] = []
+  try {
+    const registrationStore = getStore({ name: 'portal-registrations', consistency: 'strong' })
+    const registrationListed = await registrationStore.list({ prefix: 'registration/' })
+    const rawRegistrations = await Promise.all(
+      registrationListed.blobs.map((blob) => registrationStore.get(blob.key, { type: 'json' }) as Promise<ScheduleRegistrationRecord | null>),
+    )
+    registrations = rawRegistrations.filter((row): row is ScheduleRegistrationRecord => Boolean(row))
+  } catch (error) {
+    console.warn('schedule-assistant portal-registrations unavailable; continuing with Identity', error)
+  }
+
   const combinedAccess = combineScheduleAccessRows(accessRows, registrations)
   const owners = ownerEmails()
 
