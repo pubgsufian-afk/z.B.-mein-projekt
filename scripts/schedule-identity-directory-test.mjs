@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {
   combineScheduleAccessRows,
   mergeScheduleIdentityDirectory,
+  requestedScheduleIdentityFallback,
 } from '../netlify/functions/_shared/schedule-identity-directory.mts'
 
 const users = [
@@ -42,5 +43,15 @@ assert.deepEqual(employees.find((employee) => employee.userId === 'sarmad-id'), 
 assert.equal(employees.find((employee) => employee.userId === 'owner-id')?.role, 'owner')
 assert.equal(employees.some((employee) => employee.userId === 'amin-id'), false)
 assert.equal(employees.some((employee) => employee.userId === 'zayed-id'), false)
+
+const requestedFallback = requestedScheduleIdentityFallback(
+  users,
+  combinedAccess,
+  new Set(['owner@example.com']),
+  ['Amin', 'Zayed', 'Nicht Vorhanden'],
+)
+assert.deepEqual(requestedFallback, [{
+  userId: 'amin-id', fullName: 'Amin', role: 'employee', status: 'active', location: '',
+}])
 
 console.log('Schedule Identity directory tests passed')
