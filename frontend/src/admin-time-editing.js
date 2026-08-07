@@ -62,6 +62,7 @@ function buildSessions(entries) {
 
     if (event.action === 'clock-in') {
       if (current) finalizeOpenSession(current, sessions)
+      const hasPauseAdjustment = event.pauseMinutesAdjustment !== null && event.pauseMinutesAdjustment !== undefined
       current = {
         userId,
         date: event.eventDate,
@@ -69,8 +70,9 @@ function buildSessions(entries) {
         clockOutEventId: null,
         clockInAt: event.clientOccurredAt,
         clockOutAt: null,
-        breakMinutes: 0,
+        breakMinutes: hasPauseAdjustment ? Math.max(0, Number(event.pauseMinutesAdjustment) || 0) : 0,
         breakStart: null,
+        pauseAdjusted: hasPauseAdjustment,
         isOpen: true,
       }
       openByUser.set(userId, current)
@@ -83,7 +85,9 @@ function buildSessions(entries) {
       continue
     }
     if (event.action === 'break-end' && current.breakStart) {
-      current.breakMinutes += Math.max(0, Math.round((new Date(event.clientOccurredAt) - new Date(current.breakStart)) / 60000))
+      if (!current.pauseAdjusted) {
+        current.breakMinutes += Math.max(0, Math.round((new Date(event.clientOccurredAt) - new Date(current.breakStart)) / 60000))
+      }
       current.breakStart = null
       continue
     }
@@ -93,6 +97,7 @@ function buildSessions(entries) {
       current.isOpen = false
       if (event.pauseMinutesAdjustment !== null && event.pauseMinutesAdjustment !== undefined) {
         current.breakMinutes = Math.max(0, Number(event.pauseMinutesAdjustment) || 0)
+        current.pauseAdjusted = true
       }
       const grossMinutes = Math.max(0, Math.round((new Date(current.clockOutAt) - new Date(current.clockInAt)) / 60000))
       current.netMinutes = Math.max(0, grossMinutes - current.breakMinutes)
@@ -188,16 +193,15 @@ function openEditor(session, reloadButton) {
   editor.className = 'panel editor-panel'
   editor.innerHTML = `
     <div class="page-heading">
-      <div><h2>Arbeitszeit bearbeiten</h2><p>${openSession ? 'Der Mitarbeiter ist aktuell eingecheckt. Beginn kann sofort korrigiert werden; mit einem Arbeitsende können auch Ende und Pause festgelegt werden.' : 'Änderungen werden im Kontrollverlauf protokolliert.'}</p></div>
+      <div><h2>Arbeitszeit bearbeiten</h2><p>${openSession ? 'Der Mitarbeiter ist aktuell eingecheckt. Beginn und Pause können direkt korrigiert werden; das Arbeitsende kann leer bleiben, wenn der Mitarbeiter weiterarbeitet.' : 'Änderungen werden im Kontrollverlauf protokolliert.'}</p></div>
       <button type="button" class="secondary-button compact" data-admin-time-close>Schließen</button>
     </div>
     <form class="schedule-form" data-admin-time-form>
       <div class="form-grid three">
         <label>Beginn<input type="datetime-local" data-admin-time-start required></label>
         <label>Ende<input type="datetime-local" data-admin-time-end ${openSession ? '' : 'required'}><small>${openSession ? 'Leer lassen, wenn der Mitarbeiter weiterarbeitet.' : 'Bei abgeschlossenem Dienst erforderlich.'}</small></label>
-        <label>Pause in Minuten<input type="number" min="0" step="1" data-admin-time-pause required><small data-admin-time-pause-help></small></label>
+        <label>Pause in Minuten<input type="number" min="0" step="1" inputmode="numeric" data-admin-time-pause required><small>${openSession ? 'Kann auch während eines laufenden Dienstes direkt geändert werden.' : ''}</small></label>
       </div>
-      <label>Begründung<textarea rows="3" data-admin-time-reason required placeholder="Warum wird die Arbeitszeit geändert?"></textarea></label>
       <div class="form-actions">
         <button class="primary-button" data-admin-time-save>Änderung speichern</button>
         <button type="button" class="secondary-button" data-admin-time-cancel>Abbrechen</button>
@@ -207,28 +211,9 @@ function openEditor(session, reloadButton) {
   const start = editor.querySelector('[data-admin-time-start]')
   const end = editor.querySelector('[data-admin-time-end]')
   const pause = editor.querySelector('[data-admin-time-pause]')
-  const pauseHelp = editor.querySelector('[data-admin-time-pause-help]')
-  const reason = editor.querySelector('[data-admin-time-reason]')
   start.value = toLocalInput(session.clockInAt)
   end.value = toLocalInput(session.clockOutAt)
   pause.value = String(session.breakMinutes || 0)
-
-  const syncOpenControls = () => {
-    if (!openSession) {
-      pause.readOnly = false
-      if (pauseHelp) pauseHelp.textContent = ''
-      return
-    }
-    const willClose = Boolean(end.value)
-    pause.readOnly = !willClose
-    if (pauseHelp) {
-      pauseHelp.textContent = willClose
-        ? 'Pause kann jetzt vollständig korrigiert werden.'
-        : 'Solange der Dienst offen bleibt, wird die bereits gebuchte Pause beibehalten.'
-    }
-  }
-  end.addEventListener('input', syncOpenControls)
-  syncOpenControls()
 
   editor.querySelector('[data-admin-time-close]').addEventListener('click', removeEditor)
   editor.querySelector('[data-admin-time-cancel]').addEventListener('click', removeEditor)
@@ -249,10 +234,7 @@ function openEditor(session, reloadButton) {
       if (clockOutAt) {
         const grossMinutes = Math.round((clockOutAt.getTime() - clockInAt.getTime()) / 60000)
         if (pauseMinutes > grossMinutes) throw new Error('Die Pause darf nicht länger als die Arbeitszeit sein.')
-      } else if (openSession && pauseMinutes !== Number(session.breakMinutes || 0)) {
-        throw new Error('Für eine Pausenkorrektur bei einem laufenden Dienst bitte zuerst ein Arbeitsende eintragen.')
       }
-      if (reason.value.trim().length < 2) throw new Error('Bitte eine kurze Begründung eintragen.')
 
       await fetch('/api/attendance-time-edit', {
         method: 'POST',
@@ -265,7 +247,6 @@ function openEditor(session, reloadButton) {
           clockInAt: clockInAt.toISOString(),
           clockOutAt: clockOutAt ? clockOutAt.toISOString() : null,
           pauseMinutes,
-          reason: reason.value.trim(),
         }),
       }).then(async (response) => {
         const body = await response.json().catch(() => ({}))
