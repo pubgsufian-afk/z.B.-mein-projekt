@@ -12,7 +12,17 @@ async function patch(path, replacements) {
           from.includes('async function getLocation()')
           || from.includes('const update = (key) => (event) => setForm')
         )
-      if (deviceIndependentLocationAlreadyApplied) continue
+      const modernWorksiteUiAlreadyApplied = path === 'frontend/src/App.jsx'
+        && source.includes('async function captureCurrentLocation()')
+        && source.includes('const [locating, setLocating] = useState(false)')
+        && source.includes("/api/worksite-v2")
+        && (
+          from.includes('const [busy, setBusy] = useState(false)')
+          || from.includes('const update = (key) => (event) => setForm')
+          || from.includes("await apiJson('/api/schedule-v2'")
+          || from.includes('<div className="form-actions">')
+        )
+      if (deviceIndependentLocationAlreadyApplied || modernWorksiteUiAlreadyApplied) continue
       throw new Error(`Worksite geolocation patch marker fehlt in ${path}: ${from.slice(0, 100)}`)
     }
     source = source.replace(from, to)
