@@ -40,7 +40,8 @@ if (!source.includes('async function loadWorksites()')) {
 }
 
 const oldSafeBody = `    const safeBody = { ...body, scheduleId: schedule?.id || null, objectId: schedule?.objectId || null }`
-const newSafeBody = `    const worksiteObjectId = boundaryAction
+const newSafeBody = `    const locationAction = normalized.action === 'clock-in' || normalized.action === 'clock-out'
+    const worksiteObjectId = locationAction
       ? resolveScheduleWorksiteObjectId(schedule, await loadWorksites())
       : schedule?.objectId || null
     const safeBody = { ...body, scheduleId: schedule?.id || null, objectId: worksiteObjectId }`
