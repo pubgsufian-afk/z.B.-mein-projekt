@@ -31,7 +31,7 @@
     X-Frame-Options = "DENY"
     X-Permitted-Cross-Domain-Policies = "none"
     X-Robots-Tag = "noindex, nofollow, noarchive, nosnippet"
-    X-Habun-Release = "20260731-6"
+    X-Habun-Release = "20260807-ownerfix"
 
 [[headers]]
   for = "/assets/*"
