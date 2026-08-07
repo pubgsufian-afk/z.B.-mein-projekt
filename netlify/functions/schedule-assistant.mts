@@ -21,6 +21,7 @@ import {
 import {
   combineScheduleAccessRows,
   mergeScheduleIdentityDirectory,
+  requestedScheduleIdentityFallback,
   type ScheduleAccessRecord,
   type ScheduleIdentityUser,
   type ScheduleRegistrationRecord,
@@ -85,7 +86,7 @@ function legacyAccessEmployees(rows: ScheduleAccessRecord[]): AssistantDirectory
     }))
 }
 
-async function activePortalEmployees(): Promise<AssistantDirectoryEmployee[]> {
+async function activePortalEmployees(requestedNames: string[] = []): Promise<AssistantDirectoryEmployee[]> {
   const accessStore = getStore({ name: 'portal-access', consistency: 'strong' })
   const accessListed = await accessStore.list({ prefix: 'access/' })
   const rawAccessRows = await Promise.all(
@@ -100,20 +101,30 @@ async function activePortalEmployees(): Promise<AssistantDirectoryEmployee[]> {
   )
   const registrations = rawRegistrations.filter((row): row is ScheduleRegistrationRecord => Boolean(row))
   const combinedAccess = combineScheduleAccessRows(accessRows, registrations)
+  const owners = ownerEmails()
 
+  let identityUsers: ScheduleIdentityUser[] = []
   let employees: AssistantDirectoryEmployee[] = []
   try {
-    const users = await admin.listUsers()
-    employees = mergeScheduleIdentityDirectory(
-      users as ScheduleIdentityUser[],
-      combinedAccess,
-      ownerEmails(),
-    )
+    identityUsers = await admin.listUsers() as ScheduleIdentityUser[]
+    employees = mergeScheduleIdentityDirectory(identityUsers, combinedAccess, owners)
   } catch (error) {
     console.warn('schedule-assistant Identity directory unavailable; using approved registration fallback', error)
   }
 
   if (!employees.length) employees = legacyAccessEmployees(combinedAccess)
+
+  const requestedFallback = requestedScheduleIdentityFallback(
+    identityUsers,
+    combinedAccess,
+    owners,
+    requestedNames,
+  )
+  const byUserId = new Map(employees.map((employee) => [employee.userId, employee]))
+  for (const employee of requestedFallback) {
+    if (!byUserId.has(employee.userId)) byUserId.set(employee.userId, employee)
+  }
+  employees = [...byUserId.values()].sort((left, right) => left.fullName.localeCompare(right.fullName, 'de'))
 
   await syncScheduleEmployees(employees.map((employee) => ({
     userId: employee.userId,
@@ -267,7 +278,13 @@ export default async function scheduleAssistant(request: Request, _context: Cont
   if (!body) return json({ message: 'Ungültige Anfrage.' }, 400)
 
   try {
-    const employees = await activePortalEmployees()
+    const requestedNames = [
+      ...(Array.isArray(body.names) ? body.names.map(text) : []),
+      ...(Array.isArray(body.shifts)
+        ? body.shifts.map((shift) => text((shift as Record<string, unknown> | null)?.employeeName))
+        : []),
+    ].filter(Boolean).slice(0, MAX_BATCH)
+    const employees = await activePortalEmployees(requestedNames)
     const action = text(body.action)
 
     if (action === 'resolve-employees') {
