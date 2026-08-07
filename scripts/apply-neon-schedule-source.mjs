@@ -1,6 +1,19 @@
 import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 
+const repositoryPath = 'netlify/functions/_shared/schedule-neon-repository.mts'
+let repository = await readFile(repositoryPath, 'utf8')
+if (!repository.includes('HABUN_SCHEDULE_DATABASE_URL')) {
+  assert.ok(repository.includes("import { getDatabase } from '@netlify/database'"), 'Dienstplan-Datenbankimport wurde nicht gefunden.')
+  assert.ok(repository.includes('const database = getDatabase()'), 'Dienstplan-Datenbankaufrufe wurden nicht gefunden.')
+  repository = repository.replaceAll('const database = getDatabase()', 'const database = getScheduleDatabase()')
+  repository = repository.replace(
+    "import { getDatabase } from '@netlify/database'",
+    `import { getDatabase } from '@netlify/database'\n\nfunction getScheduleDatabase() {\n  const connectionString = typeof Netlify !== 'undefined'\n    ? String(Netlify.env.get('HABUN_SCHEDULE_DATABASE_URL') || '').trim()\n    : ''\n  return connectionString ? getDatabase({ connectionString }) : getDatabase()\n}`,
+  )
+  await writeFile(repositoryPath, repository)
+}
+
 const legacyPath = 'netlify/functions/schedule-v2.mts'
 let legacy = await readFile(legacyPath, 'utf8')
 if (!legacy.includes("path: '/api/schedule-v2-blob-legacy'")) {
