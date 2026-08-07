@@ -34,7 +34,7 @@ function summarize(commandId: string, action: string, data: AssistantResult) {
 }
 
 export default async function scheduleCommandWorker(_request: Request, context: Context) {
-  const raw = Netlify.env.get('SCHEDULE_ASSISTANT_COMMAND') || ''
+  const raw = Netlify.env.get('SCHEDULE_ASSISTANT_COMMAND_RUNTIME') || ''
   if (!raw.trim()) return
 
   const parsed = parseScheduleCommand(raw)
