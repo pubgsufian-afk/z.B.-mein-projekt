@@ -53,7 +53,8 @@ if (!scheduleBlock.includes('function selectScheduleObject(event)')) {
 
 const oldSelect = "<select value={form.objectId} onChange={update('objectId')}>"
 const newSelect = '<select value={form.objectId} onChange={selectScheduleObject}>'
-if (!scheduleBlock.includes(newSelect)) {
+const requiredSelect = '<select value={form.objectId} onChange={selectScheduleObject} required>'
+if (!scheduleBlock.includes(newSelect) && !scheduleBlock.includes(requiredSelect)) {
   assert.ok(scheduleBlock.includes(oldSelect), 'Gespeicherte-Einsatzort-Auswahl wurde nicht gefunden.')
   scheduleBlock = scheduleBlock.replace(oldSelect, newSelect)
 }
