@@ -1,0 +1,29 @@
+import assert from 'node:assert/strict'
+import { buildActualSessions, buildPlannedRows, plannedNetMinutes, sumMinutes, totalsByEmployee } from '../frontend/src/timesheet-utils.js'
+
+assert.equal(plannedNetMinutes('2026-08-08', '22:00', '06:00', 30), 450)
+assert.equal(plannedNetMinutes('2026-08-08', '07:00', '17:00', 30), 570)
+
+const sessions = buildActualSessions([
+  { id: 'a1', userId: 'a', employeeName: 'A', action: 'clock-in', clientOccurredAt: '2026-08-08T06:00:00Z', eventDate: '2026-08-08' },
+  { id: 'b1', userId: 'b', employeeName: 'B', action: 'clock-in', clientOccurredAt: '2026-08-08T07:00:00Z', eventDate: '2026-08-08' },
+  { id: 'a2', userId: 'a', action: 'clock-out', clientOccurredAt: '2026-08-08T14:00:00Z', eventDate: '2026-08-08', pauseMinutesAdjustment: 30 },
+  { id: 'b2', userId: 'b', action: 'clock-out', clientOccurredAt: '2026-08-08T17:00:00Z', eventDate: '2026-08-08', pauseMinutesAdjustment: 45 },
+])
+assert.equal(sessions.length, 2)
+assert.equal(sessions.find((row) => row.userId === 'a').netMinutes, 450)
+assert.equal(sessions.find((row) => row.userId === 'b').netMinutes, 555)
+
+const planned = buildPlannedRows([
+  { id: 'p1', employeeUserId: 'a', employeeName: 'A', date: '2026-08-08', start: '22:00', end: '06:00', pauseMinutes: 30, location: 'Objekt 1', workArea: 'Brandwache' },
+  { id: 'p2', employeeUserId: 'b', employeeName: 'B', date: '2026-08-08', start: '07:00', end: '17:00', pauseMinutes: 30, location: 'Objekt 2', workArea: 'ZuKo' },
+])
+assert.equal(planned[0].netMinutes, 450)
+assert.equal(planned[1].netMinutes, 570)
+assert.equal(sumMinutes(planned), 1020)
+assert.deepEqual(totalsByEmployee(planned), [
+  { employeeName: 'A', minutes: 450 },
+  { employeeName: 'B', minutes: 570 },
+])
+
+console.log('timesheet utils tests passed')
