@@ -100,6 +100,11 @@ replaceOnce(
 'reports screenshot test info',
 )
 replaceOnce(
+"  await page.getByRole('button', { name: 'PDF-Vorschau' }).click()",
+"  await page.getByRole('button', { name: 'Stundenzettel Vorschau' }).click()",
+'reports preview control label',
+)
+replaceOnce(
 "  await expect(page.getByTitle('PDF-Vorschau')).toBeVisible()",
 "  if (testInfo.project.name === 'iphone-chromium') {\n    await expect(page.locator('[data-ios-pdf-fallback=\\\"true\\\"]')).toBeVisible()\n    await expect(page.getByRole('link', { name: 'PDF öffnen' })).toBeVisible()\n  } else {\n    await expect(page.getByTitle('PDF-Vorschau')).toBeVisible()\n  }\n  if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/04-berichte-iphone.png', fullPage: true })",
 'reports screenshot',
@@ -110,9 +115,19 @@ replaceOnce(
 'PDF download predicate',
 )
 replaceOnce(
+"  await page.getByRole('button', { name: 'PDF herunterladen' }).click()",
+"  await page.getByRole('button', { name: 'Stundenzettel PDF' }).click()",
+'reports PDF control label',
+)
+replaceOnce(
 "  const excelDownload = page.waitForEvent('download')",
 "  const excelDownload = page.waitForEvent('download', { predicate: (download) => /\\.xlsx$/i.test(download.suggestedFilename()) })",
 'Excel download predicate',
+)
+replaceOnce(
+"  await page.getByRole('button', { name: 'Excel herunterladen' }).click()",
+"  await page.getByRole('button', { name: 'Stundenzettel Excel' }).click()",
+'reports Excel control label',
 )
 
 await writeFile(path, source)
