@@ -2,10 +2,12 @@ import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { getUser, verifyRequestOrigin } from '@netlify/identity'
 import { databaseConnectionString } from './_shared/database-connection.mts'
+import { eventDateInBerlin } from './_shared/daily-attendance-service.mts'
 
 type Role = 'owner' | 'admin' | 'manager' | 'employee' | 'pending'
 type AccessRecord = { role?: Role; status?: string } | null
 const MANAGEMENT = new Set<Role>(['owner', 'admin', 'manager'])
+const ADMINISTRATION = new Set<Role>(['owner', 'admin'])
 
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex' } })
@@ -53,6 +55,22 @@ async function connection() {
   if (!url) throw Object.assign(new Error('Die Zeiterfassungsdatenbank ist noch nicht verbunden.'), { status: 503 })
   const { neon } = await import('@neondatabase/serverless')
   return neon(url)
+}
+
+function minutesFromBreakEvents(rows: Array<Record<string, unknown>>) {
+  let startedAt: Date | null = null
+  let total = 0
+  for (const row of rows) {
+    if (row.action === 'break-start') startedAt = new Date(String(row.client_occurred_at))
+    if (row.action === 'break-end' && startedAt) {
+      const endedAt = new Date(String(row.client_occurred_at))
+      if (Number.isFinite(endedAt.getTime()) && Number.isFinite(startedAt.getTime())) {
+        total += Math.max(0, Math.round((endedAt.getTime() - startedAt.getTime()) / 60000))
+      }
+      startedAt = null
+    }
+  }
+  return total
 }
 
 async function listCorrections(sql: Awaited<ReturnType<typeof connection>>, current: NonNullable<Awaited<ReturnType<typeof actor>>>) {
@@ -155,6 +173,136 @@ async function decideCorrection(sql: Awaited<ReturnType<typeof connection>>, cur
   return json({ id, correctionId, decision }, 201)
 }
 
+async function adminTimeEdit(sql: Awaited<ReturnType<typeof connection>>, current: NonNullable<Awaited<ReturnType<typeof actor>>>, body: Record<string, unknown>) {
+  if (!ADMINISTRATION.has(current.role)) return json({ message: 'Nur Chef/Hauptadmin oder Admin dürfen Arbeitszeiten direkt bearbeiten.' }, 403)
+
+  const clockInEventId = String(body.clockInEventId || '').trim()
+  const clockOutEventId = String(body.clockOutEventId || '').trim()
+  const reason = String(body.reason || '').trim()
+  if (!clockInEventId || !clockOutEventId || reason.length < 2) return json({ message: 'Beginn, Ende und Begründung sind erforderlich.' }, 400)
+
+  const requested = cleanRequestedData(body)
+  if (!requested.clockInAt || !requested.clockOutAt || requested.pauseMinutes === undefined) {
+    return json({ message: 'Beginn, Ende und Pause müssen vollständig angegeben werden.' }, 400)
+  }
+  const clockInAt = new Date(String(requested.clockInAt))
+  const clockOutAt = new Date(String(requested.clockOutAt))
+  const pauseMinutes = Number(requested.pauseMinutes)
+  const grossMinutes = Math.max(0, Math.round((clockOutAt.getTime() - clockInAt.getTime()) / 60000))
+  if (clockOutAt.getTime() < clockInAt.getTime()) return json({ message: 'Das Arbeitsende darf nicht vor dem Arbeitsbeginn liegen.' }, 400)
+  if (pauseMinutes > grossMinutes) return json({ message: 'Die Pause darf nicht länger als die Arbeitszeit sein.' }, 400)
+
+  const [clockInRows, clockOutRows] = await Promise.all([
+    sql.query(`SELECT id, user_id, action, client_occurred_at, event_date FROM attendance_events WHERE id = $1`, [clockInEventId]),
+    sql.query(`SELECT id, user_id, action, client_occurred_at, event_date FROM attendance_events WHERE id = $1`, [clockOutEventId]),
+  ])
+  const clockInEvent = clockInRows[0]
+  const clockOutEvent = clockOutRows[0]
+  if (!clockInEvent || !clockOutEvent) return json({ message: 'Der ausgewählte Arbeitszeiteintrag wurde nicht gefunden.' }, 404)
+  if (clockInEvent.action !== 'clock-in' || clockOutEvent.action !== 'clock-out' || clockInEvent.user_id !== clockOutEvent.user_id) {
+    return json({ message: 'Beginn und Ende gehören nicht zum selben gültigen Arbeitszeiteintrag.' }, 409)
+  }
+  const originalClockInAt = new Date(clockInEvent.client_occurred_at)
+  const originalClockOutAt = new Date(clockOutEvent.client_occurred_at)
+  if (originalClockInAt.getTime() > originalClockOutAt.getTime()) {
+    return json({ message: 'Der gespeicherte Arbeitsbeginn liegt nach dem Arbeitsende.' }, 409)
+  }
+
+  const betweenBoundaries = await sql.query(
+    `SELECT id FROM attendance_events
+      WHERE user_id = $1
+        AND client_occurred_at > $2::timestamptz
+        AND client_occurred_at < $3::timestamptz
+        AND action IN ('clock-in','clock-out')
+      LIMIT 1`,
+    [clockInEvent.user_id, clockInEvent.client_occurred_at, clockOutEvent.client_occurred_at],
+  )
+  if (betweenBoundaries[0]) return json({ message: 'Beginn und Ende gehören nicht zum selben Dienst.' }, 409)
+
+  const neighbors = await sql.query(
+    `SELECT
+       (SELECT client_occurred_at FROM attendance_events
+         WHERE user_id = $1 AND action = 'clock-out' AND client_occurred_at < $2::timestamptz
+         ORDER BY client_occurred_at DESC LIMIT 1) AS previous_end,
+       (SELECT client_occurred_at FROM attendance_events
+         WHERE user_id = $1 AND action = 'clock-in' AND client_occurred_at > $3::timestamptz
+         ORDER BY client_occurred_at ASC LIMIT 1) AS next_start`,
+    [clockInEvent.user_id, clockInEvent.client_occurred_at, clockOutEvent.client_occurred_at],
+  )
+  const previousEnd = neighbors[0]?.previous_end ? new Date(neighbors[0].previous_end) : null
+  const nextStart = neighbors[0]?.next_start ? new Date(neighbors[0].next_start) : null
+  if (previousEnd && clockInAt.getTime() < previousEnd.getTime()) return json({ message: 'Der neue Arbeitsbeginn überschneidet sich mit einem vorherigen Dienst.' }, 409)
+  if (nextStart && clockOutAt.getTime() > nextStart.getTime()) return json({ message: 'Das neue Arbeitsende überschneidet sich mit einem folgenden Dienst.' }, 409)
+
+  const [adjustmentRows, breakRows] = await Promise.all([
+    sql.query(`SELECT pause_minutes FROM attendance_adjustments WHERE event_id = $1 ORDER BY occurred_at DESC, id DESC LIMIT 1`, [clockOutEventId]),
+    sql.query(
+      `SELECT action, client_occurred_at FROM attendance_events
+        WHERE user_id = $1
+          AND client_occurred_at >= $2::timestamptz
+          AND client_occurred_at <= $3::timestamptz
+          AND action IN ('break-start','break-end')
+        ORDER BY client_occurred_at, server_occurred_at, id`,
+      [clockInEvent.user_id, clockInEvent.client_occurred_at, clockOutEvent.client_occurred_at],
+    ),
+  ])
+  const breakOutsideEditedRange = breakRows.some((row) => {
+    const occurredAt = new Date(String(row.client_occurred_at))
+    return !Number.isFinite(occurredAt.getTime()) || occurredAt.getTime() < clockInAt.getTime() || occurredAt.getTime() > clockOutAt.getTime()
+  })
+  if (breakOutsideEditedRange) {
+    return json({ message: 'Die neue Arbeitszeit darf bestehende Pausenbuchungen nicht ausschließen.' }, 409)
+  }
+  const previousPause = adjustmentRows[0]?.pause_minutes === undefined || adjustmentRows[0]?.pause_minutes === null
+    ? minutesFromBreakEvents(breakRows)
+    : Number(adjustmentRows[0].pause_minutes)
+  const before = {
+    clockInAt: new Date(clockInEvent.client_occurred_at).toISOString(),
+    clockOutAt: new Date(clockOutEvent.client_occurred_at).toISOString(),
+    pauseMinutes: previousPause,
+  }
+  const after = { clockInAt: clockInAt.toISOString(), clockOutAt: clockOutAt.toISOString(), pauseMinutes }
+  const now = new Date().toISOString()
+  const adjustmentId = `attendance-adjustment:${crypto.randomUUID()}`
+  const auditId = `attendance-audit:${crypto.randomUUID()}`
+
+  await sql.query(
+    `WITH updated_clock_in AS (
+       UPDATE attendance_events
+          SET client_occurred_at = $1::timestamptz, event_date = $2::date
+        WHERE id = $3
+        RETURNING id
+     ),
+     updated_clock_out AS (
+       UPDATE attendance_events
+          SET client_occurred_at = $4::timestamptz, event_date = $5::date
+        WHERE id = $6
+        RETURNING id
+     ),
+     created_adjustment AS (
+       INSERT INTO attendance_adjustments
+         (id, event_id, user_id, event_date, pause_minutes, reason, actor_id, actor_email, actor_role, occurred_at, expires_at)
+       SELECT $7, $6, $8, $5::date, $9, $10, $11, $12, $13, $14::timestamptz, $14::timestamptz + interval '24 months'
+       FROM updated_clock_in, updated_clock_out
+       RETURNING id
+     )
+     INSERT INTO attendance_audit_log
+       (id, occurred_at, actor_id, actor_email, actor_role, action, entity_type, entity_id, reason, before_data, after_data, expires_at)
+     SELECT $15, $14::timestamptz, $11, $12, $13, 'admin-time-edit', 'attendance_session', $16, $10,
+            $17::jsonb, $18::jsonb, $14::timestamptz + interval '24 months'
+       FROM created_adjustment`,
+    [
+      clockInAt.toISOString(), eventDateInBerlin(clockInAt), clockInEventId,
+      clockOutAt.toISOString(), eventDateInBerlin(clockOutAt), clockOutEventId,
+      adjustmentId, clockInEvent.user_id, pauseMinutes, reason,
+      current.userId, current.email, current.role, now,
+      auditId, `${clockInEventId}:${clockOutEventId}`, JSON.stringify(before), JSON.stringify(after),
+    ],
+  )
+
+  return json({ saved: true, clockInEventId, clockOutEventId })
+}
+
 async function retention(sql: Awaited<ReturnType<typeof connection>>, current: NonNullable<Awaited<ReturnType<typeof actor>>>, apply: boolean) {
   if (!['owner', 'admin'].includes(current.role)) return json({ message: 'Nur die Administration darf Aufbewahrungsdaten bereinigen.' }, 403)
   const locationCount = await sql.query(
@@ -199,13 +347,14 @@ export default async function maintenance(request: Request, _context: Context) {
   try {
     if (action === 'request-correction') return await requestCorrection(sql, current, body)
     if (action === 'decide-correction') return await decideCorrection(sql, current, body)
+    if (action === 'admin-time-edit') return await adminTimeEdit(sql, current, body)
     if (action === 'retention-dry-run') return await retention(sql, current, false)
     if (action === 'retention-apply') return await retention(sql, current, true)
     return json({ message: 'Unbekannte Aktion.' }, 400)
   } catch (error) {
     if (error instanceof TypeError || error instanceof RangeError) return json({ message: error.message }, 400)
     console.error('Habun attendance maintenance', error)
-    return json({ message: 'Die Korrektur- oder Aufbewahrungsaktion ist fehlgeschlagen.' }, 500)
+    return json({ message: 'Die Korrektur-, Zeit- oder Aufbewahrungsaktion ist fehlgeschlagen.' }, 500)
   }
 }
 

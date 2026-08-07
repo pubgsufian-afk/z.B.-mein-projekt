@@ -123,7 +123,10 @@ function buildRows(events: ReportEventRow[], schedules: Schedule[], names: Map<s
       const shift = scheduleById.get(String(start.schedule_id || end?.schedule_id || ''))
       if (shift?.id) usedSchedules.add(String(shift.id))
       const gross = end ? Math.max(0, Math.round((new Date(end.client_occurred_at).getTime() - new Date(start.client_occurred_at).getTime()) / 60000)) : 0
-      const pause = breakMinutes || Number(shift?.pauseMinutes || 0)
+      const adjustedPause = end?.pause_minutes_adjustment
+      const pause = adjustedPause !== null && adjustedPause !== undefined
+        ? Math.max(0, Number(adjustedPause) || 0)
+        : breakMinutes || Number(shift?.pauseMinutes || 0)
       rows.push({
         employeeName: names.get(userId) || clean(shift?.employeeName) || 'Mitarbeiter',
         date,
