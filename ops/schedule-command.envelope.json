@@ -1,4 +1,9 @@
 {
   "version": 1,
-  "state": "idle"
+  "state": "command",
+  "algorithm": "RSA-OAEP-256+A256GCM",
+  "encryptedKey": "CyXK59oavhUd7hfkLly+BRWBFVYOTJDBa9KYUxWfcJpTZUhL4aIaY7hl/WW97X3I8STCiOQ0H3VW/9eihz6TQMjLpWqqUBV2OIq7OOzF/2mTeAeMvLU5UrnHtMHnydWrMbRf/VTE8IKVeR+YgJkk14p2zETZABXv1XZ588fLbTjT8jdnhNhQGsMbQ/bxFVoZfi2bL5GUXfcmMBsMgXu/2vMOwWRnEs0gp1VT+MxsppNdj/DqKbXdBqKrZse+FDA+TlGN+96uEhYNQYrOWryJcRO4RW+X53VB3KvK8PM85qpt2UEDa5RyypiXiE7mAFHlQnGB/PVehbtMHbHPukM1CA==",
+  "iv": "5vhuBvM0agd8yaFe",
+  "ciphertext": "dYSvs1fTFJon73uxuXJQmS0Ka3BY9zmDra0fnUbdTfV9mwxDmLXuOYrpQiPTlyOa7grIkxY1FrxCezvmc59WVJgQ9d+ap4J3sT7nOQ8djacVA6Tct0E+Nh/rsBuMHyWb+NmbRbu5SWnj6zqZustFlsRkeL19z1TveeSJt4zET+5m1CcDMTP/dk/I21GwnOszrTBGESqgD8ADzTVnAuP9+NAdM80KNJy0IzBw/8U4eDtHOZoBmHv+H8MmIkjN2TMNdOxcbGW1hPA7ZrLo34hBXafR6VD5fZ+wsuoZ2TcWKzq1iETDumbGHb9qQo6XYjF6kHm0G42KLRU2EIDJ4wnng0TeIG/VjjgaXxahF8uRWIguBX7teLrEK+4Je/XeltFA4WOsmTtaIV39QSJH9rFmCDBf7O3fNzNeRHmbPo2FkejLL/uRwK/EY1IvTyEj9bfKt76FRWcZf09iX5qsURuRAeq0osgHR5BlOHsZFB7PVVcvl8EI6yd2v+5bzYmCZey7LJhOldpKHlljSLAlfzEqMZUpywDoDgiNbIwpdDMScCWo8KmSkatLnVOUqCtyDAG50cb6hsecIvtIwFrJqqdfF1vvTkKSc1aWke0Q5UCfegbgxyBWPI8/OUlEWP1eojLAcito",
+  "tag": "wqllzT1zRYTV4Nh/dLb6rA=="
 }
