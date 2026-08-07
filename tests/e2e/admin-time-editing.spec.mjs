@@ -179,7 +179,7 @@ test('manager can edit pause on a running session without ending the shift', asy
   await expect(page.getByRole('button', { name: 'Bearbeiten', exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Bearbeiten', exact: true }).click()
-  const end = page.getByLabel('Ende')
+  const end = page.locator('[data-admin-time-end]')
   const pause = page.getByLabel('Pause in Minuten')
   await expect(end).toHaveValue('')
   await expect(pause).toHaveJSProperty('readOnly', false)
@@ -205,7 +205,7 @@ test('manager can still close a running session with a corrected pause', async (
   await expect(card).toBeVisible()
   await page.getByRole('button', { name: 'Bearbeiten', exact: true }).click()
 
-  const end = page.getByLabel('Ende')
+  const end = page.locator('[data-admin-time-end]')
   const pause = page.getByLabel('Pause in Minuten')
   await end.fill(`${portal.today}T08:00`)
   await pause.fill('10')
