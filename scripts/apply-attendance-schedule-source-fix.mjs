@@ -4,13 +4,6 @@ import { readFile, writeFile } from 'node:fs/promises'
 const path = 'netlify/functions/attendance.mts'
 let source = await readFile(path, 'utf8')
 
-const repositoryImport = "import { listScheduleShifts } from './_shared/schedule-neon-repository.mts'"
-if (!source.includes(repositoryImport)) {
-  const anchor = "import { databaseConnectionString } from './_shared/database-connection.mts'"
-  assert.ok(source.includes(anchor), 'Import-Anker für die gemeinsame Dienstplanquelle wurde nicht gefunden.')
-  source = source.replace(anchor, `${anchor}\n${repositoryImport}`)
-}
-
 const oldLoader = `async function loadSchedules(): Promise<ScheduleEntry[]> {
   const { getStore } = await import('@netlify/blobs')
   const scheduleStore = getStore({ name: 'portal-schedule-v2', consistency: 'strong' })
@@ -19,6 +12,7 @@ const oldLoader = `async function loadSchedules(): Promise<ScheduleEntry[]> {
   return rows.filter((entry): entry is ScheduleEntry => Boolean(entry))
 }`
 const newLoader = `async function loadSchedules(): Promise<ScheduleEntry[]> {
+  const { listScheduleShifts } = await import('./_shared/schedule-neon-repository.mts')
   return listScheduleShifts()
 }`
 
