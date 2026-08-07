@@ -2,6 +2,7 @@ import type { Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { getUser, verifyRequestOrigin } from '@netlify/identity'
 import { readCompanySettings } from './_shared/company-settings.mts'
+import { EXPORT_LOGO_PNG_BASE64 } from './_shared/export-logo.mts'
 import { attendanceEventNeedsReview } from './_shared/report-warning.mjs'
 import { loadReportEvents, type ReportEventRow } from './_shared/report-database.mts'
 import { centeredTextX, drawCenteredShieldLogo, loadOriginalLogo } from './_shared/pdf-shield-logo.mts'
@@ -222,16 +223,18 @@ async function buildPdf(request: Request, rows: ReportRow[], from: string, to: s
   const newPage = () => {
     page = pdf.addPage([width, height])
     pageNumber += 1
-    drawCenteredShieldLogo(page, logo, width, height - 22, 64)
-    const company = pdfText(settings.companyName || 'Habun Security', 70)
-    const phone = pdfText(settings.phone || 'Telefon nicht hinterlegt', 70)
-    const email = pdfText(settings.email || 'E-Mail nicht hinterlegt', 90)
-    page.drawText(company, { x: centeredTextX(bold, company, 16, width), y: 482, size: 16, font: bold, color: rgb(.08, .08, .08) })
-    page.drawText(phone, { x: centeredTextX(regular, phone, 8.5, width), y: 466, size: 8.5, font: regular })
-    page.drawText(email, { x: centeredTextX(regular, email, 8.5, width), y: 453, size: 8.5, font: regular })
-    page.drawText('Stundenzettel', { x: margin, y: 424, size: 15, font: bold })
-    page.drawText(pdfText(`Zeitraum ${from} bis ${to} - Seite ${pageNumber}`), { x: margin, y: 408, size: 8.5, font: regular })
-    y = 378
+    drawCenteredShieldLogo(page, logo, width, height - 22, 94)
+    const company = pdfText(settings.companyName, 80)
+    const phone = pdfText(settings.phone, 70)
+    const email = pdfText(settings.email, 90)
+    const address = pdfText(settings.address, 100)
+    page.drawText(company, { x: centeredTextX(bold, company, 15, width), y: 453, size: 15, font: bold, color: rgb(.08, .08, .08) })
+    page.drawText(phone, { x: centeredTextX(regular, phone, 8.5, width), y: 438, size: 8.5, font: regular })
+    page.drawText(email, { x: centeredTextX(regular, email, 8.5, width), y: 425, size: 8.5, font: regular })
+    page.drawText(address, { x: centeredTextX(regular, address, 8.5, width), y: 412, size: 8.5, font: regular })
+    page.drawText('Stundenzettel', { x: margin, y: 382, size: 15, font: bold })
+    page.drawText(pdfText(`Zeitraum ${from} bis ${to} - Seite ${pageNumber}`), { x: margin, y: 366, size: 8.5, font: regular })
+    y = 336
     ;['Name', 'Datum', 'Beginn', 'Ende', 'Pause', 'Tagesstunden', 'Einsatzort', 'Hinweis'].forEach((header, index) => page.drawText(header, { x: columns[index], y, size: 8, font: bold }))
     y -= 8
     page.drawLine({ start: { x: margin, y }, end: { x: width - margin, y }, thickness: .7, color: rgb(.45, .45, .45) })
@@ -270,7 +273,16 @@ async function buildPdf(request: Request, rows: ReportRow[], from: string, to: s
   return pdf.save()
 }
 
-async function buildExcel(rows: ReportRow[], from: string, to: string) {
+async function loadExcelLogoBytes() {
+  try {
+    return Buffer.from(EXPORT_LOGO_PNG_BASE64, 'base64')
+  } catch {
+    return null
+  }
+}
+
+async function buildExcel(request: Request, rows: ReportRow[], from: string, to: string) {
+  void request
   const module = await import('exceljs')
   const Workbook = module.Workbook || module.default?.Workbook
   if (!Workbook) throw new Error('Excel-Modul ist nicht verfügbar.')
@@ -278,19 +290,25 @@ async function buildExcel(rows: ReportRow[], from: string, to: string) {
   const workbook = new Workbook()
   workbook.creator = clean(settings.companyName) || 'Habun Security'
   workbook.created = new Date()
-  const sheet = workbook.addWorksheet('Stundenzettel', { views: [{ state: 'frozen', ySplit: 6 }] })
-  sheet.addRow([clean(settings.companyName) || 'Habun Security'])
-  sheet.addRow([clean(settings.phone), clean(settings.email)])
+  const logoBytes = await loadExcelLogoBytes()
+  const logoId = logoBytes ? workbook.addImage({ buffer: logoBytes, extension: 'png' }) : null
+
+  const sheet = workbook.addWorksheet('Stundenzettel', { views: [{ state: 'frozen', ySplit: 9 }] })
+  sheet.mergeCells('A1:H5')
+  if (logoId !== null) sheet.addImage(logoId, { tl: { col: 3.35, row: 0.15 }, ext: { width: 92, height: 100 } })
+  sheet.addRow([clean(settings.companyName) || 'Habun Security']).font = { bold: true, size: 14 }
+  sheet.addRow([clean(settings.phone), clean(settings.email), clean(settings.address)])
   sheet.addRow([`Stundenzettel - Zeitraum ${from} bis ${to}`])
-  sheet.addRow([])
   sheet.addRow(['Mitarbeiter', 'Datum', 'Arbeitsbeginn', 'Arbeitsende', 'Pause Min.', 'Tagesstunden', 'Einsatzort', 'Hinweis']).font = { bold: true }
   for (const row of rows) sheet.addRow([row.employeeName, row.date, row.actualStart, row.actualEnd, row.pauseMinutes, Number((row.netMinutes / 60).toFixed(2)), row.location, row.warning ? 'Prüfen' : ''])
   sheet.columns = [{ width: 28 }, { width: 13 }, { width: 16 }, { width: 16 }, { width: 12 }, { width: 15 }, { width: 34 }, { width: 12 }]
 
   const sumSheet = workbook.addWorksheet('Gesamtstunden')
-  sumSheet.addRow([clean(settings.companyName) || 'Habun Security', 'Stundenzettel'])
-  sumSheet.addRow([`Zeitraum ${from} bis ${to}`])
-  sumSheet.addRow([])
+  sumSheet.mergeCells('A1:B5')
+  if (logoId !== null) sumSheet.addImage(logoId, { tl: { col: 0.68, row: 0.15 }, ext: { width: 92, height: 100 } })
+  sumSheet.addRow([clean(settings.companyName) || 'Habun Security', 'Stundenzettel']).font = { bold: true, size: 14 }
+  sumSheet.addRow([clean(settings.phone), clean(settings.email)])
+  sumSheet.addRow([clean(settings.address), `Zeitraum ${from} bis ${to}`])
   sumSheet.addRow(['Mitarbeiter', 'Gesamtstunden']).font = { bold: true }
   const summary = totals(rows)
   for (const [name, total] of summary.employees) sumSheet.addRow([name, Number((total / 60).toFixed(2))])
@@ -330,7 +348,7 @@ export default async function unifiedReportsFixed(request: Request, _context: Co
 
   try {
     if (format === 'xlsx') {
-      const bytes = await buildExcel(rows, from, to)
+      const bytes = await buildExcel(request, rows, from, to)
       return new Response(bytes as BodyInit, { status: 200, headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="Habun-Stundenzettel-${from}-bis-${to}.xlsx"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex' } })
     }
     const bytes = await buildPdf(request, rows, from, to)
