@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import { employeeManagementPolicy } from '../netlify/functions/registrations.mts'
+import { employeeManagementPolicy } from '../netlify/functions/_shared/employee-management-policy.mts'
 
 const decision = (input) => employeeManagementPolicy(input)
 const allowed = (input) => decision(input).allowed
