@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
+import { installAdminTimeEditing } from './admin-time-editing.js'
 import './styles.css'
 import './mobile-navigation.css'
 import './logo-visibility.css'
@@ -124,6 +125,7 @@ function installIOSPdfPreviewFallback() {
 }
 
 installIOSPdfPreviewFallback()
+installAdminTimeEditing()
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Portal-Wurzelelement fehlt.')
