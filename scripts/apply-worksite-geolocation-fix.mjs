@@ -5,7 +5,16 @@ async function patch(path, replacements) {
   let changed = false
   for (const { from, to } of replacements) {
     if (source.includes(to)) continue
-    if (!source.includes(from)) throw new Error(`Worksite geolocation patch marker fehlt in ${path}: ${from.slice(0, 100)}`)
+    if (!source.includes(from)) {
+      const deviceIndependentLocationAlreadyApplied = path === 'frontend/src/App.jsx'
+        && source.includes('function requestCurrentDeviceLocation()')
+        && (
+          from.includes('async function getLocation()')
+          || from.includes('const update = (key) => (event) => setForm')
+        )
+      if (deviceIndependentLocationAlreadyApplied) continue
+      throw new Error(`Worksite geolocation patch marker fehlt in ${path}: ${from.slice(0, 100)}`)
+    }
     source = source.replace(from, to)
     changed = true
   }
@@ -73,7 +82,7 @@ if (await patch('frontend/src/App.jsx', [
         latitude: position.coords.latitude.toFixed(7),
         longitude: position.coords.longitude.toFixed(7),
       }))
-      setNotice({ tone: 'success', text: \`Aktueller Standort übernommen (Genauigkeit ca. \${Math.round(position.coords.accuracy || 0)} m). Bitte Einsatzort speichern.\` })
+      setNotice({ tone: 'success', text: 'Aktueller Standort übernommen (Genauigkeit ca. ' + Math.round(position.coords.accuracy || 0) + ' m). Bitte Einsatzort speichern.' })
     } catch (error) {
       const text = error?.code === 1
         ? 'Standortzugriff ist für diese Webseite nicht erlaubt. Bitte den Standortzugriff im Browser erlauben und erneut versuchen.'
