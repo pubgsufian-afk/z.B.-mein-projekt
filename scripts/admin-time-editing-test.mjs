@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
-const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
+const urlFor = (path) => new URL(`../${path}`, import.meta.url)
+const read = (path) => fs.readFileSync(urlFor(path), 'utf8')
 const neon = read('netlify/functions/_shared/neon-attendance.mts')
 const maintenance = read('netlify/functions/attendance-maintenance.mts')
-const app = read('frontend/src/App.jsx')
+const main = read('frontend/src/main.jsx')
+const editorPath = urlFor('frontend/src/admin-time-editing.js')
 
 function expectIncludes(source, marker, message) {
   assert.ok(source.includes(marker), message)
@@ -22,14 +24,17 @@ expectIncludes(maintenance, "'admin-time-edit'", 'direct edit must be written to
 expectIncludes(maintenance, 'Die Pause darf nicht länger als die Arbeitszeit sein.', 'server must reject pause longer than gross work time')
 expectIncludes(maintenance, 'Das Arbeitsende darf nicht vor dem Arbeitsbeginn liegen.', 'server must reject end before start')
 
-expectIncludes(app, 'clockInEventId', 'session builder must keep the clock-in event id')
-expectIncludes(app, 'clockOutEventId', 'session builder must keep the clock-out event id')
-expectIncludes(app, 'pauseMinutesAdjustment', 'session builder must apply the effective pause adjustment')
-expectIncludes(app, 'ADMINISTRATION.has(session.role)', 'edit UI must be limited to owner/admin')
-expectIncludes(app, '>Bearbeiten</button>', 'completed time cards must expose an edit action to owner/admin')
-expectIncludes(app, "action: 'admin-time-edit'", 'time editor must call the privileged maintenance action')
-expectIncludes(app, "apiJson('/api/attendance-maintenance'", 'time editor must save through the maintenance endpoint')
-
-assert.ok(!/ADMINISTRATION\.has\(session\.role\)[\s\S]{0,400}Einsatzleiter/.test(app), 'manager must not receive the direct edit control')
+assert.ok(fs.existsSync(editorPath), 'the isolated admin time editor module must exist')
+const editor = read('frontend/src/admin-time-editing.js')
+expectIncludes(main, "import { installAdminTimeEditing } from './admin-time-editing.js'", 'portal entrypoint must load the admin time editor')
+expectIncludes(main, 'installAdminTimeEditing()', 'portal entrypoint must install the admin time editor')
+expectIncludes(editor, "const ADMIN_ROLES = new Set(['owner', 'admin'])", 'edit UI must be limited to owner/admin')
+expectIncludes(editor, 'clockInEventId', 'session builder must keep the clock-in event id')
+expectIncludes(editor, 'clockOutEventId', 'session builder must keep the clock-out event id')
+expectIncludes(editor, 'pauseMinutesAdjustment', 'session builder must apply the effective pause adjustment')
+expectIncludes(editor, "button.textContent = 'Bearbeiten'", 'completed time cards must expose an edit action to owner/admin')
+expectIncludes(editor, "action: 'admin-time-edit'", 'time editor must call the privileged maintenance action')
+expectIncludes(editor, "fetch('/api/attendance-maintenance'", 'time editor must save through the maintenance endpoint')
+expectIncludes(editor, "role === 'manager'", 'module must explicitly keep managers read-only')
 
 console.log('admin-time-editing-test: PASS')
