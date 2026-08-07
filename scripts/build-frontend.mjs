@@ -4,6 +4,7 @@ import { mkdir } from 'node:fs/promises'
 await mkdir('public/assets', { recursive: true })
 await build({
   entryPoints: ['frontend/src/main.jsx'],
+  inject: ['frontend/src/employee-role-management-auto.js'],
   outdir: 'public/assets',
   entryNames: 'habun-portal',
   assetNames: 'habun-[name]-[hash]',
