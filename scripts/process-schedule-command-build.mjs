@@ -1,17 +1,36 @@
-const raw = String(process.env.SCHEDULE_ASSISTANT_COMMAND || '').trim()
-const bridgeToken = String(process.env.SCHEDULE_ASSISTANT_BRIDGE_TOKEN || '').trim()
+import { readFile, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { decryptScheduleCommandEnvelope } from './schedule-command-envelope-crypto.mjs'
 
-if (!raw) {
-  console.log('Schedule build bridge skipped without command')
+const envelopePath = 'ops/schedule-command.envelope.json'
+const resultPath = 'dist/schedule-command-result.json'
+
+let envelope
+try {
+  envelope = JSON.parse(await readFile(envelopePath, 'utf8'))
+} catch {
+  console.log('Schedule build bridge skipped without encrypted envelope')
   process.exit(0)
 }
-if (!bridgeToken) throw new Error('Schedule build bridge token fehlt')
+
+if (envelope?.state !== 'command') {
+  console.log('Schedule build bridge skipped idle envelope')
+  process.exit(0)
+}
+
+const privateKeyB64 = String(process.env.SCHEDULE_COMMAND_PRIVATE_KEY_B64 || '').trim()
+const bridgeToken = String(process.env.SCHEDULE_ASSISTANT_BRIDGE_TOKEN || '').trim()
+if (!privateKeyB64 || !bridgeToken) {
+  console.log('Schedule build bridge skipped without production secrets')
+  process.exit(0)
+}
 
 let command
 try {
-  command = JSON.parse(raw)
+  const privateKeyPem = Buffer.from(privateKeyB64, 'base64').toString('utf8')
+  command = decryptScheduleCommandEnvelope(envelope, privateKeyPem)
 } catch {
-  throw new Error('Schedule build bridge command ist ungültig')
+  throw new Error('Schedule build bridge konnte den Auftrag nicht entschlüsseln')
 }
 
 const commandId = String(command?.commandId || '').trim()
@@ -22,7 +41,7 @@ if (command?.version !== 1 || !commandId || !Number.isFinite(createdAtMs)) {
   throw new Error('Schedule build bridge command contract ist ungültig')
 }
 if (ageMs < -5 * 60 * 1000 || ageMs > 30 * 60 * 1000) {
-  console.log(`Schedule build bridge skipped expired command ${commandId}`)
+  console.log('Schedule build bridge skipped expired encrypted command')
   process.exit(0)
 }
 if (!['sync-directory', 'publish-shifts'].includes(action)) {
@@ -53,5 +72,15 @@ const publishedCount = results.filter((entry) => entry?.status === 'published').
 const duplicateCount = results.filter((entry) => entry?.status === 'duplicate').length
 const rejectedCount = results.filter((entry) => !['published', 'duplicate'].includes(String(entry?.status || ''))).length
 const employeeCount = Number.isFinite(Number(data?.employeeCount)) ? Number(data.employeeCount) : 0
+const commandHash = createHash('sha256').update(commandId).digest('hex').slice(0, 12)
 
-console.log(`Schedule build bridge processed ${commandId}: employees=${employeeCount}, published=${publishedCount}, duplicate=${duplicateCount}, rejected=${rejectedCount}`)
+await writeFile(resultPath, `${JSON.stringify({
+  state: 'processed',
+  commandHash,
+  employeeCount,
+  publishedCount,
+  duplicateCount,
+  rejectedCount,
+}, null, 2)}\n`)
+
+console.log(`Schedule build bridge processed encrypted command: employees=${employeeCount}, published=${publishedCount}, duplicate=${duplicateCount}, rejected=${rejectedCount}`)
