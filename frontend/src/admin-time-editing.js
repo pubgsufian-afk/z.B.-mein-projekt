@@ -159,6 +159,12 @@ function removeEditor() {
   document.querySelector('[data-admin-time-editor]')?.remove()
 }
 
+function invalidateRenderedSessions() {
+  document.querySelectorAll('.times-list > article').forEach((card) => {
+    delete card.dataset.adminTimeEditChecked
+  })
+}
+
 function openEditor(session, reloadButton) {
   removeEditor()
   const timesPanel = document.querySelector('.times-list')?.closest('.panel')
@@ -233,6 +239,7 @@ function openEditor(session, reloadButton) {
 
       removeEditor()
       showToast('Arbeitszeit wurde aktualisiert und im Kontrollverlauf protokolliert.')
+      invalidateRenderedSessions()
       reloadButton?.click()
       scheduleRefresh(350)
     } catch (error) {
