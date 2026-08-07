@@ -84,3 +84,4 @@ const repositorySource = await readFile('netlify/functions/_shared/schedule-neon
 assert.match(repositorySource, /CASE WHEN end_time < start_time THEN interval '1 day'/)
 
 console.log('Overnight shift and attendance regression tests passed')
+// This file intentionally participates in the production build verification.
