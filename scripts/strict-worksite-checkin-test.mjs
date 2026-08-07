@@ -9,7 +9,8 @@ const [schedule, attendanceService, app] = await Promise.all([
 
 // Dienstplanung: Nur gespeicherte Einsatzorte sind zulässig.
 assert.match(schedule, /Einsatzort muss aus den gespeicherten Einsatzorten ausgewählt werden/)
-assert.match(schedule, /findWorkSite\(String\(body\.objectId/)
+assert.match(schedule, /const objectId = String\(body\.objectId/)
+assert.match(schedule, /findWorkSite\(objectId\)/)
 assert.match(schedule, /Einsatzort benötigt gültige Koordinaten für die Standortprüfung/)
 
 // Oberfläche: gespeicherter Einsatzort ist Pflicht, Name wird automatisch gezeigt.
