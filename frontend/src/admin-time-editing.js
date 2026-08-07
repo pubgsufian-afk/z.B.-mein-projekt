@@ -286,8 +286,9 @@ async function refreshButtons() {
     }
 
     const role = await ensureRole()
-    if (role === 'manager' || role === 'employee' || role === 'pending') return
-    if (!ADMIN_ROLES.has(role)) return
+    if (role === 'employee' || role === 'pending') return
+    const canEdit = ADMIN_ROLES.has(role)
+    if (!canEdit && role !== 'manager') return
 
     const filters = currentFilters()
     const cards = [...document.querySelectorAll('.times-list > article')]
@@ -306,13 +307,15 @@ async function refreshButtons() {
     cards.forEach((card) => { card.dataset.adminTimeEditChecked = key })
 
     if (!filters.userId && userIds.size > 1) {
-      if (timesPanel) showSelectEmployeeHint(timesPanel)
+      if (canEdit && timesPanel) showSelectEmployeeHint(timesPanel)
       return
     }
     removeHint()
 
     const sessions = buildSessions(entries)
     applyAdjustedValues(cards, sessions)
+    if (!canEdit) return
+
     cards.forEach((card, index) => {
       const session = sessions[index]
       if (!session?.clockInEventId || !session?.clockOutEventId) return
