@@ -8,14 +8,28 @@ assert.deepEqual(parseGoogleMapsCoordinates('https://maps.google.com/?ll=52.1234
 
 await assert.rejects(() => resolveGoogleMapsLocation('https://not-google.invalid/maps/@52.1,9.6,17z'), /Google-Maps-Link/)
 
-let fetched = ''
+const calls = []
+const finalUrl = 'https://www.google.com/maps/@52.987654,9.123456,18z'
 const shortResult = await resolveGoogleMapsLocation('https://maps.app.goo.gl/abc123', async (url, options) => {
-  fetched = String(url)
-  assert.equal(options?.redirect, 'follow')
-  return { url: 'https://www.google.com/maps/@52.987654,9.123456,18z', ok: true }
+  calls.push(String(url))
+  assert.equal(options?.redirect, 'manual')
+  if (calls.length === 1) {
+    return {
+      status: 302,
+      url: String(url),
+      headers: { get: (name) => String(name).toLowerCase() === 'location' ? finalUrl : null },
+    }
+  }
+  return { status: 200, url: String(url), headers: { get: () => null } }
 })
-assert.equal(fetched, 'https://maps.app.goo.gl/abc123')
-assert.deepEqual(shortResult, { latitude: 52.987654, longitude: 9.123456, resolvedUrl: 'https://www.google.com/maps/@52.987654,9.123456,18z' })
+assert.deepEqual(calls, ['https://maps.app.goo.gl/abc123', finalUrl])
+assert.deepEqual(shortResult, { latitude: 52.987654, longitude: 9.123456, resolvedUrl: finalUrl })
+
+await assert.rejects(() => resolveGoogleMapsLocation('https://maps.app.goo.gl/unsafe', async (url) => ({
+  status: 302,
+  url: String(url),
+  headers: { get: () => 'https://not-google.invalid/maps/@52.1,9.6,17z' },
+})), /Google-Maps-Link/)
 
 await assert.rejects(() => resolveGoogleMapsLocation('https://www.google.com/maps/place/OhneKoordinaten'), /Koordinaten/)
 
