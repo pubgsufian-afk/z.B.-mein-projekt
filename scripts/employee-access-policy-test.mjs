@@ -41,7 +41,7 @@ assert.match(logoStyles, /transform:\s*translate\(-50%,\s*-50%\)/)
 assert.match(logoStyles, /employee-kiosk-header \.brand-mark[\s\S]*?width:\s*76px[\s\S]*?height:\s*76px/)
 assert.match(index, /viewport-fit=cover/)
 
-assert.match(sessionEndpoint, /data\.role === ['"]employee['"]/)
+assert.match(sessionEndpoint, /current\.role === ['"]employee['"]/)
 assert.match(sessionEndpoint, /userId:\s*data\.userId\s*\|\|\s*data\.id/)
 assert.doesNotMatch(sessionEndpoint, /employeeCount:\s*data\.employeeCount/)
 assert.match(service, /getHistory[\s\S]*?if \(!MANAGEMENT_ROLES\.has\(current\.role\)\) throw new AttendanceServiceError\('Keine Berechtigung\.', 403, 'FORBIDDEN'\)/)
