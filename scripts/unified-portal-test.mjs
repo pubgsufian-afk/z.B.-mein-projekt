@@ -14,9 +14,11 @@ assert.doesNotMatch(index, /attendance-v2\.js|attendance-v2-compat\.js|Neue Zeit
 assert.equal((index.match(/id="root"/g) || []).length, 1)
 assert.match(index, /habun-logo|apple-touch-icon|favicon/)
 
-for (const label of ['Übersicht', 'Zeiterfassung', 'Mitarbeiter', 'Dienstplan', 'Meine Zeiten', 'Einsatzorte', 'Korrekturen', 'Berichte', 'Einstellungen']) {
+for (const label of ['Übersicht', 'Zeiterfassung', 'Mitarbeiter', 'Dienstplan', 'Stundenzettel', 'Einsatzorte', 'Berichte', 'Einstellungen']) {
   assert.match(app, new RegExp(label))
 }
+assert.doesNotMatch(app, /key: 'corrections', label:/)
+assert.doesNotMatch(app, /key: 'times', label:/)
 assert.match(app, /className="digital-clock"/)
 assert.match(app, /Arbeit beginnen/)
 assert.match(app, /Pause beginnen/)
