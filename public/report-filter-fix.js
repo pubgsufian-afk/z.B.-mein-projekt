@@ -82,24 +82,24 @@
     }
   }
 
+  function setText(element, value) {
+    if (element && element.textContent !== value) element.textContent = value
+  }
+
   function relabelReports() {
     const filter = document.querySelector('.reports-filter')
     const panel = filter?.closest('.panel')
     if (panel) {
-      const heading = panel.querySelector('.page-heading h2')
-      const subtitle = panel.querySelector('.page-heading p')
-      if (heading && heading.textContent !== 'Stundenzettel') heading.textContent = 'Stundenzettel'
-      if (subtitle && subtitle.textContent !== 'Tatsächlich gebuchte Arbeitszeiten. Der Dienstplan bleibt ein separates Dokument.') {
-        subtitle.textContent = 'Tatsächlich gebuchte Arbeitszeiten. Der Dienstplan bleibt ein separates Dokument.'
-      }
+      setText(panel.querySelector('.page-heading h2'), 'Stundenzettel')
+      setText(panel.querySelector('.page-heading p'), 'Tatsächlich gebuchte Arbeitszeiten. Der Dienstplan bleibt ein separates Dokument.')
       const buttons = [...panel.querySelectorAll('.form-actions button')]
-      if (buttons[0] && !buttons[0].disabled) buttons[0].textContent = 'Stundenzettel Vorschau'
-      if (buttons[1] && !buttons[1].disabled) buttons[1].textContent = 'Stundenzettel PDF'
-      if (buttons[2] && !buttons[2].disabled) buttons[2].textContent = 'Stundenzettel Excel'
+      if (buttons[0] && !buttons[0].disabled) setText(buttons[0], 'Stundenzettel Vorschau')
+      if (buttons[1] && !buttons[1].disabled) setText(buttons[1], 'Stundenzettel PDF')
+      if (buttons[2] && !buttons[2].disabled) setText(buttons[2], 'Stundenzettel Excel')
     }
 
     for (const heading of document.querySelectorAll('.page-heading h2')) {
-      if (heading.textContent === 'PDF-Vorschau') heading.textContent = 'Stundenzettel Vorschau'
+      if (heading.textContent === 'PDF-Vorschau') setText(heading, 'Stundenzettel Vorschau')
     }
   }
 
