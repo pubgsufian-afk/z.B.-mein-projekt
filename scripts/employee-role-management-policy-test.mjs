@@ -18,7 +18,13 @@ assert.equal(allowed({ actorRole: 'admin', actorUserId: 'admin-1', targetRole: '
 assert.equal(allowed({ actorRole: 'admin', actorUserId: 'admin-1', targetRole: 'employee', targetUserId: 'employee-1', action: 'deactivate-account' }), true)
 assert.equal(allowed({ actorRole: 'manager', actorUserId: 'manager-1', targetRole: 'employee', targetUserId: 'employee-1', action: 'update-role', requestedRole: 'manager' }), false)
 
+assert.equal(allowed({ actorRole: 'owner', actorUserId: 'owner-1', targetRole: 'employee', targetUserId: 'employee-1', action: 'update-profile' }), true)
+assert.equal(allowed({ actorRole: 'owner', actorUserId: 'owner-1', targetRole: 'owner', targetUserId: 'owner-1', action: 'update-profile' }), true)
+assert.equal(allowed({ actorRole: 'admin', actorUserId: 'admin-1', targetRole: 'employee', targetUserId: 'employee-1', action: 'update-profile' }), false)
+assert.equal(allowed({ actorRole: 'owner', actorUserId: 'owner-1', targetRole: 'owner', targetUserId: 'owner-1', action: 'deactivate-account' }), false)
+
 assert.match(decision({ actorRole: 'admin', actorUserId: 'admin-1', targetRole: 'admin', targetUserId: 'admin-2', action: 'deactivate-account' }).message, /Nur Hauptadmin/)
+assert.match(decision({ actorRole: 'admin', actorUserId: 'admin-1', targetRole: 'employee', targetUserId: 'employee-1', action: 'update-profile' }).message, /Nur Hauptadmin/)
 
 const registrations = fs.readFileSync(new URL('../netlify/functions/registrations.mts', import.meta.url), 'utf8')
 const portalRole = fs.readFileSync(new URL('../netlify/functions/_shared/portal-role.mts', import.meta.url), 'utf8')
@@ -27,6 +33,9 @@ const editor = fs.readFileSync(new URL('../frontend/src/employee-role-management
 
 assert.match(registrations, /action === ['"]update-role['"]/)
 assert.match(registrations, /action === ['"]deactivate-account['"]/)
+assert.match(registrations, /update-profile/)
+assert.match(registrations, /fullName/)
+assert.match(registrations, /upsertScheduleEmployee/)
 assert.match(registrations, /verifyRequestOrigin/)
 assert.match(registrations, /deactivateScheduleEmployee/)
 assert.match(portalRole, /status === ['"]inactive['"]/)
@@ -34,6 +43,8 @@ assert.match(scheduleDeactivation, /UPDATE schedule_employees/)
 assert.match(scheduleDeactivation, /status = ['"]inactive['"]/)
 assert.match(editor, /Rolle ändern/)
 assert.match(editor, /Konto deaktivieren/)
+assert.match(editor, /Daten bearbeiten/)
+assert.match(editor, /update-profile/)
 assert.match(editor, /Nur Hauptadmin darf Admin-Konten ändern/)
 
 console.log('employee-role-management-policy-test: PASS')
