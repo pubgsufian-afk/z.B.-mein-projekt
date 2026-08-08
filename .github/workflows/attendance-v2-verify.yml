@@ -35,7 +35,7 @@ jobs:
           key: habun-netlify-deploy-key-pr81-v1
       - name: Prepare verified main source
         env:
-          BASE_SHA: a64b44f830268136386d80962b9681b40772c6b4
+          BASE_SHA: 499536c4a9b474ff790483a9ca76fa2949259300
         run: |
           set -euo pipefail
           cp ops/netlify-proxy.key.enc.b64 /tmp/netlify-proxy.key.enc.b64
