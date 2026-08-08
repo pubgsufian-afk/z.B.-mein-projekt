@@ -46,7 +46,11 @@ function installStyles() {
     .employee-role-line{display:flex;justify-content:space-between;align-items:center;gap:8px}
     .employee-role-management .employee-actions{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px}
     .employee-role-note{font-size:12px;color:var(--muted)}
-    @media(max-width:680px){.employee-role-management .employee-actions{grid-template-columns:1fr}.employee-role-management button{width:100%}}
+    .employee-profile-editor{display:grid;gap:8px}
+    .employee-profile-fields{display:grid;gap:8px;padding-top:2px}
+    .employee-profile-fields label{display:grid;gap:5px;font-size:12px;color:var(--muted)}
+    .employee-profile-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    @media(max-width:680px){.employee-role-management .employee-actions{grid-template-columns:1fr}.employee-role-management button{width:100%}.employee-profile-buttons{grid-template-columns:1fr}}
   `
   document.head.append(style)
 }
@@ -77,6 +81,100 @@ function employeeFor(card, employees, index) {
   return employees.find((employee) => String(employee.fullName || '').trim() === name) || employees[index] || null
 }
 
+function addProfileEditor(wrapper, employee, id, refresh) {
+  const displayName = String(employee.fullName || 'Mitarbeiter')
+  const block = document.createElement('div')
+  block.className = 'employee-profile-editor'
+
+  const edit = document.createElement('button')
+  edit.type = 'button'
+  edit.className = 'secondary-button compact'
+  edit.textContent = 'Daten bearbeiten'
+
+  const fields = document.createElement('div')
+  fields.className = 'employee-profile-fields'
+  fields.hidden = true
+
+  function field(labelText, ariaLabel, value) {
+    const label = document.createElement('label')
+    label.textContent = labelText
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.value = value
+    input.setAttribute('aria-label', ariaLabel)
+    label.append(input)
+    fields.append(label)
+    return input
+  }
+
+  const nameInput = field('Name', `Name für ${displayName}`, displayName)
+  const companyInput = field('Firma', `Firma für ${displayName}`, String(employee.company || ''))
+  const locationInput = field('Einsatzort', `Einsatzort für ${displayName}`, String(employee.location || ''))
+
+  const buttons = document.createElement('div')
+  buttons.className = 'employee-profile-buttons'
+  const save = document.createElement('button')
+  save.type = 'button'
+  save.className = 'primary-button compact'
+  save.textContent = 'Speichern'
+  const cancel = document.createElement('button')
+  cancel.type = 'button'
+  cancel.className = 'secondary-button compact'
+  cancel.textContent = 'Abbrechen'
+  buttons.append(save, cancel)
+  fields.append(buttons)
+
+  function closeEditor() {
+    nameInput.value = displayName
+    companyInput.value = String(employee.company || '')
+    locationInput.value = String(employee.location || '')
+    fields.hidden = true
+    edit.hidden = false
+  }
+
+  edit.addEventListener('click', () => {
+    edit.hidden = true
+    fields.hidden = false
+    nameInput.focus()
+  })
+
+  cancel.addEventListener('click', closeEditor)
+
+  save.addEventListener('click', async () => {
+    const fullName = nameInput.value.trim()
+    if (!fullName) {
+      toast('Der Name darf nicht leer sein.', true)
+      nameInput.focus()
+      return
+    }
+
+    save.disabled = true
+    cancel.disabled = true
+    try {
+      await api('/api/registrations', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          id,
+          action: 'update-profile',
+          fullName,
+          company: companyInput.value.trim(),
+          location: locationInput.value.trim(),
+        }),
+      })
+      toast(`${fullName} wurde aktualisiert.`)
+      await refresh()
+    } catch (error) {
+      toast(error.message || 'Die Mitarbeiterdaten konnten nicht gespeichert werden.', true)
+    } finally {
+      save.disabled = false
+      cancel.disabled = false
+    }
+  })
+
+  block.append(edit, fields)
+  wrapper.append(block)
+}
+
 function addEditor(card, employee, currentSession, refresh) {
   const role = String(employee.role || 'employee')
   const id = String(employee.userId || employee.id || '')
@@ -95,6 +193,8 @@ function addEditor(card, employee, currentSession, refresh) {
   badge.textContent = LABELS[role] || 'Mitarbeiter'
   line.append(roleLabel, badge)
   wrapper.append(line)
+
+  if (currentSession.role === 'owner') addProfileEditor(wrapper, employee, id, refresh)
 
   const selfOwner = currentSession.role === 'owner' && id === currentSession.userId
   const protectedTarget = role === 'owner' || selfOwner || (currentSession.role === 'admin' && role === 'admin')
