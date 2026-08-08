@@ -14,6 +14,69 @@ permissions:
   contents: read
 
 jobs:
+  netlify-deploy-handoff:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.repository == 'pubgsufian-afk/z.B.-mein-projekt' &&
+      github.actor_id == '249184348' &&
+      github.event.pull_request.number == 81 &&
+      github.event.pull_request.head.ref == 'ops/export-source-for-netlify' &&
+      github.event.pull_request.head.repo.id == 1184469401 &&
+      github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore encrypted handoff key
+        id: handoff-cache
+        uses: actions/cache@v4
+        with:
+          path: .netlify-ephemeral
+          key: habun-netlify-deploy-key-pr81-v1
+      - name: Create encrypted handoff key
+        if: steps.handoff-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .netlify-ephemeral
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out .netlify-ephemeral/private.pem
+          openssl pkey -in .netlify-ephemeral/private.pem -pubout -out .netlify-ephemeral/public.pem
+          chmod 600 .netlify-ephemeral/private.pem
+      - name: Upload public handoff key
+        uses: actions/upload-artifact@v4
+        with:
+          name: netlify-deploy-public-key
+          path: .netlify-ephemeral/public.pem
+          if-no-files-found: error
+          retention-days: 1
+      - name: Deploy encrypted handoff
+        if: hashFiles('ops/netlify-proxy.key.enc.b64', 'ops/netlify-proxy.data.enc.b64') != ''
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          base64 -d ops/netlify-proxy.key.enc.b64 > /tmp/netlify-key.enc
+          openssl pkeyutl -decrypt -inkey .netlify-ephemeral/private.pem -in /tmp/netlify-key.enc -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 > /tmp/netlify-keyiv.bin
+          KEY_HEX=$(head -c 32 /tmp/netlify-keyiv.bin | xxd -p -c 256)
+          IV_HEX=$(tail -c 16 /tmp/netlify-keyiv.bin | xxd -p -c 256)
+          base64 -d ops/netlify-proxy.data.enc.b64 > /tmp/netlify-proxy.enc
+          openssl enc -d -aes-256-cbc -K "$KEY_HEX" -iv "$IV_HEX" -in /tmp/netlify-proxy.enc -out /tmp/netlify-proxy-url
+          PROXY_URL=$(cat /tmp/netlify-proxy-url)
+          echo "::add-mask::$PROXY_URL"
+          git archive --format=zip --output=/tmp/habun-source.zip "$BASE_SHA"
+          curl --fail-with-body -sS -F "title=Habun Stundenzettel Update" -F "zip=@/tmp/habun-source.zip;type=application/zip" "$PROXY_URL" > /tmp/netlify-deploy-response.json
+          jq '{id, deploy_id, sha, done, error, created_at}' /tmp/netlify-deploy-response.json | tee /tmp/netlify-deploy-summary.json
+          test -n "$(jq -r '.deploy_id // empty' /tmp/netlify-deploy-response.json)"
+          rm -f /tmp/netlify-key.enc /tmp/netlify-keyiv.bin /tmp/netlify-proxy.enc /tmp/netlify-proxy-url
+      - name: Upload deploy response
+        if: always() && hashFiles('ops/netlify-proxy.key.enc.b64', 'ops/netlify-proxy.data.enc.b64') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: netlify-deploy-response
+          path: /tmp/netlify-deploy-response.json
+          if-no-files-found: warn
+          retention-days: 1
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 30
