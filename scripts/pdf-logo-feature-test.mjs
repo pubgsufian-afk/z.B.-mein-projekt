@@ -54,6 +54,7 @@ assert.match(app, /session\.role === ['"]owner['"]/)
 assert.match(app, /accept="image\/png,image\/jpeg,image\/webp"/)
 assert.match(app, /preparePdfLogo/)
 assert.match(app, /Auf Standardlogo zurücksetzen/)
+assert.match(app, /pdf-logo-company-preview/)
 assert.doesNotMatch(app, />Logo-Pfad</)
 assert.match(app, /<SettingsPage session=\{session\} \/>/)
 
@@ -68,6 +69,7 @@ const pdfFiles = [
   'netlify/functions/timesheet-reports.mts',
   'netlify/functions/unified-reports.mts',
   'netlify/functions/unified-reports-fixed.mts',
+  'netlify/functions/reports-v2.mts',
 ]
 for (const path of pdfFiles) {
   const source = await readFile(path, 'utf8')
