@@ -45,7 +45,7 @@ export function buildActualSessions(entries = [], employeeNames = new Map()) {
           clockOutAt: null,
           breakMinutes: 0,
           breakStart: null,
-          location: event.workSiteName || event.location || event.objectId || '–',
+          location: event.workSiteName || (typeof event.location === 'string' ? event.location : '') || event.objectId || '–',
           scheduleId: event.scheduleId || null,
           objectId: event.objectId || null,
         }
