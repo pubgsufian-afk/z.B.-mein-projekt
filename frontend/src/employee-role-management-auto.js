@@ -81,7 +81,17 @@ function employeeFor(card, employees, index) {
   return employees.find((employee) => String(employee.fullName || '').trim() === name) || employees[index] || null
 }
 
-function addProfileEditor(wrapper, employee, id, refresh) {
+function updateCardProfile(card, employee) {
+  const fullName = String(employee.fullName || 'Mitarbeiter')
+  const nameNode = card.querySelector('strong')
+  if (nameNode) nameNode.textContent = fullName
+  const avatar = card.querySelector('.avatar')
+  if (avatar) avatar.textContent = fullName.slice(0, 1).toUpperCase() || 'M'
+  const locationNode = [...card.children].find((node) => node.tagName === 'SPAN' && !node.classList.contains('status'))
+  if (locationNode) locationNode.textContent = String(employee.location || '') || 'Kein fester Einsatzort'
+}
+
+function addProfileEditor(wrapper, card, employee, id, refresh) {
   const displayName = String(employee.fullName || 'Mitarbeiter')
   const block = document.createElement('div')
   block.className = 'employee-profile-editor'
@@ -148,19 +158,19 @@ function addProfileEditor(wrapper, employee, id, refresh) {
       return
     }
 
+    const company = companyInput.value.trim()
+    const location = locationInput.value.trim()
     save.disabled = true
     cancel.disabled = true
     try {
       await api('/api/registrations', {
         method: 'PATCH',
-        body: JSON.stringify({
-          id,
-          action: 'update-profile',
-          fullName,
-          company: companyInput.value.trim(),
-          location: locationInput.value.trim(),
-        }),
+        body: JSON.stringify({ id, action: 'update-profile', fullName, company, location }),
       })
+      employee.fullName = fullName
+      employee.company = company
+      employee.location = location
+      updateCardProfile(card, employee)
       toast(`${fullName} wurde aktualisiert.`)
       await refresh()
     } catch (error) {
@@ -194,7 +204,7 @@ function addEditor(card, employee, currentSession, refresh) {
   line.append(roleLabel, badge)
   wrapper.append(line)
 
-  if (currentSession.role === 'owner') addProfileEditor(wrapper, employee, id, refresh)
+  if (currentSession.role === 'owner') addProfileEditor(wrapper, card, employee, id, refresh)
 
   const selfOwner = currentSession.role === 'owner' && id === currentSession.userId
   const protectedTarget = role === 'owner' || selfOwner || (currentSession.role === 'admin' && role === 'admin')
