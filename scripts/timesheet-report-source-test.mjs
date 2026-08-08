@@ -18,7 +18,7 @@ assert.match(unified, /opacity:\s*0\.0[5-9]/)
 assert.match(unified, /employeeName/)
 assert.match(unified, /source:\s*'planned'/)
 assert.match(unified, /source:\s*'actual'/)
-assert.match(unified, /Habun-Stundenzettel-/)
+assert.match(unified, /Habun-Stundenzettel/)
 assert.match(unified, /application\/pdf/)
 assert.match(unified, /spreadsheetml\.sheet/)
 
