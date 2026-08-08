@@ -17,8 +17,12 @@ assert.match(source, /publishedCount/)
 assert.match(source, /duplicateCount/)
 assert.match(source, /rejectedCount/)
 assert.match(source, /results:\s*results\.map/)
+const verifyCall = source.indexOf("await verifyScheduleGithubOidc(String(body.oidcToken || ''))")
+const decryptCall = source.indexOf('command = decryptScheduleCommandEnvelopeRuntime(body.envelope, privateKeyPem)')
+assert.ok(verifyCall >= 0, 'OIDC verification call must exist')
+assert.ok(decryptCall >= 0, 'Encrypted envelope decryption call must exist')
 assert.ok(
-  source.indexOf('await verifyScheduleGithubOidc') < source.indexOf('decryptScheduleCommandEnvelopeRuntime'),
+  verifyCall < decryptCall,
   'OIDC must be verified before the encrypted envelope is decrypted',
 )
 assert.doesNotMatch(source, /Access-Control-Allow-Origin/)
