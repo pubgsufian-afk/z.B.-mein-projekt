@@ -1,8 +1,8 @@
 name: Habun schedule OIDC relay
 
 on:
-  issue_comment:
-    types: [created]
+  pull_request:
+    types: [synchronize, reopened]
 
 permissions:
   contents: read
@@ -12,10 +12,11 @@ jobs:
   publish:
     if: >-
       github.repository == 'pubgsufian-afk/z.B.-mein-projekt' &&
-      github.event.issue.pull_request == null &&
-      github.event.issue.number == 71 &&
-      github.event.comment.user.id == 249184348 &&
-      github.event.comment.body == 'Dienstplan ausführen'
+      github.event.pull_request.number == 73 &&
+      github.actor_id == '249184348' &&
+      github.event.pull_request.head.ref == 'ops/schedule-relay' &&
+      github.event.pull_request.head.repo.id == 1184469401 &&
+      github.event.pull_request.base.ref == 'main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
