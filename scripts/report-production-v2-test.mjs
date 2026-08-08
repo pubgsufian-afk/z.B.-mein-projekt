@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { PDFDocument } from 'pdf-lib'
 import { buildReportEventQuery } from '../netlify/functions/_shared/report-database.mts'
 import { attendanceEventNeedsReview } from '../netlify/functions/_shared/report-warning.mjs'
-import { drawCenteredShieldLogo, shieldLogoPlacement } from '../netlify/functions/_shared/pdf-shield-logo.mts'
+import { drawCenteredPdfWatermark } from '../netlify/functions/_shared/pdf-shield-logo.mts'
 
 const [reportSource, scheduleSource, redirects, index, filterScript, logoBytes] = await Promise.all([
   readFile('netlify/functions/unified-reports-fixed.mts', 'utf8'),
@@ -19,11 +19,11 @@ assert.match(reportSource, /attendanceEventNeedsReview/)
 assert.match(reportSource, /buildExcel/)
 assert.match(reportSource, /buildPdf/)
 assert.doesNotMatch(reportSource, /@neondatabase\/serverless|databaseConnectionString/)
-assert.match(scheduleSource, /drawCenteredShieldLogo/)
+assert.match(scheduleSource, /drawCenteredPdfWatermark/)
 assert.match(reportSource, /settings\.address/)
 assert.match(scheduleSource, /settings\.address/)
-assert.match(reportSource, /drawCenteredShieldLogo\(page, logo, width, height - 22, 94\)/)
-assert.match(scheduleSource, /drawCenteredShieldLogo\(page, logo, width, height - 22, 94\)/)
+assert.match(reportSource, /drawCenteredPdfWatermark\(page, logo, width, height/)
+assert.match(scheduleSource, /drawCenteredPdfWatermark\(page, logo, width, height/)
 assert.doesNotMatch(reportSource, /Telefon nicht hinterlegt|E-Mail nicht hinterlegt/)
 assert.doesNotMatch(scheduleSource, /Telefon nicht hinterlegt|E-Mail nicht hinterlegt/)
 assert.match(redirects, /from = "\/api\/unified-reports"[\s\S]*unified-reports-fixed/)
@@ -48,14 +48,14 @@ assert.equal(attendanceEventNeedsReview({ action: 'clock-in', location_status: '
 const pdf = await PDFDocument.create()
 const page = pdf.addPage([842, 595])
 const logo = await pdf.embedPng(logoBytes)
-const placement = drawCenteredShieldLogo(page, logo, 842, 573, 94)
+const placement = drawCenteredPdfWatermark(page, logo, 842, 595, 220, 175, 0.06)
 assert.ok(placement)
-assert.equal(Math.round(placement.centerX), 421)
-assert.equal(Math.round(placement.shieldWidth), 94)
-const purePlacement = shieldLogoPlacement(logo, 842, 573, 94)
-assert.equal(Math.round(purePlacement.centerX), 421)
-assert.ok(purePlacement.imageX < purePlacement.centerX)
+assert.equal(Math.round(placement.imageX + placement.imageWidth / 2), 421)
+assert.equal(Math.round(placement.imageY + placement.imageHeight / 2), 298)
+assert.ok(placement.imageWidth <= 220.01)
+assert.ok(placement.imageHeight <= 175.01)
+assert.equal(placement.opacity, 0.06)
 const pdfBytes = Buffer.from(await pdf.save())
 assert.equal(pdfBytes.subarray(0, 5).toString(), '%PDF-')
 
-console.log('Production report database, redirects, warnings, mobile filter and centered PDF logo tests passed')
+console.log('Production report database, redirects, warnings, mobile filter and centered PDF watermark tests passed')

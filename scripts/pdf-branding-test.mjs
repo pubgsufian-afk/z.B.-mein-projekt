@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const [source, legacySource] = await Promise.all([
+const [source, legacySource, brandingSource, shieldSource] = await Promise.all([
   readFile('netlify/functions/unified-reports.mts', 'utf8'),
   readFile('netlify/functions/reports-v2.mts', 'utf8'),
+  readFile('netlify/functions/_shared/pdf-branding.mts', 'utf8'),
+  readFile('netlify/functions/_shared/pdf-shield-logo.mts', 'utf8'),
 ])
 
 for (const reportSource of [source, legacySource]) {
@@ -16,11 +18,16 @@ for (const reportSource of [source, legacySource]) {
 }
 
 assert.match(source, /readCompanySettings/)
-assert.match(source, /settings\.logoUrl/)
+assert.match(source, /loadOriginalLogo/)
+assert.match(source, /drawCenteredPdfWatermark/)
 assert.match(source, /settings\.companyName/)
 assert.match(source, /settings\.phone/)
 assert.match(source, /settings\.email/)
-assert.match(source, /embedPng|embedJpg/)
+assert.doesNotMatch(source, /fetch\(new URL\(settings\.logoUrl/)
+assert.match(brandingSource, /readPdfLogoBytes/)
+assert.match(brandingSource, /EXPORT_LOGO_PNG_BASE64/)
+assert.match(shieldSource, /readPdfLogoBytes/)
+assert.match(shieldSource, /embedPng/)
 assert.match(source, /application\/pdf/)
 assert.match(source, /spreadsheetml/)
 assert.match(source, /Arbeitszeiten/)
@@ -43,4 +50,4 @@ workbook.addWorksheet('Arbeitszeiten').addRow(['Habun Security', 'Test'])
 const excelBytes = await workbook.xlsx.writeBuffer()
 assert.ok(excelBytes.byteLength > 100)
 
-console.log('PDF, Excel and report query tests passed')
+console.log('PDF, Excel and centralized report branding tests passed')

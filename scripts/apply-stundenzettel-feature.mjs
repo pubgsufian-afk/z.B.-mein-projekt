@@ -30,10 +30,11 @@ async function removeRegexFromFile(path, pattern) {
 const changed = []
 const mark = (path, didChange) => { if (didChange) changed.push(path) }
 
-mark('frontend/src/App.jsx', await replaceInFile(
+mark('frontend/src/App.jsx', await replaceRegexInFile(
   'frontend/src/App.jsx',
-  "import { useCallback, useEffect, useMemo, useRef, useState } from 'react'\n",
+  /import \{ useCallback, useEffect, useMemo, useRef, useState \} from 'react'\n/,
   "import { useCallback, useEffect, useMemo, useRef, useState } from 'react'\nimport TimesheetPage from './TimesheetPage.jsx'\n",
+  "import TimesheetPage from './TimesheetPage.jsx'",
   'Stundenzettel-Import',
 ))
 
