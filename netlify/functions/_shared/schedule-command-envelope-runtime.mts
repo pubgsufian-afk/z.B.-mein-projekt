@@ -1,8 +1,11 @@
 import {
   constants,
   createDecipheriv,
+  createPrivateKey,
   privateDecrypt,
 } from 'node:crypto'
+
+type RuntimePrivateKey = string | Buffer
 
 function requiredBase64(envelope: Record<string, unknown>, key: string) {
   const value = String(envelope[key] ?? '').trim()
@@ -10,7 +13,17 @@ function requiredBase64(envelope: Record<string, unknown>, key: string) {
   return Buffer.from(value, 'base64')
 }
 
-export function decryptScheduleCommandEnvelopeRuntime(envelope: unknown, privateKeyPem: string) {
+function normalizeRuntimePrivateKey(input: RuntimePrivateKey) {
+  if (Buffer.isBuffer(input)) {
+    if (!input.length) throw new Error('Schedule command private key fehlt')
+    return createPrivateKey({ key: input, format: 'der', type: 'pkcs8' })
+  }
+  const privateKey = String(input || '').trim()
+  if (!privateKey) throw new Error('Schedule command private key fehlt')
+  return privateKey
+}
+
+export function decryptScheduleCommandEnvelopeRuntime(envelope: unknown, privateKeyInput: RuntimePrivateKey) {
   if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) {
     throw new Error('Schedule command envelope ist ungültig')
   }
@@ -22,9 +35,7 @@ export function decryptScheduleCommandEnvelopeRuntime(envelope: unknown, private
     throw new Error('Schedule command envelope Algorithmus ist ungültig')
   }
 
-  const privateKey = String(privateKeyPem || '').trim()
-  if (!privateKey) throw new Error('Schedule command private key fehlt')
-
+  const privateKey = normalizeRuntimePrivateKey(privateKeyInput)
   const encryptedKey = requiredBase64(value, 'encryptedKey')
   const iv = requiredBase64(value, 'iv')
   const ciphertext = requiredBase64(value, 'ciphertext')
