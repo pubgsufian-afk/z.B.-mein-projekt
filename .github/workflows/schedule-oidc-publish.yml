@@ -1,8 +1,8 @@
 name: Habun schedule OIDC relay
 
 on:
-  pull_request:
-    types: [synchronize, reopened]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -12,11 +12,10 @@ jobs:
   publish:
     if: >-
       github.repository == 'pubgsufian-afk/z.B.-mein-projekt' &&
-      github.event.pull_request.number == 73 &&
+      github.event.issue.pull_request &&
+      github.event.issue.number == 73 &&
       github.actor_id == '249184348' &&
-      github.event.pull_request.head.ref == 'ops/schedule-relay' &&
-      github.event.pull_request.head.repo.id == 1184469401 &&
-      github.event.pull_request.base.ref == 'main'
+      startsWith(github.event.comment.body, '<!-- habun-schedule-envelope-v1 -->')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,3 +25,5 @@ jobs:
         with:
           node-version: '22'
       - run: node scripts/run-schedule-oidc-relay.mjs
+        env:
+          SCHEDULE_ENVELOPE_COMMENT: ${{ github.event.comment.body }}
