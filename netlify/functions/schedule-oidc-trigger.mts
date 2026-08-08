@@ -12,6 +12,7 @@ type AssistantEntry = {
 
 type AssistantResponse = {
   employeeCount?: unknown
+  directoryDiagnostics?: unknown
   results?: unknown
 }
 
@@ -28,12 +29,27 @@ function json(data: unknown, status = 200) {
 
 function number(value: unknown) {
   const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : 0
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : 0
 }
 
 function safeStatus(value: unknown) {
   const status = String(value ?? '').trim()
   return status || 'rejected'
+}
+
+function safeDirectoryDiagnostics(value: unknown) {
+  const diagnostics = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+  return {
+    identityUserCount: number(diagnostics.identityUserCount),
+    accessCount: number(diagnostics.accessCount),
+    registrationCount: number(diagnostics.registrationCount),
+    combinedAccessCount: number(diagnostics.combinedAccessCount),
+    employeeCount: number(diagnostics.employeeCount),
+    requestedCount: number(diagnostics.requestedCount),
+    identityLookupSucceeded: diagnostics.identityLookupSucceeded === true,
+  }
 }
 
 export default async function scheduleOidcTrigger(request: Request, context: Context) {
@@ -96,12 +112,14 @@ export default async function scheduleOidcTrigger(request: Request, context: Con
   const publishedCount = publicResults.filter((entry) => entry.status === 'published').length
   const duplicateCount = publicResults.filter((entry) => entry.status === 'duplicate').length
   const rejectedCount = publicResults.filter((entry) => !['published', 'duplicate'].includes(entry.status)).length
+  const directoryDiagnostics = safeDirectoryDiagnostics(data.directoryDiagnostics)
   const commandHash = createHash('sha256').update(parsed.command.commandId).digest('hex').slice(0, 12)
 
   return json({
     commandHash,
     action: parsed.command.action,
-    employeeCount: number(data.employeeCount),
+    employeeCount: number(data.employeeCount || directoryDiagnostics.employeeCount),
+    directoryDiagnostics,
     publishedCount,
     duplicateCount,
     rejectedCount,
