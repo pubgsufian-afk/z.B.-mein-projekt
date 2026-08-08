@@ -11,6 +11,7 @@ const jwk = publicKey.export({ format: 'jwk' })
 const kid = 'test-kid-1'
 const legacySubject = 'repo:pubgsufian-afk/z.B.-mein-projekt:pull_request'
 const immutableSubject = 'repo:pubgsufian-afk@249184348/z.B.-mein-projekt@1184469401:pull_request'
+const expectedWorkflowRef = 'pubgsufian-afk/z.B.-mein-projekt/.github/workflows/schedule-oidc-publish.yml@refs/pull/73/merge'
 
 function b64url(value) {
   return Buffer.from(typeof value === 'string' ? value : JSON.stringify(value)).toString('base64url')
@@ -28,7 +29,7 @@ function makeToken(overrides = {}, headerOverrides = {}, signingKey = privateKey
     event_name: 'pull_request',
     ref: 'refs/pull/73/merge',
     sub: immutableSubject,
-    workflow_ref: 'pubgsufian-afk/z.B.-mein-projekt/.github/workflows/schedule-oidc-publish.yml@refs/heads/main',
+    workflow_ref: expectedWorkflowRef,
     iat: nowSeconds - 10,
     nbf: nowSeconds - 10,
     exp: nowSeconds + 300,
@@ -51,6 +52,7 @@ assert.equal(immutableClaims.repository_owner_id, '249184348')
 assert.equal(immutableClaims.actor_id, '249184348')
 assert.equal(immutableClaims.event_name, 'pull_request')
 assert.equal(immutableClaims.ref, 'refs/pull/73/merge')
+assert.equal(immutableClaims.workflow_ref, expectedWorkflowRef)
 assert.equal(immutableClaims.sub, immutableSubject)
 
 const legacyClaims = await verifyScheduleGithubOidc(makeToken({ sub: legacySubject }), now, fakeFetch)
@@ -89,7 +91,7 @@ await assert.rejects(
   /ref/i,
 )
 await assert.rejects(
-  () => verifyScheduleGithubOidc(makeToken({ workflow_ref: 'other/workflow.yml@refs/heads/main' }), now, fakeFetch),
+  () => verifyScheduleGithubOidc(makeToken({ workflow_ref: 'pubgsufian-afk/z.B.-mein-projekt/.github/workflows/schedule-oidc-publish.yml@refs/heads/main' }), now, fakeFetch),
   /workflow/i,
 )
 await assert.rejects(
