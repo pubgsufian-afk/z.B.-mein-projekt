@@ -33,7 +33,10 @@ if (!source.includes('const directoryDiagnostics: DirectoryDiagnostics = {')) {
 
 if (!source.includes('const directoryDiagnostics = directoryDiagnosticsByEmployees.get(')) {
   const loadMatch = source.match(/^(\s*)const\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+activePortalEmployees\(requestedNames\).*$/m)
-  if (!loadMatch) throw new Error('Schedule diagnostics load marker fehlt')
+  if (!loadMatch) {
+    const candidates = source.split('\n').filter((line) => line.includes('activePortalEmployees')).join(' | ')
+    throw new Error(`Schedule diagnostics load marker fehlt; candidates=${candidates}`)
+  }
   const [loadLine, indentation, variableName] = loadMatch
   const loadReplacement = `${loadLine}\n${indentation}const directoryDiagnostics = directoryDiagnosticsByEmployees.get(${variableName}) || emptyDirectoryDiagnostics()`
   source = source.replace(loadLine, loadReplacement)
