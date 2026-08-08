@@ -128,7 +128,7 @@ async function loginAndOpenTimes(page, role, initialPauseAdjustment = null, mode
 }
 
 function firstActualCard(page) {
-  return page.locator('.actual-timesheet-list > article.timesheet-card').first()
+  return page.locator('.unified-timesheet-list > article.timesheet-card').first()
 }
 
 test('admin edits a completed session and corrected totals are shown', async ({ page }) => {

@@ -1,15 +1,25 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
-const source = fs.readFileSync('netlify/functions/timesheet-reports.mts', 'utf8')
+const legacy = fs.readFileSync('netlify/functions/timesheet-reports.mts', 'utf8')
+const unified = fs.readFileSync('netlify/functions/timesheet-export.mts', 'utf8')
 
-assert.match(source, /scope === 'planned'/)
-assert.match(source, /Stundenzettel – tatsächliche Arbeitszeiten/)
-assert.match(source, /Dienstplanstunden – geplant/)
-assert.match(source, /Habun-Stundenzettel-/)
-assert.match(source, /Habun-Dienstplanstunden-/)
-assert.match(source, /application\/pdf/)
-assert.match(source, /spreadsheetml\.sheet/)
-assert.doesNotMatch(source, /Plan Beginn.*Ist Beginn/s)
+assert.match(legacy, /scope === 'planned'/)
+assert.match(legacy, /Stundenzettel – tatsächliche Arbeitszeiten/)
+assert.match(legacy, /Dienstplanstunden – geplant/)
+assert.match(legacy, /application\/pdf/)
+assert.match(legacy, /spreadsheetml\.sheet/)
 
-console.log('timesheet report source contract passed')
+assert.match(unified, /path: '\/api\/timesheet-export'/)
+assert.match(unified, /Arbeitszeitenbericht/)
+assert.match(unified, /Gesamtdauer/)
+assert.match(unified, /Anmerkungen/)
+assert.match(unified, /opacity:\s*0\.0[5-9]/)
+assert.match(unified, /employeeName/)
+assert.match(unified, /source:\s*'planned'/)
+assert.match(unified, /source:\s*'actual'/)
+assert.match(unified, /Habun-Stundenzettel/)
+assert.match(unified, /application\/pdf/)
+assert.match(unified, /spreadsheetml\.sheet/)
+
+console.log('unified timesheet export source contract passed')
