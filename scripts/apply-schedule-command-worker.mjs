@@ -31,8 +31,8 @@ if (!source.includes('const directoryDiagnostics: DirectoryDiagnostics = {')) {
   changed = true
 }
 
-const loadEmployeesMarker = `    const employees = await activePortalEmployees(requestedNames)\n    const action = text(body.action)`
-const loadEmployeesReplacement = `    const employees = await activePortalEmployees(requestedNames)\n    const directoryDiagnostics = directoryDiagnosticsByEmployees.get(employees) || emptyDirectoryDiagnostics()\n    const action = text(body.action)`
+const loadEmployeesMarker = `    const employees = await activePortalEmployees(requestedNames)`
+const loadEmployeesReplacement = `    const employees = await activePortalEmployees(requestedNames)\n    const directoryDiagnostics = directoryDiagnosticsByEmployees.get(employees) || emptyDirectoryDiagnostics()`
 if (!source.includes(loadEmployeesReplacement)) {
   if (!source.includes(loadEmployeesMarker)) throw new Error('Schedule diagnostics load marker fehlt')
   source = source.replace(loadEmployeesMarker, loadEmployeesReplacement)
