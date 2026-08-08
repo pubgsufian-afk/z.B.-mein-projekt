@@ -4,20 +4,9 @@ import { readCompanySettings } from './_shared/company-settings.mts'
 import { databaseConnectionString } from './_shared/database-connection.mts'
 import { currentPortalActor } from './_shared/portal-role.mts'
 
-type Scope = 'actual' | 'planned'
+type Scope = 'unified' | 'actual' | 'planned'
 type Format = 'pdf' | 'xlsx'
-type AttendanceEvent = {
-  id: string
-  user_id: string
-  action: 'clock-in' | 'break-start' | 'break-end' | 'clock-out'
-  client_occurred_at: string | Date
-  event_date: string | Date
-  schedule_id: string | null
-  object_id: string | null
-  location_status: string
-  offline_captured: boolean
-  pause_minutes_adjustment: number | null
-}
+type Source = 'actual' | 'planned'
 type ScheduleEntry = {
   id?: string
   employeeUserId?: string
@@ -26,11 +15,23 @@ type ScheduleEntry = {
   start?: string
   end?: string
   pauseMinutes?: number
+  objectId?: string | null
   location?: string
   workArea?: string
   status?: string
 }
+type AttendanceEvent = {
+  id: string
+  user_id: string
+  action: 'clock-in' | 'break-start' | 'break-end' | 'clock-out'
+  client_occurred_at: string | Date
+  event_date: string | Date
+  schedule_id: string | null
+  object_id: string | null
+  pause_minutes_adjustment: number | null
+}
 type ReportRow = {
+  employeeUserId: string
   employeeName: string
   date: string
   start: string
@@ -38,18 +39,35 @@ type ReportRow = {
   pauseMinutes: number
   netMinutes: number
   location: string
-  detail: string
+  workArea: string
+  source: Source
+  scheduleId: string | null
 }
 
 const MANAGEMENT = new Set(['owner', 'admin', 'manager'])
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 function json(data: unknown, status = 200) {
-  return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex' } })
+  return Response.json(data, {
+    status,
+    headers: {
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'X-Robots-Tag': 'noindex',
+    },
+  })
 }
 
-function text(value: unknown) {
-  return String(value ?? '').replace(/[\r\n\t]+/g, ' ').trim()
+function text(value: unknown, maximum = 100) {
+  return String(value ?? '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, maximum)
+}
+
+function safePdfText(value: unknown, maximum = 100) {
+  return text(value, maximum)
+    .replace(/–/g, '-')
+    .replace(/—/g, '-')
+    .replace(/…/g, '...')
+    .replace(/[^\x20-\x7E\xA0-\xFF]/g, '?')
 }
 
 function dateOnly(value: unknown) {
@@ -57,12 +75,16 @@ function dateOnly(value: unknown) {
   return String(value || '').slice(0, 10)
 }
 
-function timeOnly(value: unknown) {
+function berlinTime(value: unknown) {
   if (!value) return '–'
   const date = value instanceof Date ? value : new Date(String(value))
-  return Number.isFinite(date.getTime())
-    ? new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }).format(date)
-    : '–'
+  if (!Number.isFinite(date.getTime())) return '–'
+  return new Intl.DateTimeFormat('de-DE', {
+    timeZone: 'Europe/Berlin',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(date)
 }
 
 function addDays(value: string, amount: number) {
@@ -72,22 +94,57 @@ function addDays(value: string, amount: number) {
 }
 
 function plannedMinutes(date: string, start: string, end: string, pauseMinutes: number) {
-  if (!date || !start || !end) return 0
+  if (!date || !/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) return 0
   const startAt = new Date(`${date}T${start}:00`)
   let endAt = new Date(`${date}T${end}:00`)
   if (!Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime())) return 0
   if (endAt <= startAt) endAt = new Date(endAt.getTime() + 24 * 60 * 60 * 1000)
   const gross = Math.max(0, Math.round((endAt.getTime() - startAt.getTime()) / 60000))
-  return Math.max(0, gross - Math.max(0, Number(pauseMinutes) || 0))
+  return Math.max(0, gross - Math.max(0, Math.round(Number(pauseMinutes) || 0)))
+}
+
+function durationText(minutes: number) {
+  const total = Math.max(0, Math.round(Number(minutes) || 0))
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
 }
 
 function decimalHours(minutes: number) {
-  return (Math.max(0, minutes) / 60).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return Number((Math.max(0, Number(minutes) || 0) / 60).toFixed(2))
+}
+
+function germanDate(value: string) {
+  const date = new Date(`${value}T12:00:00`)
+  return Number.isFinite(date.getTime())
+    ? new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date)
+    : value
+}
+
+function dayLabel(value: string) {
+  const date = new Date(`${value}T12:00:00`)
+  return Number.isFinite(date.getTime())
+    ? new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', weekday: 'short' }).format(date)
+    : value
+}
+
+function monthLabel(from: string, to: string) {
+  if (from.slice(0, 7) === to.slice(0, 7)) {
+    const date = new Date(`${from.slice(0, 7)}-15T12:00:00`)
+    return new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' }).format(date)
+  }
+  return `${germanDate(from)} bis ${germanDate(to)}`
+}
+
+function clockMinutes(value: string) {
+  const [hours, minutes] = String(value || '').split(':').map(Number)
+  return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : null
 }
 
 async function fetchJson(request: Request, path: string) {
   try {
-    const response = await fetch(new URL(path, request.url), { headers: request.headers, cache: 'no-store' })
+    const response = await fetch(new URL(path, request.url), {
+      headers: request.headers,
+      cache: 'no-store',
+    })
     return response.ok ? await response.json().catch(() => ({})) : {}
   } catch {
     return {}
@@ -95,42 +152,67 @@ async function fetchJson(request: Request, path: string) {
 }
 
 async function loadNames(request: Request) {
-  const payload = await fetchJson(request, '/api/registrations') as { employees?: Array<{ userId?: string; id?: string; fullName?: string }> }
-  return new Map((payload.employees || []).map((employee) => [String(employee.userId || employee.id || ''), text(employee.fullName) || 'Mitarbeiter']))
+  const payload = await fetchJson(request, '/api/registrations') as {
+    employees?: Array<{ userId?: string; id?: string; fullName?: string }>
+  }
+  return new Map((payload.employees || []).map((employee) => [
+    String(employee.userId || employee.id || ''),
+    text(employee.fullName) || 'Mitarbeiter',
+  ]))
 }
 
-async function loadSchedules(request: Request, from: string, to: string) {
-  const payload = await fetchJson(request, `/api/schedule-v2?resource=entries&from=${from}&to=${to}`) as { entries?: ScheduleEntry[] }
-  return Array.isArray(payload.entries) ? payload.entries : []
+async function loadSchedules(request: Request, from: string, to: string, userIds: string[]) {
+  const payload = await fetchJson(
+    request,
+    `/api/schedule-v2?resource=entries&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  ) as { entries?: ScheduleEntry[] }
+  let entries = Array.isArray(payload.entries)
+    ? payload.entries.filter((entry) => entry.status !== 'draft')
+    : []
+  if (userIds.length) entries = entries.filter((entry) => userIds.includes(String(entry.employeeUserId || '')))
+  return entries
 }
 
 function buildPlannedRows(schedules: ScheduleEntry[], names: Map<string, string>): ReportRow[] {
-  return schedules
-    .filter((entry) => entry.status !== 'draft')
-    .map((entry) => {
-      const userId = String(entry.employeeUserId || '')
-      const pauseMinutes = Math.max(0, Number(entry.pauseMinutes) || 0)
-      return {
-        employeeName: text(entry.employeeName) || names.get(userId) || 'Mitarbeiter',
-        date: text(entry.date),
-        start: text(entry.start) || '–',
-        end: text(entry.end) || '–',
-        pauseMinutes,
-        netMinutes: plannedMinutes(text(entry.date), text(entry.start), text(entry.end), pauseMinutes),
-        location: text(entry.location) || '–',
-        detail: text(entry.workArea) || '–',
-      }
-    })
-    .sort((left, right) => `${left.employeeName}-${left.date}-${left.start}`.localeCompare(`${right.employeeName}-${right.date}-${right.start}`, 'de'))
+  return schedules.map((entry) => {
+    const employeeUserId = String(entry.employeeUserId || '')
+    const pauseMinutes = Math.max(0, Math.round(Number(entry.pauseMinutes) || 0))
+    const date = text(entry.date, 10)
+    const start = text(entry.start, 5)
+    const end = text(entry.end, 5)
+    return {
+      employeeUserId,
+      employeeName: text(entry.employeeName) || names.get(employeeUserId) || 'Mitarbeiter',
+      date,
+      start: start || '–',
+      end: end || '–',
+      pauseMinutes,
+      netMinutes: plannedMinutes(date, start, end, pauseMinutes),
+      location: text(entry.location, 80) || '–',
+      workArea: text(entry.workArea, 80) || '–',
+      source: 'planned' as const,
+      scheduleId: String(entry.id || '').trim() || null,
+    }
+  })
 }
 
-function buildActualRows(events: AttendanceEvent[], schedules: ScheduleEntry[], names: Map<string, string>, from: string, to: string): ReportRow[] {
+function buildActualRows(
+  events: AttendanceEvent[],
+  schedules: ScheduleEntry[],
+  names: Map<string, string>,
+  from: string,
+  to: string,
+): ReportRow[] {
   const scheduleById = new Map(schedules.map((entry) => [String(entry.id || ''), entry]))
-  const currentByUser = new Map<string, { start: AttendanceEvent; breakStart: AttendanceEvent | null; breakMinutes: number }>()
+  const currentByUser = new Map<string, {
+    start: AttendanceEvent
+    breakStart: AttendanceEvent | null
+    breakMinutes: number
+  }>()
   const rows: ReportRow[] = []
   const ordered = [...events].sort((left, right) => {
-    const userOrder = String(left.user_id).localeCompare(String(right.user_id))
-    if (userOrder) return userOrder
+    const byUser = String(left.user_id || '').localeCompare(String(right.user_id || ''))
+    if (byUser) return byUser
     return new Date(left.client_occurred_at).getTime() - new Date(right.client_occurred_at).getTime()
   })
 
@@ -148,7 +230,9 @@ function buildActualRows(events: AttendanceEvent[], schedules: ScheduleEntry[], 
       continue
     }
     if (event.action === 'break-end' && current.breakStart) {
-      current.breakMinutes += Math.max(0, Math.round((new Date(event.client_occurred_at).getTime() - new Date(current.breakStart.client_occurred_at).getTime()) / 60000))
+      current.breakMinutes += Math.max(0, Math.round(
+        (new Date(event.client_occurred_at).getTime() - new Date(current.breakStart.client_occurred_at).getTime()) / 60000,
+      ))
       current.breakStart = null
       continue
     }
@@ -157,138 +241,463 @@ function buildActualRows(events: AttendanceEvent[], schedules: ScheduleEntry[], 
     const startDate = dateOnly(current.start.event_date)
     if (startDate >= from && startDate <= to) {
       const pauseMinutes = event.pause_minutes_adjustment !== null && event.pause_minutes_adjustment !== undefined
-        ? Math.max(0, Number(event.pause_minutes_adjustment) || 0)
+        ? Math.max(0, Math.round(Number(event.pause_minutes_adjustment) || 0))
         : current.breakMinutes
-      const gross = Math.max(0, Math.round((new Date(event.client_occurred_at).getTime() - new Date(current.start.client_occurred_at).getTime()) / 60000))
-      const shift = scheduleById.get(String(current.start.schedule_id || event.schedule_id || ''))
+      const grossMinutes = Math.max(0, Math.round(
+        (new Date(event.client_occurred_at).getTime() - new Date(current.start.client_occurred_at).getTime()) / 60000,
+      ))
+      const scheduleId = String(current.start.schedule_id || event.schedule_id || '').trim() || null
+      const shift = scheduleId ? scheduleById.get(scheduleId) : undefined
       rows.push({
-        employeeName: names.get(userId) || text(shift?.employeeName) || userId || 'Mitarbeiter',
+        employeeUserId: userId,
+        employeeName: names.get(userId) || text(shift?.employeeName) || 'Mitarbeiter',
         date: startDate,
-        start: timeOnly(current.start.client_occurred_at),
-        end: timeOnly(event.client_occurred_at),
+        start: berlinTime(current.start.client_occurred_at),
+        end: berlinTime(event.client_occurred_at),
         pauseMinutes,
-        netMinutes: Math.max(0, gross - pauseMinutes),
-        location: text(shift?.location || current.start.object_id || event.object_id) || '–',
-        detail: current.start.location_status !== 'inside' || current.start.offline_captured || event.location_status !== 'inside' || event.offline_captured ? 'Prüfen' : '',
+        netMinutes: Math.max(0, grossMinutes - pauseMinutes),
+        location: text(shift?.location || current.start.object_id || event.object_id, 80) || '–',
+        workArea: text(shift?.workArea, 80) || '–',
+        source: 'actual',
+        scheduleId,
       })
     }
     currentByUser.delete(userId)
   }
-
-  return rows.sort((left, right) => `${left.employeeName}-${left.date}-${left.start}`.localeCompare(`${right.employeeName}-${right.date}-${right.start}`, 'de'))
+  return rows
 }
 
-function summarize(rows: ReportRow[]) {
-  const employeeTotals = new Map<string, number>()
-  let grandTotal = 0
-  for (const row of rows) {
-    employeeTotals.set(row.employeeName, (employeeTotals.get(row.employeeName) || 0) + row.netMinutes)
-    grandTotal += row.netMinutes
+async function loadActualRows(
+  from: string,
+  to: string,
+  userIds: string[],
+  schedules: ScheduleEntry[],
+  names: Map<string, string>,
+) {
+  const connection = databaseConnectionString()
+  if (!connection) return [] as ReportRow[]
+  try {
+    const { neon } = await import('@neondatabase/serverless')
+    const sql = neon(connection)
+    const placeholders = userIds.map((_, index) => `$${index + 3}`).join(', ')
+    const filter = userIds.length ? ` AND e.user_id IN (${placeholders})` : ''
+    const events = await sql.query(
+      `SELECT e.id, e.user_id, e.action, e.client_occurred_at, e.event_date,
+              e.schedule_id, e.object_id, a.pause_minutes AS pause_minutes_adjustment
+         FROM attendance_events e
+         LEFT JOIN LATERAL (
+           SELECT adjustment.pause_minutes
+             FROM attendance_adjustments adjustment
+            WHERE adjustment.event_id = e.id
+            ORDER BY adjustment.occurred_at DESC, adjustment.id DESC
+            LIMIT 1
+         ) a ON true
+        WHERE e.event_date BETWEEN $1::date AND $2::date${filter}
+        ORDER BY e.user_id, e.client_occurred_at, e.id`,
+      [from, addDays(to, 1), ...userIds],
+    ) as AttendanceEvent[]
+    return buildActualRows(events, schedules, names, from, to)
+  } catch (error) {
+    console.error('Habun unified timesheet attendance query', error)
+    return [] as ReportRow[]
   }
-  return { employeeTotals, grandTotal }
 }
 
-async function buildPdf(request: Request, rows: ReportRow[], from: string, to: string, scope: Scope) {
+function mergeRows(actualRows: ReportRow[], plannedRows: ReportRow[]) {
+  const planned = [...plannedRows]
+  const used = new Set<number>()
+  const byScheduleId = new Map(
+    planned
+      .map((row, index) => [row.scheduleId || '', { row, index }] as const)
+      .filter(([id]) => id),
+  )
+  const merged: ReportRow[] = []
+
+  for (const actual of actualRows) {
+    let match: ReportRow | null = null
+    let matchIndex = -1
+    const direct = actual.scheduleId ? byScheduleId.get(actual.scheduleId) : null
+    if (direct && !used.has(direct.index)) {
+      match = direct.row
+      matchIndex = direct.index
+    } else {
+      const candidates = planned
+        .map((row, index) => ({ row, index }))
+        .filter(({ row, index }) =>
+          !used.has(index) && row.employeeUserId === actual.employeeUserId && row.date === actual.date,
+        )
+      const exact = candidates.find(({ row }) => row.start === actual.start)
+      if (exact) {
+        match = exact.row
+        matchIndex = exact.index
+      } else if (candidates.length === 1) {
+        match = candidates[0].row
+        matchIndex = candidates[0].index
+      } else {
+        const actualStart = clockMinutes(actual.start)
+        if (actualStart !== null) {
+          const nearest = candidates
+            .map(({ row, index }) => ({
+              row,
+              index,
+              difference: Math.abs((clockMinutes(row.start) ?? 10000) - actualStart),
+            }))
+            .sort((left, right) => left.difference - right.difference)[0]
+          if (nearest && nearest.difference <= 180) {
+            match = nearest.row
+            matchIndex = nearest.index
+          }
+        }
+      }
+    }
+    if (matchIndex >= 0) used.add(matchIndex)
+    merged.push({
+      ...match,
+      ...actual,
+      employeeName: actual.employeeName || match?.employeeName || 'Mitarbeiter',
+      location: actual.location !== '–' ? actual.location : match?.location || '–',
+      workArea: actual.workArea !== '–' ? actual.workArea : match?.workArea || '–',
+      scheduleId: actual.scheduleId || match?.scheduleId || null,
+      source: 'actual',
+    })
+  }
+
+  planned.forEach((row, index) => {
+    if (!used.has(index)) merged.push({ ...row, source: 'planned' })
+  })
+
+  return merged.sort((left, right) =>
+    `${left.employeeName}-${left.date}-${left.start}`.localeCompare(`${right.employeeName}-${right.date}-${right.start}`, 'de'),
+  )
+}
+
+function groupRows(rows: ReportRow[]) {
+  const groups = new Map<string, ReportRow[]>()
+  for (const row of rows) {
+    const key = `${row.employeeUserId}|${row.employeeName}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)?.push(row)
+  }
+  return [...groups.values()].sort((left, right) =>
+    (left[0]?.employeeName || '').localeCompare(right[0]?.employeeName || '', 'de'),
+  )
+}
+
+function rowsWithBlankDates(rows: ReportRow[], from: string, to: string) {
+  const byDate = new Map<string, ReportRow[]>()
+  for (const row of rows) {
+    if (!byDate.has(row.date)) byDate.set(row.date, [])
+    byDate.get(row.date)?.push(row)
+  }
+  const result: Array<ReportRow | { date: string; blank: true }> = []
+  for (let date = from; date <= to; date = addDays(date, 1)) {
+    const daily = byDate.get(date) || []
+    if (daily.length) result.push(...daily)
+    else result.push({ date, blank: true })
+  }
+  return result
+}
+
+async function embedLogo(pdf: any, request: Request, logoUrl: string) {
+  try {
+    const response = await fetch(new URL(logoUrl || '/habun-logo.png', request.url), { cache: 'no-store' })
+    if (!response.ok) return null
+    const bytes = await response.arrayBuffer()
+    return response.headers.get('content-type')?.includes('jpeg')
+      ? await pdf.embedJpg(bytes)
+      : await pdf.embedPng(bytes)
+  } catch {
+    return null
+  }
+}
+
+async function buildPdf(request: Request, rows: ReportRow[], from: string, to: string) {
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib')
   const settings = await readCompanySettings()
   const pdf = await PDFDocument.create()
   const regular = await pdf.embedFont(StandardFonts.Helvetica)
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
-  let logo: any = null
-  try {
-    const response = await fetch(new URL(settings.logoUrl || '/habun-logo.png', request.url))
-    if (response.ok) {
-      const bytes = await response.arrayBuffer()
-      logo = response.headers.get('content-type')?.includes('jpeg') ? await pdf.embedJpg(bytes) : await pdf.embedPng(bytes)
+  const logo = await embedLogo(pdf, request, settings.logoUrl)
+  const width = 595
+  const height = 842
+  const margin = 36
+  const tableWidth = width - margin * 2
+  const gold = rgb(0.86, 0.67, 0.22)
+  const pale = rgb(0.965, 0.965, 0.965)
+  const dark = rgb(0.08, 0.08, 0.08)
+  const line = rgb(0.34, 0.34, 0.34)
+  const columns = [36, 105, 154, 203, 254, 310, 380, 559]
+  const groups = groupRows(rows)
+
+  for (const employeeRows of groups) {
+    const employeeName = employeeRows[0]?.employeeName || 'Mitarbeiter'
+    const displayRows = rowsWithBlankDates(employeeRows, from, to)
+    let page: any = null
+    let y = 0
+    let pageNumber = 0
+
+    const drawWatermark = () => {
+      if (!logo) return
+      const scale = Math.min(210 / logo.width, 155 / logo.height)
+      const logoWidth = logo.width * scale
+      const logoHeight = logo.height * scale
+      page.drawImage(logo, {
+        x: (width - logoWidth) / 2,
+        y: (height - logoHeight) / 2 - 25,
+        width: logoWidth,
+        height: logoHeight,
+        opacity: 0.06,
+      })
     }
-  } catch {}
 
-  const title = scope === 'planned' ? 'Dienstplanstunden – geplant' : 'Stundenzettel – tatsächliche Arbeitszeiten'
-  const detailHeading = scope === 'planned' ? 'Arbeitsbereich' : 'Hinweis'
-  const pageWidth = 842
-  const pageHeight = 595
-  const margin = 34
-  const columns = [34, 175, 245, 305, 365, 430, 500, 675]
-  let page: any
-  let y = 0
-  let pageNumber = 0
+    const drawHeader = () => {
+      page = pdf.addPage([width, height])
+      pageNumber += 1
+      drawWatermark()
+      page.drawRectangle({
+        x: margin,
+        y: height - 120,
+        width: tableWidth,
+        height: 76,
+        borderWidth: 1,
+        borderColor: dark,
+      })
+      page.drawText('Arbeitszeitenbericht', {
+        x: 205,
+        y: height - 70,
+        size: 15,
+        font: bold,
+        color: dark,
+      })
+      page.drawText(safePdfText(monthLabel(from, to), 50), {
+        x: 218,
+        y: height - 92,
+        size: 11,
+        font: bold,
+        color: dark,
+      })
+      page.drawText(`Arbeitnehmer: ${safePdfText(employeeName, 52)}`, {
+        x: margin + 7,
+        y: height - 112,
+        size: 10.5,
+        font: bold,
+        color: dark,
+      })
+      if (pageNumber > 1) {
+        page.drawText(`Seite ${pageNumber}`, {
+          x: width - 78,
+          y: height - 112,
+          size: 7.5,
+          font: regular,
+          color: dark,
+        })
+      }
 
-  const newPage = () => {
-    page = pdf.addPage([pageWidth, pageHeight])
-    pageNumber += 1
-    y = pageHeight - margin
-    if (logo) {
-      const scale = Math.min(80 / logo.width, 58 / logo.height)
-      page.drawImage(logo, { x: margin, y: y - logo.height * scale + 6, width: logo.width * scale, height: logo.height * scale })
+      y = height - 148
+      page.drawRectangle({
+        x: margin,
+        y: y - 24,
+        width: tableWidth,
+        height: 26,
+        color: gold,
+        borderWidth: 0.8,
+        borderColor: dark,
+      })
+      const headers = ['Datum', 'Startzeit', 'Endzeit', 'Pause', 'Dauer', 'Status', 'Tätigkeit / Einsatzort']
+      headers.forEach((header, index) => {
+        page.drawText(safePdfText(header), {
+          x: columns[index] + 3,
+          y: y - 15,
+          size: index === 6 ? 7.2 : 7.7,
+          font: bold,
+          color: dark,
+        })
+      })
+      for (let index = 1; index < columns.length - 1; index += 1) {
+        page.drawLine({
+          start: { x: columns[index], y: y + 2 },
+          end: { x: columns[index], y: y - 24 },
+          thickness: 0.55,
+          color: dark,
+        })
+      }
+      y -= 24
     }
-    page.drawText(settings.companyName || 'Habun Security', { x: 126, y: y - 2, size: 16, font: bold, color: rgb(.08, .08, .08) })
-    page.drawText(settings.phone || '', { x: 126, y: y - 17, size: 8, font: regular })
-    page.drawText(settings.email || '', { x: 126, y: y - 30, size: 8, font: regular })
-    page.drawText(title, { x: margin, y: y - 64, size: 14, font: bold })
-    page.drawText(`Zeitraum ${from} bis ${to} · Seite ${pageNumber}`, { x: margin, y: y - 80, size: 8, font: regular })
-    y -= 108
-    const headers = ['Name', 'Datum', 'Beginn', 'Ende', 'Pause', 'Netto', 'Einsatzort', detailHeading]
-    headers.forEach((header, index) => page.drawText(header, { x: columns[index], y, size: 7.8, font: bold }))
-    y -= 9
-    page.drawLine({ start: { x: margin, y }, end: { x: pageWidth - margin, y }, thickness: .7, color: rgb(.45, .45, .45) })
-    y -= 14
+
+    drawHeader()
+    for (let index = 0; index < displayRows.length; index += 1) {
+      if (y < 150) drawHeader()
+      const item = displayRows[index]
+      const rowHeight = 17
+      if (index % 2 === 1) {
+        page.drawRectangle({ x: margin, y: y - rowHeight, width: tableWidth, height: rowHeight, color: pale })
+      }
+      page.drawRectangle({
+        x: margin,
+        y: y - rowHeight,
+        width: tableWidth,
+        height: rowHeight,
+        borderWidth: 0.4,
+        borderColor: line,
+      })
+      for (let column = 1; column < columns.length - 1; column += 1) {
+        page.drawLine({
+          start: { x: columns[column], y },
+          end: { x: columns[column], y: y - rowHeight },
+          thickness: 0.3,
+          color: line,
+        })
+      }
+
+      if ('blank' in item) {
+        page.drawText(safePdfText(dayLabel(item.date), 15), {
+          x: columns[0] + 3,
+          y: y - 12,
+          size: 7.2,
+          font: regular,
+          color: dark,
+        })
+      } else {
+        const activity = item.workArea !== '–' ? item.workArea : item.location
+        const values = [
+          dayLabel(item.date),
+          item.start || '–',
+          item.end || '–',
+          `${item.pauseMinutes} Min.`,
+          durationText(item.netMinutes),
+          item.source === 'actual' ? 'Erfasst' : 'Dienstplan',
+          activity || '–',
+        ]
+        values.forEach((value, valueIndex) => {
+          page.drawText(safePdfText(value, valueIndex === 6 ? 30 : 16), {
+            x: columns[valueIndex] + 3,
+            y: y - 12,
+            size: 7.1,
+            font: regular,
+            color: dark,
+          })
+        })
+      }
+      y -= rowHeight
+    }
+
+    const total = employeeRows.reduce((sum, row) => sum + Math.max(0, Number(row.netMinutes) || 0), 0)
+    if (y < 125) drawHeader()
+    y -= 12
+    page.drawRectangle({
+      x: margin,
+      y: y - 22,
+      width: 335,
+      height: 24,
+      color: gold,
+      borderWidth: 1,
+      borderColor: dark,
+    })
+    page.drawRectangle({
+      x: margin + 335,
+      y: y - 22,
+      width: 92,
+      height: 24,
+      color: gold,
+      borderWidth: 1,
+      borderColor: dark,
+    })
+    page.drawText('Gesamtdauer', { x: margin + 4, y: y - 15, size: 10, font: bold, color: dark })
+    page.drawText(`${durationText(total)} Std.`, {
+      x: margin + 344,
+      y: y - 15,
+      size: 10,
+      font: bold,
+      color: dark,
+    })
+    y -= 42
+    page.drawRectangle({
+      x: margin,
+      y: y - 62,
+      width: tableWidth,
+      height: 64,
+      borderWidth: 1,
+      borderColor: dark,
+    })
+    page.drawText('Anmerkungen', { x: margin + 5, y: y - 14, size: 9, font: regular, color: dark })
+    page.drawText(safePdfText(settings.companyName || 'Habun Security', 50), {
+      x: margin,
+      y: 24,
+      size: 6.5,
+      font: regular,
+      color: rgb(0.35, 0.35, 0.35),
+    })
   }
 
-  newPage()
-  for (const row of rows) {
-    if (y < 72) newPage()
-    const values = [row.employeeName.slice(0, 22), row.date, row.start, row.end, `${row.pauseMinutes} Min.`, `${decimalHours(row.netMinutes)} Std.`, row.location.slice(0, 28), row.detail.slice(0, 22)]
-    values.forEach((value, index) => page.drawText(value || '–', { x: columns[index], y, size: 7.2, font: regular }))
-    y -= 18
-  }
-
-  const summary = summarize(rows)
-  if (y < 120) newPage()
-  y -= 4
-  page.drawLine({ start: { x: margin, y }, end: { x: pageWidth - margin, y }, thickness: .8 })
-  y -= 20
-  page.drawText('Summen', { x: margin, y, size: 11, font: bold })
-  for (const [name, total] of summary.employeeTotals) {
-    y -= 16
-    if (y < 55) newPage()
-    page.drawText(`${name}: ${decimalHours(total)} Stunden`, { x: margin, y, size: 9, font: regular })
-  }
-  y -= 20
-  page.drawText(`Gesamtsumme: ${decimalHours(summary.grandTotal)} Stunden`, { x: margin, y, size: 11, font: bold })
   return pdf.save()
 }
 
-async function buildExcel(rows: ReportRow[], from: string, to: string, scope: Scope) {
+async function buildExcel(rows: ReportRow[], from: string, to: string) {
   const ExcelJS = await import('exceljs')
   const settings = await readCompanySettings()
   const workbook = new ExcelJS.Workbook()
   workbook.creator = settings.companyName || 'Habun Security'
   workbook.created = new Date()
-  const title = scope === 'planned' ? 'Dienstplanstunden – geplant' : 'Stundenzettel – tatsächliche Arbeitszeiten'
-  const detailHeading = scope === 'planned' ? 'Arbeitsbereich' : 'Hinweis'
-  const sheet = workbook.addWorksheet(scope === 'planned' ? 'Dienstplanstunden' : 'Stundenzettel', { views: [{ state: 'frozen', ySplit: 6 }] })
+  const sheet = workbook.addWorksheet('Stundenzettel', { views: [{ state: 'frozen', ySplit: 6 }] })
   sheet.addRow([settings.companyName || 'Habun Security'])
-  sheet.addRow([settings.phone || '', settings.email || ''])
-  sheet.addRow([title])
-  sheet.addRow([`Zeitraum ${from} bis ${to}`])
+  sheet.addRow(['Arbeitszeitenbericht', monthLabel(from, to)])
+  sheet.addRow([`Zeitraum ${germanDate(from)} bis ${germanDate(to)}`])
   sheet.addRow([])
-  sheet.addRow(['Name', 'Datum', 'Beginn', 'Ende', 'Pause Min.', 'Netto Std.', 'Einsatzort', detailHeading]).font = { bold: true }
+  sheet.addRow([
+    'Mitarbeiter',
+    'Datum',
+    'Startzeit',
+    'Endzeit',
+    'Pause Min.',
+    'Dauer Std.',
+    'Status',
+    'Einsatzort',
+    'Arbeitsbereich',
+  ])
+  const header = sheet.getRow(5)
+  header.font = { bold: true }
+  header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCAF38' } }
   for (const row of rows) {
-    sheet.addRow([row.employeeName, row.date, row.start, row.end, row.pauseMinutes, Number((row.netMinutes / 60).toFixed(2)), row.location, row.detail])
+    sheet.addRow([
+      row.employeeName,
+      row.date,
+      row.start,
+      row.end,
+      row.pauseMinutes,
+      decimalHours(row.netMinutes),
+      row.source === 'actual' ? 'Erfasst' : 'Dienstplan',
+      row.location,
+      row.workArea,
+    ])
   }
-  sheet.columns = [{ width: 26 }, { width: 13 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 13 }, { width: 30 }, { width: 24 }]
+  sheet.columns = [
+    { width: 28 },
+    { width: 13 },
+    { width: 12 },
+    { width: 12 },
+    { width: 12 },
+    { width: 13 },
+    { width: 14 },
+    { width: 28 },
+    { width: 28 },
+  ]
 
-  const totals = workbook.addWorksheet('Summen')
-  totals.addRow([settings.companyName || 'Habun Security', title])
-  totals.addRow([`Zeitraum ${from} bis ${to}`])
-  totals.addRow([])
-  totals.addRow(['Mitarbeiter', 'Stunden']).font = { bold: true }
-  const summary = summarize(rows)
-  for (const [name, total] of summary.employeeTotals) totals.addRow([name, Number((total / 60).toFixed(2))])
-  totals.addRow([])
-  totals.addRow(['Gesamtsumme', Number((summary.grandTotal / 60).toFixed(2))]).font = { bold: true }
-  totals.columns = [{ width: 32 }, { width: 16 }]
+  const totals = workbook.addWorksheet('Gesamtdauer')
+  totals.addRow(['Mitarbeiter', 'Gesamtdauer Std.']).font = { bold: true }
+  for (const group of groupRows(rows)) {
+    totals.addRow([
+      group[0]?.employeeName || 'Mitarbeiter',
+      decimalHours(group.reduce((sum, row) => sum + row.netMinutes, 0)),
+    ])
+  }
+  totals.columns = [{ width: 32 }, { width: 20 }]
   return workbook.xlsx.writeBuffer()
+}
+
+function filenamePart(value: string) {
+  return text(value, 50)
+    .replace(/[^A-Za-z0-9ÄÖÜäöüß_-]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'Mitarbeiter'
 }
 
 export default async function timesheetReports(request: Request, _context: Context) {
@@ -296,58 +705,57 @@ export default async function timesheetReports(request: Request, _context: Conte
   if (!current) return json({ message: 'Nicht angemeldet.' }, 401)
   if (!MANAGEMENT.has(current.role)) return json({ message: 'Keine Berechtigung für Stundenzettel-Exporte.' }, 403)
   if (request.method !== 'POST') return json({ message: 'Methode nicht erlaubt.' }, 405)
-  try { verifyRequestOrigin(request) } catch { return json({ message: 'Ungültige Anfragequelle.' }, 403) }
+  try {
+    verifyRequestOrigin(request)
+  } catch {
+    return json({ message: 'Ungültige Anfragequelle.' }, 403)
+  }
 
   const body = await request.json().catch(() => null) as Record<string, unknown> | null
   if (!body) return json({ message: 'Ungültige Anfrage.' }, 400)
   const from = String(body.from || '')
   const to = String(body.to || '')
-  const scope: Scope = body.scope === 'planned' ? 'planned' : 'actual'
+  const requestedScope = String(body.scope || 'unified')
+  const scope: Scope = requestedScope === 'planned' ? 'planned' : requestedScope === 'actual' ? 'actual' : 'unified'
   const format: Format = body.format === 'xlsx' ? 'xlsx' : 'pdf'
-  const userIds = Array.isArray(body.userIds) ? body.userIds.map(String).map((value) => value.trim()).filter(Boolean) : []
-  if (!ISO_DATE.test(from) || !ISO_DATE.test(to) || to < from) return json({ message: 'Der Zeitraum ist ungültig.' }, 400)
+  const userIds = Array.isArray(body.userIds)
+    ? body.userIds.map(String).map((value) => value.trim()).filter(Boolean)
+    : []
 
-  const [names, schedulesRaw] = await Promise.all([loadNames(request), loadSchedules(request, from, to)])
-  const schedules = userIds.length ? schedulesRaw.filter((entry) => userIds.includes(String(entry.employeeUserId || ''))) : schedulesRaw
-  let rows: ReportRow[] = []
-
-  if (scope === 'planned') {
-    rows = buildPlannedRows(schedules, names)
-  } else {
-    const connection = databaseConnectionString()
-    if (!connection) return json({ message: 'Die Zeiterfassungsdatenbank ist noch nicht verbunden.' }, 503)
-    try {
-      const { neon } = await import('@neondatabase/serverless')
-      const sql = neon(connection)
-      const placeholders = userIds.map((_, index) => `$${index + 4}`).join(', ')
-      const filter = userIds.length ? ` AND e.user_id IN (${placeholders})` : ''
-      const events = await sql.query(
-        `SELECT e.id, e.user_id, e.action, e.client_occurred_at, e.event_date,
-                e.schedule_id, e.object_id, e.location_status, e.offline_captured,
-                a.pause_minutes AS pause_minutes_adjustment
-           FROM attendance_events e
-           LEFT JOIN LATERAL (
-             SELECT adjustment.pause_minutes
-               FROM attendance_adjustments adjustment
-              WHERE adjustment.event_id = e.id
-              ORDER BY adjustment.occurred_at DESC, adjustment.id DESC LIMIT 1
-           ) a ON true
-          WHERE e.event_date BETWEEN $1::date AND $2::date${filter}
-          ORDER BY e.user_id, e.client_occurred_at, e.id`,
-        [from, addDays(to, 1), ...userIds],
-      ) as AttendanceEvent[]
-      rows = buildActualRows(events, schedules, names, from, to)
-    } catch (error) {
-      console.error('Habun timesheet report query', error)
-      return json({ message: 'Die Arbeitszeitdaten konnten nicht geladen werden.' }, 500)
-    }
+  if (!ISO_DATE.test(from) || !ISO_DATE.test(to) || to < from) {
+    return json({ message: 'Der Zeitraum ist ungültig.' }, 400)
   }
 
-  if (!rows.length) return json({ message: 'Für den ausgewählten Zeitraum wurden keine Daten gefunden.', code: 'NO_DATA' }, 404)
+  const [names, schedules] = await Promise.all([
+    loadNames(request),
+    loadSchedules(request, from, to, userIds),
+  ])
+  const plannedRows = buildPlannedRows(schedules, names)
+  const actualRows = await loadActualRows(from, to, userIds, schedules, names)
+  let rows = scope === 'planned'
+    ? plannedRows
+    : scope === 'actual'
+      ? actualRows
+      : mergeRows(actualRows, plannedRows)
+
+  if (userIds.length) rows = rows.filter((row) => userIds.includes(row.employeeUserId))
+  if (!rows.length) {
+    return json({
+      message: 'Für den ausgewählten Zeitraum wurden keine Stundenzettel-Daten gefunden.',
+      code: 'NO_DATA',
+    }, 404)
+  }
 
   try {
-    const bytes = format === 'xlsx' ? await buildExcel(rows, from, to, scope) : await buildPdf(request, rows, from, to, scope)
-    const basename = scope === 'planned' ? `Habun-Dienstplanstunden-${from}-bis-${to}` : `Habun-Stundenzettel-${from}-bis-${to}`
+    const bytes = format === 'xlsx'
+      ? await buildExcel(rows, from, to)
+      : await buildPdf(request, rows, from, to)
+    const groups = groupRows(rows)
+    const employeePart = groups.length === 1
+      ? `-${filenamePart(groups[0][0]?.employeeName || 'Mitarbeiter')}`
+      : ''
+    const basename = `Habun-Stundenzettel${employeePart}-${from}-bis-${to}`
+
     if (format === 'xlsx') {
       return new Response(bytes as BodyInit, {
         status: 200,
@@ -360,6 +768,7 @@ export default async function timesheetReports(request: Request, _context: Conte
         },
       })
     }
+
     return new Response(bytes as BodyInit, {
       status: 200,
       headers: {
@@ -371,7 +780,7 @@ export default async function timesheetReports(request: Request, _context: Conte
       },
     })
   } catch (error) {
-    console.error('Habun timesheet report render', error)
+    console.error('Habun unified timesheet export', error)
     return json({ message: 'Die Stundenzettel-Datei konnte nicht erzeugt werden.' }, 500)
   }
 }
