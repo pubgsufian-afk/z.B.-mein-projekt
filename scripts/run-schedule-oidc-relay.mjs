@@ -1,7 +1,5 @@
-import { readFile } from 'node:fs/promises'
-
 const OIDC_AUDIENCE = 'habun-schedule-assistant'
-const ENVELOPE_PATH = 'ops/schedule-command.envelope.json'
+const ENVELOPE_MARKER = '<!-- habun-schedule-envelope-v1 -->'
 const TRIGGER_URL = 'https://habun-mitarbeiterportal.netlify.app/api/schedule-oidc-trigger'
 
 function requiredEnv(name) {
@@ -14,6 +12,17 @@ function count(value) {
   const parsed = Number(value)
   if (!Number.isFinite(parsed) || parsed < 0) throw new Error('Ungültige Relay-Antwort')
   return Math.trunc(parsed)
+}
+
+function envelopeFromComment(value) {
+  const comment = String(value || '')
+  if (!comment.startsWith(ENVELOPE_MARKER)) throw new Error('Ungültiger Dienstplan-Envelope-Marker')
+  const raw = comment.slice(ENVELOPE_MARKER.length).trim()
+  const envelope = JSON.parse(raw)
+  if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) {
+    throw new Error('Ungültiger Dienstplan-Envelope')
+  }
+  return envelope
 }
 
 const requestUrl = new URL(requiredEnv('ACTIONS_ID_TOKEN_REQUEST_URL'))
@@ -33,7 +42,7 @@ const tokenPayload = await tokenResponse.json()
 const oidcToken = String(tokenPayload?.value || '').trim()
 if (!oidcToken) throw new Error('GitHub OIDC token response is empty')
 
-const envelope = JSON.parse(await readFile(ENVELOPE_PATH, 'utf8'))
+const envelope = envelopeFromComment(requiredEnv('SCHEDULE_ENVELOPE_COMMENT'))
 const relayResponse = await fetch(TRIGGER_URL, {
   method: 'POST',
   headers: {
