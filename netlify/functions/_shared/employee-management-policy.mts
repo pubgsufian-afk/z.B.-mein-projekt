@@ -1,4 +1,4 @@
-export type EmployeeManagementAction = 'update-role' | 'deactivate-account'
+export type EmployeeManagementAction = 'update-role' | 'deactivate-account' | 'update-profile'
 
 export function employeeManagementPolicy(input: {
   actorRole: string
@@ -8,6 +8,13 @@ export function employeeManagementPolicy(input: {
   action: EmployeeManagementAction
   requestedRole?: string
 }) {
+  if (input.action === 'update-profile') {
+    if (input.actorRole !== 'owner') {
+      return { allowed: false, status: 403, message: 'Nur Hauptadmin darf Mitarbeiterdaten bearbeiten.' }
+    }
+    return { allowed: true, status: 200, message: '' }
+  }
+
   if (!['owner', 'admin'].includes(input.actorRole)) {
     return { allowed: false, status: 403, message: 'Nur Hauptadmin oder Admin dürfen Mitarbeiterkonten verwalten.' }
   }
