@@ -14,6 +14,28 @@ assert.equal(sessions.length, 2)
 assert.equal(sessions.find((row) => row.userId === 'a').netMinutes, 450)
 assert.equal(sessions.find((row) => row.userId === 'b').netMinutes, 555)
 
+const gpsLocationSession = buildActualSessions([
+  {
+    id: 'gps-in',
+    userId: 'gps-user',
+    employeeName: 'GPS Mitarbeiter',
+    action: 'clock-in',
+    clientOccurredAt: '2026-08-08T06:00:00Z',
+    eventDate: '2026-08-08',
+    objectId: 'objekt-123',
+    location: { latitude: 52.3, longitude: 9.7, accuracyMeters: 12 },
+  },
+  {
+    id: 'gps-out',
+    userId: 'gps-user',
+    action: 'clock-out',
+    clientOccurredAt: '2026-08-08T14:00:00Z',
+    eventDate: '2026-08-08',
+  },
+])[0]
+assert.equal(gpsLocationSession.location, 'objekt-123')
+assert.equal(typeof gpsLocationSession.location, 'string')
+
 const planned = buildPlannedRows([
   { id: 'p1', employeeUserId: 'a', employeeName: 'A', date: '2026-08-08', start: '22:00', end: '06:00', pauseMinutes: 30, location: 'Objekt 1', workArea: 'Brandwache' },
   { id: 'p2', employeeUserId: 'b', employeeName: 'B', date: '2026-08-08', start: '07:00', end: '17:00', pauseMinutes: 30, location: 'Objekt 2', workArea: 'ZuKo' },
