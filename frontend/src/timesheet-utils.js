@@ -94,6 +94,7 @@ export function buildPlannedRows(entries = [], employeeNames = new Map()) {
       netMinutes: plannedNetMinutes(entry.date, entry.start, entry.end, pauseMinutes),
       location: entry.location || '–',
       workArea: entry.workArea || '',
+      objectId: entry.objectId || null,
       status: entry.status || '',
     }
   }).sort((left, right) => `${left.date}-${left.employeeName}-${left.start}`.localeCompare(`${right.date}-${right.employeeName}-${right.start}`, 'de'))
