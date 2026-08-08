@@ -9,6 +9,11 @@ function berlinClock(value) {
   return `${part('hour')}:${part('minute')}`
 }
 
+function clockMinutes(value) {
+  const [hours, minutes] = String(value || '').split(':').map(Number)
+  return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : null
+}
+
 function rowKey(row) {
   return `${row.userId || ''}|${row.date || ''}`
 }
@@ -18,7 +23,14 @@ function chooseFallbackPlan(actual, plans, used) {
   if (!candidates.length) return null
   if (candidates.length === 1) return candidates[0]
   const actualStart = berlinClock(actual.clockInAt)
-  return candidates.find((plan) => plan.start === actualStart) || null
+  const exact = candidates.find((plan) => plan.start === actualStart)
+  if (exact) return exact
+  const actualMinutes = clockMinutes(actualStart)
+  if (actualMinutes === null) return null
+  const nearest = candidates
+    .map((plan) => ({ plan, difference: Math.abs((clockMinutes(plan.start) ?? 10000) - actualMinutes) }))
+    .sort((left, right) => left.difference - right.difference)[0]
+  return nearest && nearest.difference <= 180 ? nearest.plan : null
 }
 
 export function mergeTimesheetRows(actualRows = [], plannedRows = []) {
