@@ -113,7 +113,7 @@ state = await service.getState(employee)
 assert.equal(state.phase, 'completed')
 assert.equal(state.events.length, 6)
 
-await assert.rejects(() => service.getHistory(employee, { userId: 'employee-1' }), /Keine Berechtigung/)
+assert.deepEqual(await service.getHistory(employee, { userId: 'someone-else' }), { entries: repository.events })
 assert.deepEqual(await service.getHistory(manager, { userId: 'employee-1' }), { entries: repository.events })
 
 const repository2 = fakeRepository()
@@ -130,4 +130,4 @@ await assert.rejects(() => service2.record(employee, {
   location: { latitude: 52.375, longitude: 9.732, accuracyMeters: 10 },
 }), (error) => error?.code === 'OUTSIDE_WORKSITE')
 
-console.log('Attendance API contract tests passed · strict clock-in + flexible clock-out + repeat clocking')
+console.log('Attendance API contract tests passed · strict clock-in + flexible clock-out + repeat clocking + own history')
