@@ -46,9 +46,10 @@ const relayResponse = await fetch(TRIGGER_URL, {
 if (!relayResponse.ok) throw new Error(`Habun schedule relay failed (${relayResponse.status})`)
 
 const result = await relayResponse.json()
+const employeeCount = count(result?.employeeCount ?? 0)
 const publishedCount = count(result?.publishedCount ?? 0)
 const duplicateCount = count(result?.duplicateCount ?? 0)
 const rejectedCount = count(result?.rejectedCount ?? 0)
 
-console.log(`Habun schedule OIDC relay: published=${publishedCount} duplicate=${duplicateCount} rejected=${rejectedCount}`)
+console.log(`Habun schedule OIDC relay: employees=${employeeCount} published=${publishedCount} duplicate=${duplicateCount} rejected=${rejectedCount}`)
 if (rejectedCount > 0) process.exitCode = 2
