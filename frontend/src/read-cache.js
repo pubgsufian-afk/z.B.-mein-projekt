@@ -24,10 +24,10 @@ export async function refreshCachedJson(key, loader, { ttlMs = 15000 } = {}) {
   const cacheKey = String(key)
   if (inflight.has(cacheKey)) return inflight.get(cacheKey)
 
-  const request = Promise.resolve()
-    .then(loader)
-    .then((value) => primeCachedJson(cacheKey, value, ttlMs))
-    .finally(() => inflight.delete(cacheKey))
+  const request = (async () => {
+    const value = await loader()
+    return primeCachedJson(cacheKey, value, ttlMs)
+  })().finally(() => inflight.delete(cacheKey))
 
   inflight.set(cacheKey, request)
   return request
