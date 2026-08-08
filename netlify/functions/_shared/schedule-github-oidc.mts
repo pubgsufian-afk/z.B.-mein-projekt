@@ -10,9 +10,11 @@ const EXPECTED_AUDIENCE = 'habun-schedule-assistant'
 const EXPECTED_REPOSITORY = 'pubgsufian-afk/z.B.-mein-projekt'
 const EXPECTED_REPOSITORY_ID = '1184469401'
 const EXPECTED_REPOSITORY_OWNER_ID = '249184348'
-const EXPECTED_REF = 'refs/heads/main'
-const LEGACY_SUBJECT = 'repo:pubgsufian-afk/z.B.-mein-projekt:ref:refs/heads/main'
-const IMMUTABLE_SUBJECT = 'repo:pubgsufian-afk@249184348/z.B.-mein-projekt@1184469401:ref:refs/heads/main'
+const EXPECTED_ACTOR_ID = '249184348'
+const EXPECTED_EVENT_NAME = 'pull_request'
+const EXPECTED_REF = 'refs/pull/73/merge'
+const LEGACY_SUBJECT = 'repo:pubgsufian-afk/z.B.-mein-projekt:pull_request'
+const IMMUTABLE_SUBJECT = 'repo:pubgsufian-afk@249184348/z.B.-mein-projekt@1184469401:pull_request'
 const EXPECTED_WORKFLOW_REF = 'pubgsufian-afk/z.B.-mein-projekt/.github/workflows/schedule-oidc-publish.yml@refs/heads/main'
 const MAX_TOKEN_AGE_SECONDS = 10 * 60
 const CLOCK_SKEW_SECONDS = 30
@@ -23,6 +25,8 @@ export type ScheduleGithubOidcClaims = {
   repository: string
   repository_id: string
   repository_owner_id: string
+  actor_id: string
+  event_name: string
   ref: string
   sub: string
   workflow_ref: string
@@ -83,6 +87,8 @@ export function validateScheduleGithubOidcClaims(
   const repository = exactString(claims, 'repository', EXPECTED_REPOSITORY)
   const repositoryId = exactString(claims, 'repository_id', EXPECTED_REPOSITORY_ID)
   const repositoryOwnerId = exactString(claims, 'repository_owner_id', EXPECTED_REPOSITORY_OWNER_ID)
+  const actorId = exactString(claims, 'actor_id', EXPECTED_ACTOR_ID)
+  const eventName = exactString(claims, 'event_name', EXPECTED_EVENT_NAME)
   const ref = exactString(claims, 'ref', EXPECTED_REF)
   const sub = allowedSubject(claims)
   const workflowRef = exactString(claims, 'workflow_ref', EXPECTED_WORKFLOW_REF)
@@ -103,6 +109,8 @@ export function validateScheduleGithubOidcClaims(
     repository,
     repository_id: repositoryId,
     repository_owner_id: repositoryOwnerId,
+    actor_id: actorId,
+    event_name: eventName,
     ref,
     sub,
     workflow_ref: workflowRef,
