@@ -46,4 +46,19 @@ assert.equal(unified.find((row) => row.userId === 'a').scheduleId, 'p1')
 assert.equal(unified.find((row) => row.userId === 'a').workArea, 'Brandwache')
 assert.equal(unified.find((row) => row.userId === 'b').source, 'planned')
 
+const nearest = mergeTimesheetRows([
+  {
+    userId: 'late', employeeName: 'Late', date: '2026-08-08',
+    clockInAt: '2026-08-08T05:05:00Z', clockOutAt: '2026-08-08T15:00:00Z',
+    breakMinutes: 30, netMinutes: 565, scheduleId: null, location: '–',
+  },
+], buildPlannedRows([
+  { id: 'early', employeeUserId: 'late', employeeName: 'Late', date: '2026-08-08', start: '07:00', end: '17:00', pauseMinutes: 30, location: 'Objekt A', workArea: 'ZuKo' },
+  { id: 'late-shift', employeeUserId: 'late', employeeName: 'Late', date: '2026-08-08', start: '18:00', end: '22:00', pauseMinutes: 0, location: 'Objekt B', workArea: 'Brandwache' },
+]))
+assert.equal(nearest.length, 2)
+assert.equal(nearest.find((row) => row.source === 'actual').scheduleId, 'early')
+assert.equal(nearest.find((row) => row.source === 'actual').workArea, 'ZuKo')
+assert.equal(nearest.find((row) => row.source === 'planned').scheduleId, 'late-shift')
+
 console.log('timesheet utils tests passed')
