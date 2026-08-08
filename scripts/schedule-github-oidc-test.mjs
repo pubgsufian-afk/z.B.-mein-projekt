@@ -9,6 +9,8 @@ const nowSeconds = Math.floor(now.getTime() / 1000)
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
 const jwk = publicKey.export({ format: 'jwk' })
 const kid = 'test-kid-1'
+const legacySubject = 'repo:pubgsufian-afk/z.B.-mein-projekt:ref:refs/heads/main'
+const immutableSubject = 'repo:pubgsufian-afk@249184348/z.B.-mein-projekt@1184469401:ref:refs/heads/main'
 
 function b64url(value) {
   return Buffer.from(typeof value === 'string' ? value : JSON.stringify(value)).toString('base64url')
@@ -20,8 +22,10 @@ function makeToken(overrides = {}, headerOverrides = {}, signingKey = privateKey
     iss: 'https://token.actions.githubusercontent.com',
     aud: 'habun-schedule-assistant',
     repository: 'pubgsufian-afk/z.B.-mein-projekt',
+    repository_id: '1184469401',
+    repository_owner_id: '249184348',
     ref: 'refs/heads/main',
-    sub: 'repo:pubgsufian-afk/z.B.-mein-projekt:ref:refs/heads/main',
+    sub: immutableSubject,
     workflow_ref: 'pubgsufian-afk/z.B.-mein-projekt/.github/workflows/schedule-oidc-publish.yml@refs/heads/main',
     iat: nowSeconds - 10,
     nbf: nowSeconds - 10,
@@ -38,9 +42,15 @@ const fakeFetch = async (url) => {
   return Response.json({ keys: [{ ...jwk, kid, use: 'sig', alg: 'RS256' }] })
 }
 
-const validClaims = await verifyScheduleGithubOidc(makeToken(), now, fakeFetch)
-assert.equal(validClaims.repository, 'pubgsufian-afk/z.B.-mein-projekt')
-assert.equal(validClaims.ref, 'refs/heads/main')
+const immutableClaims = await verifyScheduleGithubOidc(makeToken(), now, fakeFetch)
+assert.equal(immutableClaims.repository, 'pubgsufian-afk/z.B.-mein-projekt')
+assert.equal(immutableClaims.repository_id, '1184469401')
+assert.equal(immutableClaims.repository_owner_id, '249184348')
+assert.equal(immutableClaims.ref, 'refs/heads/main')
+assert.equal(immutableClaims.sub, immutableSubject)
+
+const legacyClaims = await verifyScheduleGithubOidc(makeToken({ sub: legacySubject }), now, fakeFetch)
+assert.equal(legacyClaims.sub, legacySubject)
 
 await assert.rejects(
   () => verifyScheduleGithubOidc(makeToken({ aud: 'wrong-audience' }), now, fakeFetch),
@@ -49,6 +59,18 @@ await assert.rejects(
 await assert.rejects(
   () => verifyScheduleGithubOidc(makeToken({ repository: 'other/repo' }), now, fakeFetch),
   /repository/i,
+)
+await assert.rejects(
+  () => verifyScheduleGithubOidc(makeToken({ repository_id: '999' }), now, fakeFetch),
+  /repository_id/i,
+)
+await assert.rejects(
+  () => verifyScheduleGithubOidc(makeToken({ repository_owner_id: '999' }), now, fakeFetch),
+  /repository_owner_id/i,
+)
+await assert.rejects(
+  () => verifyScheduleGithubOidc(makeToken({ sub: 'repo:pubgsufian-afk@249184348/z.B.-mein-projekt@999:ref:refs/heads/main' }), now, fakeFetch),
+  /subject|sub/i,
 )
 await assert.rejects(
   () => verifyScheduleGithubOidc(makeToken({ ref: 'refs/heads/dev' }), now, fakeFetch),
