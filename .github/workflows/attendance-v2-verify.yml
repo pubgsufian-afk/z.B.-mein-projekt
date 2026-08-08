@@ -1,3 +1,4 @@
+# Retest after removing obsolete build-scoped schedule command.
 name: Unified portal verification
 
 on:
