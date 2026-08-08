@@ -8,8 +8,11 @@ const GITHUB_OIDC_ISSUER = 'https://token.actions.githubusercontent.com'
 const GITHUB_OIDC_JWKS_URL = 'https://token.actions.githubusercontent.com/.well-known/jwks'
 const EXPECTED_AUDIENCE = 'habun-schedule-assistant'
 const EXPECTED_REPOSITORY = 'pubgsufian-afk/z.B.-mein-projekt'
+const EXPECTED_REPOSITORY_ID = '1184469401'
+const EXPECTED_REPOSITORY_OWNER_ID = '249184348'
 const EXPECTED_REF = 'refs/heads/main'
-const EXPECTED_SUBJECT = 'repo:pubgsufian-afk/z.B.-mein-projekt:ref:refs/heads/main'
+const LEGACY_SUBJECT = 'repo:pubgsufian-afk/z.B.-mein-projekt:ref:refs/heads/main'
+const IMMUTABLE_SUBJECT = 'repo:pubgsufian-afk@249184348/z.B.-mein-projekt@1184469401:ref:refs/heads/main'
 const EXPECTED_WORKFLOW_REF = 'pubgsufian-afk/z.B.-mein-projekt/.github/workflows/schedule-oidc-publish.yml@refs/heads/main'
 const MAX_TOKEN_AGE_SECONDS = 10 * 60
 const CLOCK_SKEW_SECONDS = 30
@@ -18,6 +21,8 @@ export type ScheduleGithubOidcClaims = {
   iss: string
   aud: string
   repository: string
+  repository_id: string
+  repository_owner_id: string
   ref: string
   sub: string
   workflow_ref: string
@@ -55,6 +60,14 @@ function exactString(claims: Record<string, unknown>, key: string, expected: str
   return actual
 }
 
+function allowedSubject(claims: Record<string, unknown>) {
+  const sub = String(claims.sub ?? '')
+  if (sub !== LEGACY_SUBJECT && sub !== IMMUTABLE_SUBJECT) {
+    throw new Error('GitHub OIDC subject/sub ist ungültig')
+  }
+  return sub
+}
+
 function finiteNumber(claims: Record<string, unknown>, key: string) {
   const value = Number(claims[key])
   if (!Number.isFinite(value)) throw new Error(`GitHub OIDC ${key} fehlt oder ist ungültig`)
@@ -68,8 +81,10 @@ export function validateScheduleGithubOidcClaims(
   const iss = exactString({ issuer: claims.iss }, 'issuer', GITHUB_OIDC_ISSUER)
   const aud = exactString({ audience: claims.aud }, 'audience', EXPECTED_AUDIENCE)
   const repository = exactString(claims, 'repository', EXPECTED_REPOSITORY)
+  const repositoryId = exactString(claims, 'repository_id', EXPECTED_REPOSITORY_ID)
+  const repositoryOwnerId = exactString(claims, 'repository_owner_id', EXPECTED_REPOSITORY_OWNER_ID)
   const ref = exactString(claims, 'ref', EXPECTED_REF)
-  const sub = exactString(claims, 'sub', EXPECTED_SUBJECT)
+  const sub = allowedSubject(claims)
   const workflowRef = exactString(claims, 'workflow_ref', EXPECTED_WORKFLOW_REF)
   const iat = finiteNumber(claims, 'iat')
   const nbf = finiteNumber(claims, 'nbf')
@@ -86,6 +101,8 @@ export function validateScheduleGithubOidcClaims(
     iss,
     aud,
     repository,
+    repository_id: repositoryId,
+    repository_owner_id: repositoryOwnerId,
     ref,
     sub,
     workflow_ref: workflowRef,
