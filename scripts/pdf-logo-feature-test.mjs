@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 
 const repoFiles = {
   branding: 'netlify/functions/_shared/pdf-branding.mts',
+  companySettings: 'netlify/functions/_shared/company-settings.mts',
   shield: 'netlify/functions/_shared/pdf-shield-logo.mts',
   endpoint: 'netlify/functions/company-settings.mts',
   logoEndpoint: 'netlify/functions/company-logo.mts',
@@ -15,8 +16,9 @@ assert.equal(existsSync(repoFiles.branding), true, 'Zentrale PDF-Logo-Speicherun
 assert.equal(existsSync(repoFiles.logoEndpoint), true, 'Geschützter Logo-Vorschau-Endpunkt fehlt.')
 assert.equal(existsSync(repoFiles.tools), true, 'Clientseitige Logo-Aufbereitung fehlt.')
 
-const [branding, shield, endpoint, logoEndpoint, app, tools] = await Promise.all([
+const [branding, companySettings, shield, endpoint, logoEndpoint, app, tools] = await Promise.all([
   readFile(repoFiles.branding, 'utf8'),
+  readFile(repoFiles.companySettings, 'utf8'),
   readFile(repoFiles.shield, 'utf8'),
   readFile(repoFiles.endpoint, 'utf8'),
   readFile(repoFiles.logoEndpoint, 'utf8'),
@@ -31,8 +33,13 @@ assert.match(branding, /resetCustomPdfLogo/)
 assert.match(branding, /data:image\/png;base64,/)
 assert.match(branding, /EXPORT_LOGO_PNG_BASE64/)
 assert.match(branding, /getStore\(/)
+assert.match(branding, /getDeployStore\(/)
+assert.match(branding, /production/)
 assert.match(branding, /arrayBuffer/)
 assert.match(branding, /89504e470d0a1a0a/i)
+assert.match(companySettings, /getStore\(/)
+assert.match(companySettings, /getDeployStore\(/)
+assert.match(companySettings, /production/)
 
 assert.match(endpoint, /pdfLogoDataUrl/)
 assert.match(endpoint, /resetPdfLogo/)

@@ -1,4 +1,4 @@
-import { getStore } from '@netlify/blobs'
+import { getDeployStore, getStore } from '@netlify/blobs'
 import { randomUUID } from 'node:crypto'
 import { Buffer } from 'node:buffer'
 import { EXPORT_LOGO_PNG_BASE64 } from './export-logo.mts'
@@ -8,8 +8,14 @@ const LOGO_KEY = 'company/current-logo.png'
 const MAX_LOGO_BYTES = 4 * 1024 * 1024
 const PNG_SIGNATURE_HEX = '89504e470d0a1a0a'
 
+function isProductionDeploy() {
+  return typeof Netlify !== 'undefined' && Netlify.context?.deploy?.context === 'production'
+}
+
 function brandingStore() {
-  return getStore({ name: STORE_NAME, consistency: 'strong' })
+  return isProductionDeploy()
+    ? getStore({ name: STORE_NAME, consistency: 'strong' })
+    : getDeployStore({ name: STORE_NAME })
 }
 
 function hasPngSignature(bytes: Uint8Array) {
