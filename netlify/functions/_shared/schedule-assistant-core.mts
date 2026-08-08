@@ -43,14 +43,29 @@ export function resolveAssistantEmployee(name: unknown, employees: AssistantDire
   if (!normalized) {
     return { status: 'not_found' as const, employee: null, candidates: [] as AssistantDirectoryEmployee[] }
   }
-  const candidates = employees.filter((employee) => normalizeAssistantName(employee.fullName) === normalized)
-  if (candidates.length === 1) {
-    return { status: 'matched' as const, employee: candidates[0], candidates }
+
+  const exactCandidates = employees.filter((employee) => normalizeAssistantName(employee.fullName) === normalized)
+  if (exactCandidates.length === 1) {
+    return { status: 'matched' as const, employee: exactCandidates[0], candidates: exactCandidates }
   }
-  if (candidates.length > 1) {
-    return { status: 'ambiguous' as const, employee: null, candidates }
+  if (exactCandidates.length > 1) {
+    return { status: 'ambiguous' as const, employee: null, candidates: exactCandidates }
   }
-  return { status: 'not_found' as const, employee: null, candidates }
+
+  if (!normalized.includes(' ')) {
+    const firstNameCandidates = employees.filter((employee) => {
+      const employeeName = normalizeAssistantName(employee.fullName)
+      return employeeName.split(' ')[0] === normalized
+    })
+    if (firstNameCandidates.length === 1) {
+      return { status: 'matched' as const, employee: firstNameCandidates[0], candidates: firstNameCandidates }
+    }
+    if (firstNameCandidates.length > 1) {
+      return { status: 'ambiguous' as const, employee: null, candidates: firstNameCandidates }
+    }
+  }
+
+  return { status: 'not_found' as const, employee: null, candidates: [] as AssistantDirectoryEmployee[] }
 }
 
 export function defaultAssistantLocation(employee: Pick<AssistantDirectoryEmployee, 'location'>) {
