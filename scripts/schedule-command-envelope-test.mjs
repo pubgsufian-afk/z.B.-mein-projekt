@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import {
   createCipheriv,
+  createPrivateKey,
   generateKeyPairSync,
   publicEncrypt,
   randomBytes,
@@ -34,6 +35,7 @@ const { publicKey, privateKey } = generateKeyPairSync('rsa', {
   publicKeyEncoding: { type: 'spki', format: 'pem' },
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
 })
+const privateKeyDer = createPrivateKey(privateKey).export({ format: 'der', type: 'pkcs8' })
 
 const payload = {
   version: 1,
@@ -44,11 +46,12 @@ const payload = {
 const envelope = encrypt(payload, publicKey)
 assert.deepEqual(decryptScheduleCommandEnvelope(envelope, privateKey), payload)
 assert.deepEqual(decryptScheduleCommandEnvelopeRuntime(envelope, privateKey), payload)
+assert.deepEqual(decryptScheduleCommandEnvelopeRuntime(envelope, privateKeyDer), payload)
 assert.throws(() => decryptScheduleCommandEnvelope({ ...envelope, tag: Buffer.alloc(16).toString('base64') }, privateKey))
-assert.throws(() => decryptScheduleCommandEnvelopeRuntime({ ...envelope, tag: Buffer.alloc(16).toString('base64') }, privateKey))
+assert.throws(() => decryptScheduleCommandEnvelopeRuntime({ ...envelope, tag: Buffer.alloc(16).toString('base64') }, privateKeyDer))
 assert.throws(() => decryptScheduleCommandEnvelope({ ...envelope, algorithm: 'wrong' }, privateKey))
-assert.throws(() => decryptScheduleCommandEnvelopeRuntime({ ...envelope, algorithm: 'wrong' }, privateKey))
+assert.throws(() => decryptScheduleCommandEnvelopeRuntime({ ...envelope, algorithm: 'wrong' }, privateKeyDer))
 assert.throws(() => decryptScheduleCommandEnvelope({ state: 'idle' }, privateKey))
-assert.throws(() => decryptScheduleCommandEnvelopeRuntime({ state: 'idle' }, privateKey))
+assert.throws(() => decryptScheduleCommandEnvelopeRuntime({ state: 'idle' }, privateKeyDer))
 
 console.log('Encrypted schedule command envelope tests passed')
