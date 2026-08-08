@@ -1,4 +1,4 @@
-import { getStore } from '@netlify/blobs'
+import { getDeployStore, getStore } from '@netlify/blobs'
 
 export type CompanySettings = {
   companyName: string
@@ -27,6 +27,13 @@ const KEY = 'company/settings'
 
 function clean(value: unknown, maximum = 180) {
   return String(value ?? '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, maximum)
+}
+
+function companySettingsStore() {
+  const production = typeof Netlify !== 'undefined' && Netlify.context?.deploy?.context === 'production'
+  return production
+    ? getStore({ name: STORE_NAME, consistency: 'strong' })
+    : getDeployStore({ name: STORE_NAME })
 }
 
 function validLogoUrl(value: unknown) {
@@ -62,7 +69,7 @@ export function normalizeCompanySettings(
 }
 
 export async function readCompanySettings(): Promise<CompanySettings> {
-  const store = getStore({ name: STORE_NAME, consistency: 'strong' })
+  const store = companySettingsStore()
   const stored = await store.get(KEY, { type: 'json' }) as Partial<CompanySettings> | null
   return {
     ...DEFAULT_COMPANY_SETTINGS,
@@ -80,7 +87,7 @@ export async function readCompanySettings(): Promise<CompanySettings> {
 export async function writeCompanySettings(input: Record<string, unknown>, audit: { userId?: string } = {}) {
   const current = await readCompanySettings()
   const settings = normalizeCompanySettings(input, audit, current)
-  const store = getStore({ name: STORE_NAME, consistency: 'strong' })
+  const store = companySettingsStore()
   await store.setJSON(KEY, settings)
   return settings
 }
@@ -98,7 +105,7 @@ export async function writeCompanyLogoSettings(
     updatedAt: new Date().toISOString(),
     updatedBy: clean(audit.userId, 120),
   }
-  const store = getStore({ name: STORE_NAME, consistency: 'strong' })
+  const store = companySettingsStore()
   await store.setJSON(KEY, settings)
   return settings
 }
