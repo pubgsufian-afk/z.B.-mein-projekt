@@ -31,11 +31,12 @@ if (!source.includes('const directoryDiagnostics: DirectoryDiagnostics = {')) {
   changed = true
 }
 
-const loadEmployeesMarker = `    const employees = await activePortalEmployees(requestedNames)`
-const loadEmployeesReplacement = `    const employees = await activePortalEmployees(requestedNames)\n    const directoryDiagnostics = directoryDiagnosticsByEmployees.get(employees) || emptyDirectoryDiagnostics()`
-if (!source.includes(loadEmployeesReplacement)) {
-  if (!source.includes(loadEmployeesMarker)) throw new Error('Schedule diagnostics load marker fehlt')
-  source = source.replace(loadEmployeesMarker, loadEmployeesReplacement)
+if (!source.includes('const directoryDiagnostics = directoryDiagnosticsByEmployees.get(')) {
+  const loadMatch = source.match(/^(\s*)const\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+activePortalEmployees\(requestedNames\).*$/m)
+  if (!loadMatch) throw new Error('Schedule diagnostics load marker fehlt')
+  const [loadLine, indentation, variableName] = loadMatch
+  const loadReplacement = `${loadLine}\n${indentation}const directoryDiagnostics = directoryDiagnosticsByEmployees.get(${variableName}) || emptyDirectoryDiagnostics()`
+  source = source.replace(loadLine, loadReplacement)
   changed = true
 }
 
