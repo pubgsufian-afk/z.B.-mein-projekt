@@ -9,8 +9,8 @@ const nowSeconds = Math.floor(now.getTime() / 1000)
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
 const jwk = publicKey.export({ format: 'jwk' })
 const kid = 'test-kid-1'
-const legacySubject = 'repo:pubgsufian-afk/z.B.-mein-projekt:ref:refs/heads/main'
-const immutableSubject = 'repo:pubgsufian-afk@249184348/z.B.-mein-projekt@1184469401:ref:refs/heads/main'
+const legacySubject = 'repo:pubgsufian-afk/z.B.-mein-projekt:pull_request'
+const immutableSubject = 'repo:pubgsufian-afk@249184348/z.B.-mein-projekt@1184469401:pull_request'
 
 function b64url(value) {
   return Buffer.from(typeof value === 'string' ? value : JSON.stringify(value)).toString('base64url')
@@ -24,7 +24,9 @@ function makeToken(overrides = {}, headerOverrides = {}, signingKey = privateKey
     repository: 'pubgsufian-afk/z.B.-mein-projekt',
     repository_id: '1184469401',
     repository_owner_id: '249184348',
-    ref: 'refs/heads/main',
+    actor_id: '249184348',
+    event_name: 'pull_request',
+    ref: 'refs/pull/73/merge',
     sub: immutableSubject,
     workflow_ref: 'pubgsufian-afk/z.B.-mein-projekt/.github/workflows/schedule-oidc-publish.yml@refs/heads/main',
     iat: nowSeconds - 10,
@@ -46,7 +48,9 @@ const immutableClaims = await verifyScheduleGithubOidc(makeToken(), now, fakeFet
 assert.equal(immutableClaims.repository, 'pubgsufian-afk/z.B.-mein-projekt')
 assert.equal(immutableClaims.repository_id, '1184469401')
 assert.equal(immutableClaims.repository_owner_id, '249184348')
-assert.equal(immutableClaims.ref, 'refs/heads/main')
+assert.equal(immutableClaims.actor_id, '249184348')
+assert.equal(immutableClaims.event_name, 'pull_request')
+assert.equal(immutableClaims.ref, 'refs/pull/73/merge')
 assert.equal(immutableClaims.sub, immutableSubject)
 
 const legacyClaims = await verifyScheduleGithubOidc(makeToken({ sub: legacySubject }), now, fakeFetch)
@@ -69,11 +73,19 @@ await assert.rejects(
   /repository_owner_id/i,
 )
 await assert.rejects(
-  () => verifyScheduleGithubOidc(makeToken({ sub: 'repo:pubgsufian-afk@249184348/z.B.-mein-projekt@999:ref:refs/heads/main' }), now, fakeFetch),
+  () => verifyScheduleGithubOidc(makeToken({ actor_id: '999' }), now, fakeFetch),
+  /actor_id/i,
+)
+await assert.rejects(
+  () => verifyScheduleGithubOidc(makeToken({ event_name: 'push' }), now, fakeFetch),
+  /event_name/i,
+)
+await assert.rejects(
+  () => verifyScheduleGithubOidc(makeToken({ sub: 'repo:pubgsufian-afk@249184348/z.B.-mein-projekt@999:pull_request' }), now, fakeFetch),
   /subject|sub/i,
 )
 await assert.rejects(
-  () => verifyScheduleGithubOidc(makeToken({ ref: 'refs/heads/dev' }), now, fakeFetch),
+  () => verifyScheduleGithubOidc(makeToken({ ref: 'refs/pull/74/merge' }), now, fakeFetch),
   /ref/i,
 )
 await assert.rejects(
