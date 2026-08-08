@@ -7,56 +7,8 @@ let changed = false
 const baseAuth = `  const expectedToken = Netlify.env.get('SCHEDULE_ASSISTANT_TOKEN') || ''\n  if (!secureTokenMatches(bearerToken(request), expectedToken)) {`
 if (!source.includes(baseAuth)) throw new Error('Schedule assistant token auth marker fehlt')
 
-const publishTypeMarker = `type PublishInput = AssistantShiftInput & {\n  employeeName?: unknown\n}\n`
-const diagnosticsType = `type DirectoryDiagnostics = {\n  identityUserCount: number\n  accessCount: number\n  registrationCount: number\n  combinedAccessCount: number\n  employeeCount: number\n  requestedCount: number\n  identityLookupSucceeded: boolean\n}\n`
-if (!source.includes('type DirectoryDiagnostics = {')) {
-  if (!source.includes(publishTypeMarker)) throw new Error('Schedule diagnostics type marker fehlt')
-  source = source.replace(publishTypeMarker, `${publishTypeMarker}\n${diagnosticsType}`)
-  changed = true
-}
-
-const constantsMarker = `const MAX_BATCH = 100\n`
-const diagnosticsStorage = `const MAX_BATCH = 100\nconst directoryDiagnosticsByEmployees = new WeakMap<AssistantDirectoryEmployee[], DirectoryDiagnostics>()\n\nfunction emptyDirectoryDiagnostics(): DirectoryDiagnostics {\n  return {\n    identityUserCount: 0,\n    accessCount: 0,\n    registrationCount: 0,\n    combinedAccessCount: 0,\n    employeeCount: 0,\n    requestedCount: 0,\n    identityLookupSucceeded: false,\n  }\n}\n`
-if (!source.includes('directoryDiagnosticsByEmployees')) {
-  if (!source.includes(constantsMarker)) throw new Error('Schedule diagnostics storage marker fehlt')
-  source = source.replace(constantsMarker, diagnosticsStorage)
-  changed = true
-}
-
-const diagnosticsMarker = `  if (requestedNames.length) {\n    await writeScheduleAudit({`
-const diagnosticsReplacement = `  const directoryDiagnostics: DirectoryDiagnostics = {\n    identityUserCount: identityUsers.length,\n    accessCount: accessRows.length,\n    registrationCount: registrations.length,\n    combinedAccessCount: combinedAccess.length,\n    employeeCount: employees.length,\n    requestedCount: requestedNames.length,\n    identityLookupSucceeded,\n  }\n  directoryDiagnosticsByEmployees.set(employees, directoryDiagnostics)\n\n  if (requestedNames.length) {\n    await writeScheduleAudit({`
-if (!source.includes('const directoryDiagnostics: DirectoryDiagnostics = {')) {
-  if (!source.includes(diagnosticsMarker)) throw new Error('Schedule diagnostics values marker fehlt')
-  source = source.replace(diagnosticsMarker, diagnosticsReplacement)
-  changed = true
-}
-
-if (!source.includes('const directoryDiagnostics = directoryDiagnosticsByEmployees.get(')) {
-  const loadMatch = source.match(/^(\s*)const\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+activePortalEmployees\(requestedNames\).*$/m)
-  if (!loadMatch) {
-    const candidates = source.split('\n').filter((line) => line.includes('activePortalEmployees')).join(' | ')
-    throw new Error(`Schedule diagnostics load marker fehlt; candidates=${candidates}`)
-  }
-  const [loadLine, indentation, variableName] = loadMatch
-  const loadReplacement = `${loadLine}\n${indentation}const directoryDiagnostics = directoryDiagnosticsByEmployees.get(${variableName}) || emptyDirectoryDiagnostics()`
-  source = source.replace(loadLine, loadReplacement)
-  changed = true
-}
-
-const resolveResponseMarker = `        role: 'scheduler',\n        results: names.map((name) => publicResolution(name, employees)),`
-const resolveResponseReplacement = `        role: 'scheduler',\n        directoryDiagnostics,\n        results: names.map((name) => publicResolution(name, employees)),`
-if (!source.includes(resolveResponseReplacement)) {
-  if (!source.includes(resolveResponseMarker)) throw new Error('Schedule diagnostics resolve response marker fehlt')
-  source = source.replace(resolveResponseMarker, resolveResponseReplacement)
-  changed = true
-}
-
-const publishResponseMarker = `        role: 'scheduler',\n        requestId,\n        results,`
-const publishResponseReplacement = `        role: 'scheduler',\n        requestId,\n        directoryDiagnostics,\n        results,`
-if (!source.includes(publishResponseReplacement)) {
-  if (!source.includes(publishResponseMarker)) throw new Error('Schedule diagnostics publish response marker fehlt')
-  source = source.replace(publishResponseMarker, publishResponseReplacement)
-  changed = true
+if (!source.includes('directoryDiagnostics')) {
+  throw new Error('Schedule directory diagnostics fehlen vor dem Worker-Patch')
 }
 
 const marker = `    const action = text(body.action)\n\n    if (action === 'resolve-employees') {`
