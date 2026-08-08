@@ -5,12 +5,6 @@ let source = await readFile(path, 'utf8')
 let changed = false
 
 const baseAuth = `  const expectedToken = Netlify.env.get('SCHEDULE_ASSISTANT_TOKEN') || ''\n  if (!secureTokenMatches(bearerToken(request), expectedToken)) {`
-const legacyBridgeAuth = `  const receivedToken = bearerToken(request)\n  const expectedToken = Netlify.env.get('SCHEDULE_ASSISTANT_TOKEN') || ''\n  const bridgeToken = Netlify.env.get('SCHEDULE_ASSISTANT_BRIDGE_TOKEN') || ''\n  if (!secureTokenMatches(receivedToken, expectedToken) && !secureTokenMatches(receivedToken, bridgeToken)) {`
-
-if (source.includes(legacyBridgeAuth)) {
-  source = source.replace(legacyBridgeAuth, baseAuth)
-  changed = true
-}
 if (!source.includes(baseAuth)) throw new Error('Schedule assistant token auth marker fehlt')
 
 const marker = `    const action = text(body.action)\n\n    if (action === 'resolve-employees') {`
