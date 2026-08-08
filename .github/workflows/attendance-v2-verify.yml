@@ -29,7 +29,6 @@ jobs:
         with:
           node-version: 24
       - name: Restore encrypted handoff key
-        id: handoff-cache
         uses: actions/cache@v4
         with:
           path: .netlify-ephemeral
@@ -41,14 +40,15 @@ jobs:
           set -euo pipefail
           cp ops/netlify-proxy.key.enc.b64 /tmp/netlify-proxy.key.enc.b64
           cp ops/netlify-proxy.data.enc.b64 /tmp/netlify-proxy.data.enc.b64
+          rm -rf /tmp/habun-source
           mkdir -p /tmp/habun-source
           git archive "$BASE_SHA" | tar -x -C /tmp/habun-source
           cd /tmp/habun-source
           npm install --no-audit --no-fund
           npm run build
           sed -i 's/command = "npm run build"/command = "echo Prebuilt Habun portal"/' netlify.toml
-          zip -rq /tmp/habun-source.zip . -x '.git/*' 'node_modules/*' 'artifacts/*' 'test-results/*' '.netlify/*'
-      - name: Deploy encrypted handoff
+          grep -F 'command = "echo Prebuilt Habun portal"' netlify.toml
+      - name: Deploy with official Netlify MCP uploader
         env:
           NETLIFY_SITE_ID: 31fdd344-8ffd-45ff-8a4d-031c5bb879dc
         run: |
@@ -61,11 +61,12 @@ jobs:
           openssl enc -d -aes-256-cbc -K "$KEY_HEX" -iv "$IV_HEX" -in /tmp/netlify-proxy.enc -out /tmp/netlify-proxy-url
           PROXY_URL=$(cat /tmp/netlify-proxy-url)
           echo "::add-mask::$PROXY_URL"
-          UPLOAD_URL="${PROXY_URL}/api/v1/sites/${NETLIFY_SITE_ID}/builds"
-          echo "::add-mask::$UPLOAD_URL"
-          curl --fail-with-body -sS -F "title=Habun Stundenzettel Update" -F "zip=@/tmp/habun-source.zip;type=application/zip" "$UPLOAD_URL" > /tmp/netlify-deploy-response.json
-          jq '{id, deploy_id, sha, done, error, created_at}' /tmp/netlify-deploy-response.json | tee /tmp/netlify-deploy-summary.json
-          test -n "$(jq -r '.deploy_id // empty' /tmp/netlify-deploy-response.json)"
+          cd /tmp/habun-source
+          npx -y @netlify/mcp@latest --site-id "$NETLIFY_SITE_ID" --proxy-path "$PROXY_URL" --no-wait | tee /tmp/netlify-mcp-output.txt
+          DEPLOY_ID=$(grep -oE '"deployId":"[^"]+"' /tmp/netlify-mcp-output.txt | tail -1 | cut -d'"' -f4)
+          BUILD_ID=$(grep -oE '"buildId":"[^"]+"' /tmp/netlify-mcp-output.txt | tail -1 | cut -d'"' -f4)
+          test -n "$DEPLOY_ID"
+          printf '{"deploy_id":"%s","id":"%s"}\n' "$DEPLOY_ID" "$BUILD_ID" > /tmp/netlify-deploy-response.json
           rm -f /tmp/netlify-key.enc /tmp/netlify-keyiv.bin /tmp/netlify-proxy.enc /tmp/netlify-proxy-url
       - name: Upload deploy response
         if: always()
