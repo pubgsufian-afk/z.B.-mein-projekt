@@ -10,14 +10,14 @@ const placeholderPattern = /^\s*const placeholders = userIds\.map[^\n]*$/m
 if (source.includes(before)) {
   console.log('Stundenzettel patch input already ready')
 } else if (source.includes(after)) {
-  source = source.replace(after, before)
+  source = source.replace(after, () => before)
   await writeFile(path, source)
   console.log('Stundenzettel patch input normalized')
 } else {
   const match = source.match(placeholderPattern)
   assert.ok(match, 'Stundenzettel-Platzhalterzeile wurde nicht gefunden.')
   const indent = match[0].match(/^\s*/)?.[0] || ''
-  source = source.replace(placeholderPattern, `${indent}${before}`)
+  source = source.replace(placeholderPattern, () => `${indent}${before}`)
   await writeFile(path, source)
   console.log('Stundenzettel patch input normalized from alternate formatting')
 }
