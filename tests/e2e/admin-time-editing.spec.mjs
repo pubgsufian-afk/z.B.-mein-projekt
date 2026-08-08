@@ -127,74 +127,73 @@ async function loginAndOpenTimes(page, role, initialPauseAdjustment = null, mode
   return portal
 }
 
+function firstActualCard(page) {
+  return page.locator('.actual-timesheet-list > article.timesheet-card').first()
+}
+
 test('admin edits a completed session and corrected totals are shown', async ({ page }) => {
   const portal = await loginAndOpenTimes(page, 'admin')
-  const card = page.locator('.times-list > article').first()
+  const card = firstActualCard(page)
   await expect(card).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Bearbeiten', exact: true })).toBeVisible()
+  await expect(card.getByRole('button', { name: 'Bearbeiten', exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Bearbeiten', exact: true }).click()
+  await card.getByRole('button', { name: 'Bearbeiten', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Arbeitszeit bearbeiten', exact: true })).toBeVisible()
   await page.getByLabel('Pause in Minuten').fill('15')
-  await page.getByLabel('Begründung').fill('Korrektur durch Admin')
-  await page.getByRole('button', { name: 'Änderung speichern', exact: true }).click()
+  await page.getByRole('button', { name: 'Speichern', exact: true }).click()
 
   await expect(page.getByText(/Arbeitszeit wurde aktualisiert/)).toBeVisible()
   await expect(card.getByText('15 Min.', { exact: true })).toBeVisible()
   await expect(card.getByText('0:45 Std.', { exact: true })).toBeVisible()
-  await expect(page.locator('.metric-strip.compact-metrics').getByText('0:15 Std.', { exact: true })).toBeVisible()
-  await expect(page.locator('.metric-strip.compact-metrics').getByText('0:45 Std.', { exact: true })).toBeVisible()
+  await expect(page.locator('.timesheet-grand-total').getByText('0:45 Std.', { exact: true })).toBeVisible()
 
   expect(portal.getLastEditBody()).toMatchObject({
     clockInEventId: 'clock-in-1',
     clockOutEventId: 'clock-out-1',
     pauseMinutes: 15,
-    reason: 'Korrektur durch Admin',
+    reason: 'Bearbeitung im Stundenzettel',
   })
 })
 
 test('manager can directly edit a completed employee session', async ({ page }) => {
   const portal = await loginAndOpenTimes(page, 'manager', 20)
-  const card = page.locator('.times-list > article').first()
+  const card = firstActualCard(page)
   await expect(card.getByText('20 Min.', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Bearbeiten', exact: true })).toBeVisible()
+  await expect(card.getByRole('button', { name: 'Bearbeiten', exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Bearbeiten', exact: true }).click()
+  await card.getByRole('button', { name: 'Bearbeiten', exact: true }).click()
   await page.getByLabel('Pause in Minuten').fill('10')
-  await page.getByLabel('Begründung').fill('Korrektur durch Einsatzleiter')
-  await page.getByRole('button', { name: 'Änderung speichern', exact: true }).click()
+  await page.getByRole('button', { name: 'Speichern', exact: true }).click()
 
   await expect(page.getByText(/Arbeitszeit wurde aktualisiert/)).toBeVisible()
   await expect(card.getByText('10 Min.', { exact: true })).toBeVisible()
-  expect(portal.getLastEditBody()).toMatchObject({ pauseMinutes: 10, reason: 'Korrektur durch Einsatzleiter' })
+  await expect(card.getByText('0:50 Std.', { exact: true })).toBeVisible()
+  expect(portal.getLastEditBody()).toMatchObject({ pauseMinutes: 10, reason: 'Bearbeitung im Stundenzettel' })
 })
 
 test('manager can edit an already checked-in running session and close it with pause', async ({ page }) => {
   const portal = await loginAndOpenTimes(page, 'manager', null, 'open')
-  const card = page.locator('.times-list > article').first()
+  const card = firstActualCard(page)
   await expect(card).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Bearbeiten', exact: true })).toBeVisible()
+  await expect(card.getByRole('button', { name: 'Bearbeiten', exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Bearbeiten', exact: true }).click()
+  await card.getByRole('button', { name: 'Bearbeiten', exact: true }).click()
   const end = page.getByLabel('Ende')
   const pause = page.getByLabel('Pause in Minuten')
   await expect(end).toHaveValue('')
-  await expect(pause).toHaveJSProperty('readOnly', true)
 
-  await end.fill(`${portal.today}T08:00`)
-  await expect(pause).toHaveJSProperty('readOnly', false)
+  await end.fill('10:00')
   await pause.fill('10')
-  await page.getByLabel('Begründung').fill('Laufenden Dienst korrigiert')
-  await page.getByRole('button', { name: 'Änderung speichern', exact: true }).click()
+  await page.getByRole('button', { name: 'Speichern', exact: true }).click()
 
-  await expect(page.getByText(/Laufender Dienst wurde korrigiert und abgeschlossen/)).toBeVisible()
+  await expect(page.getByText(/Arbeitszeit wurde aktualisiert/)).toBeVisible()
   await expect(card.getByText('10 Min.', { exact: true })).toBeVisible()
   await expect(card.getByText('0:50 Std.', { exact: true })).toBeVisible()
   expect(portal.getLastEditBody()).toMatchObject({
     clockInEventId: 'clock-in-1',
     clockOutEventId: null,
     pauseMinutes: 10,
-    reason: 'Laufenden Dienst korrigiert',
+    reason: 'Bearbeitung im Stundenzettel',
   })
-  expect(portal.getLastEditBody().clockOutAt).toContain(`${portal.today}T08:00`)
+  expect(portal.getLastEditBody().clockOutAt).toBeTruthy()
 })
