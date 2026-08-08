@@ -31,6 +31,21 @@ type PublishInput = AssistantShiftInput & {
   employeeName?: unknown
 }
 
+type DirectoryDiagnostics = {
+  identityUserCount: number
+  accessCount: number
+  registrationCount: number
+  combinedAccessCount: number
+  employeeCount: number
+  requestedCount: number
+  identityLookupSucceeded: boolean
+}
+
+type ActivePortalDirectory = {
+  employees: AssistantDirectoryEmployee[]
+  directoryDiagnostics: DirectoryDiagnostics
+}
+
 const ACTOR_ID = 'dienstplan-assistent'
 const ALLOWED_ROLES = new Set(['owner', 'admin', 'manager', 'scheduler', 'employee'])
 const MAX_BATCH = 100
@@ -86,7 +101,7 @@ function legacyAccessEmployees(rows: ScheduleAccessRecord[]): AssistantDirectory
     }))
 }
 
-async function activePortalEmployees(requestedNames: string[] = []): Promise<AssistantDirectoryEmployee[]> {
+async function activePortalEmployees(requestedNames: string[] = []): Promise<ActivePortalDirectory> {
   let accessRows: ScheduleAccessRecord[] = []
   try {
     const accessStore = getStore({ name: 'portal-access', consistency: 'strong' })
@@ -139,20 +154,22 @@ async function activePortalEmployees(requestedNames: string[] = []): Promise<Ass
   }
   employees = [...byUserId.values()].sort((left, right) => left.fullName.localeCompare(right.fullName, 'de'))
 
+  const directoryDiagnostics: DirectoryDiagnostics = {
+    identityUserCount: identityUsers.length,
+    accessCount: accessRows.length,
+    registrationCount: registrations.length,
+    combinedAccessCount: combinedAccess.length,
+    employeeCount: employees.length,
+    requestedCount: requestedNames.length,
+    identityLookupSucceeded,
+  }
+
   if (requestedNames.length) {
     await writeScheduleAudit({
       actorId: ACTOR_ID,
       actorType: 'chatgpt',
       action: 'directory-diagnostics',
-      details: {
-        identityUserCount: identityUsers.length,
-        accessCount: accessRows.length,
-        registrationCount: registrations.length,
-        combinedAccessCount: combinedAccess.length,
-        employeeCount: employees.length,
-        requestedCount: requestedNames.length,
-        identityLookupSucceeded,
-      },
+      details: directoryDiagnostics,
     })
   }
 
@@ -164,7 +181,7 @@ async function activePortalEmployees(requestedNames: string[] = []): Promise<Ass
     location: employee.location || '',
   })), true)
 
-  return employees
+  return { employees, directoryDiagnostics }
 }
 
 function publicResolution(name: string, employees: AssistantDirectoryEmployee[]) {
@@ -314,7 +331,7 @@ export default async function scheduleAssistant(request: Request, _context: Cont
         ? body.shifts.map((shift) => text((shift as Record<string, unknown> | null)?.employeeName))
         : []),
     ].filter(Boolean).slice(0, MAX_BATCH)
-    const employees = await activePortalEmployees(requestedNames)
+    const { employees, directoryDiagnostics } = await activePortalEmployees(requestedNames)
     const action = text(body.action)
 
     if (action === 'resolve-employees') {
@@ -323,6 +340,7 @@ export default async function scheduleAssistant(request: Request, _context: Cont
       return json({
         integration: 'Dienstplan-Assistent',
         role: 'scheduler',
+        directoryDiagnostics,
         results: names.map((name) => publicResolution(name, employees)),
       })
     }
@@ -344,6 +362,7 @@ export default async function scheduleAssistant(request: Request, _context: Cont
         integration: 'Dienstplan-Assistent',
         role: 'scheduler',
         requestId,
+        directoryDiagnostics,
         results,
       }, 200)
     }
