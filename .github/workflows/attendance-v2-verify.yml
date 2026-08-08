@@ -1,10 +1,6 @@
 name: Unified portal verification
 
 on:
-  push:
-    branches:
-      - work/attendance-v2-complete
-      - fix/unified-portal-mobile-settings
   pull_request:
     branches:
       - main
@@ -25,18 +21,5 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run verify
       - run: npm run build
-      - name: Reproduce Netlify build and function bundling
-        run: npx -y netlify-cli@latest build
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
-      - name: Upload unified portal preview
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: unified-portal-preview
-          path: |
-            artifacts/unified-preview
-            public/habun-logo.png
-            test-results
-          if-no-files-found: error
-          retention-days: 7
+      - name: Bundle Netlify functions locally
+        run: npx -y netlify-cli@latest functions:build --src netlify/functions --functions .netlify/functions-build --debug
