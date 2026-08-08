@@ -19,7 +19,7 @@ Das Habun-Mitarbeiterportal erhält eine zentrale, vom Hauptadmin verwaltete PDF
 4. Das Logo wird zentral gespeichert und nicht in jedem PDF-Generator separat gepflegt.
 5. Nach einer Logo-Änderung verwenden alle danach erzeugten PDFs automatisch die neue Version.
 6. Das hochgeladene Logo wird clientseitig in ein transparentes PNG umgewandelt. Ein randverbundener, weitgehend einfarbiger Hintergrund wird automatisch transparent gemacht, ohne die eigentliche Logoform unnötig zu verändern.
-7. Akzeptierte Eingaben: PNG, JPEG/JPG und WebP. Nach Verarbeitung wird PNG gespeichert. Die Eingabe wird auf eine angemessene Dateigröße und Bildabmessung begrenzt.
+7. Akzeptierte Eingaben: PNG, JPEG/JPG und WebP bis 5 MB. Das Bild wird proportional auf maximal 1600 × 1600 Pixel verkleinert und anschließend als PNG gespeichert. Die serverseitig akzeptierte dekodierte PNG-Größe beträgt maximal 3 MB.
 8. Wenn kein eigenes Logo gespeichert ist, wird `/habun-logo.png` als Fallback verwendet.
 9. Auf jeder PDF-Seite wird das Logo proportional skaliert, zentriert und mit niedriger Deckkraft gezeichnet, damit Tabellen und Texte vollständig lesbar bleiben.
 10. Aktive PDF-Routen müssen vollständig abgedeckt werden: Dienstplan, Stundenzettel und allgemeine Berichte sowie vorhandene aktive/fallback PDF-Funktionen.
@@ -28,7 +28,7 @@ Das Habun-Mitarbeiterportal erhält eine zentrale, vom Hauptadmin verwaltete PDF
 
 ### Ansatz A — Netlify Blob + zentrale Logo-Hilfsfunktion (empfohlen)
 
-Das verarbeitete PNG wird in einem privaten Netlify-Blob gespeichert. Die Firmeneinstellungen speichern nur Metadaten bzw. die aktuelle Logo-Version. Eine gemeinsame Server-Hilfsfunktion lädt die Logo-Bytes für PDF-Generatoren. Für die Vorschau in den Einstellungen wird ein kleiner Logo-GET-Endpunkt bereitgestellt.
+Das verarbeitete PNG wird in einem Netlify-Blob gespeichert. Die Firmeneinstellungen speichern nur Metadaten bzw. die aktuelle Logo-Version. Eine gemeinsame Server-Hilfsfunktion lädt die Logo-Bytes für PDF-Generatoren. Für die Vorschau in den Einstellungen wird ein kleiner Logo-GET-Endpunkt bereitgestellt.
 
 Vorteile:
 - eine zentrale Quelle für alle PDFs;
@@ -70,7 +70,7 @@ Nachteile:
 
 ### 1. Zentrale Speicherung
 
-`company-settings` bleibt die zentrale Konfiguration. Das eigentliche Logo wird als PNG in Netlify Blobs gespeichert. Die Settings erhalten nur die für die aktuelle Version nötigen Metadaten, z. B. `logoUrl`, `logoVersion` und optional `logoUpdatedAt`.
+`company-settings` bleibt die zentrale Konfiguration. Das eigentliche Logo wird als PNG unter einem versionierten Schlüssel in Netlify Blobs gespeichert. Erst nachdem der neue Blob erfolgreich geschrieben wurde, werden die Settings auf die neue Version umgestellt. Dadurch bleibt das bisherige Logo bei einem Uploadfehler erhalten. Die Settings speichern `logoUrl`, `logoVersion` und `logoUpdatedAt`.
 
 ### 2. Rechte
 
@@ -83,15 +83,16 @@ Nachteile:
 
 Beim Auswählen einer Bilddatei:
 
-1. Datei lokal laden.
-2. In ein Canvas zeichnen.
-3. Hintergrundfarbe aus Rand-/Eckpixeln bestimmen.
-4. Nur vom Bildrand aus zusammenhängende Pixel innerhalb einer begrenzten Farbtoleranz transparent setzen (Flood-Fill), damit gleichfarbige Details innerhalb des Logos möglichst erhalten bleiben.
-5. Ergebnis auf eine maximale sinnvolle Größe skalieren.
-6. Als PNG-Data-URL an den geschützten Settings-Endpunkt senden.
-7. Vor dem Speichern eine Vorschau anzeigen.
+1. Datei lokal laden und Dateityp/5-MB-Grenze prüfen.
+2. In ein Canvas zeichnen und bei Bedarf proportional auf maximal 1600 × 1600 Pixel verkleinern.
+3. Hintergrundfarbe aus mehreren Rand-/Eckpixeln bestimmen.
+4. Nur vom Bildrand aus zusammenhängende Pixel innerhalb einer konservativen Farbtoleranz transparent setzen (Flood-Fill), damit gleichfarbige Details innerhalb des Logos möglichst erhalten bleiben.
+5. Ergebnis als PNG erzeugen.
+6. Prüfen, dass nach der Freistellung noch sichtbare Pixel vorhanden sind.
+7. Eine Vorschau anzeigen.
+8. Beim Speichern die PNG-Data-URL an den geschützten Settings-Endpunkt senden.
 
-Wenn das Bild bereits Transparenz besitzt, bleibt diese erhalten.
+Wenn das Bild bereits Transparenz besitzt, bleibt diese erhalten. Die automatische Freistellung soll nur randverbundene Hintergrundflächen entfernen; innenliegende schwarze/weiße Logo-Elemente werden nicht allein wegen ihrer Farbe gelöscht.
 
 ### 4. Server-Verarbeitung
 
@@ -99,12 +100,16 @@ Der Settings-Endpunkt validiert:
 
 - Rolle `owner` für Logoänderungen;
 - erlaubtes PNG-Data-URL-Format nach der Client-Verarbeitung;
-- maximale dekodierte Dateigröße;
-- plausiblen PNG-Dateikopf.
+- maximal 3 MB dekodierte PNG-Daten;
+- PNG-Signatur `89 50 4E 47 0D 0A 1A 0A`.
 
-Das PNG wird in Netlify Blobs geschrieben. Ein Zurücksetzen löscht bzw. deaktiviert das benutzerdefinierte Logo und stellt das Standardlogo wieder her.
+Das PNG wird unter einem neuen versionierten Schlüssel in Netlify Blobs geschrieben. Erst danach werden `logoVersion`, `logoUpdatedAt` und `logoUrl` aktualisiert. Ein Zurücksetzen deaktiviert das benutzerdefinierte Logo und stellt `/habun-logo.png` wieder her; alte Logo-Blobs können anschließend best-effort entfernt werden.
 
-### 5. Einheitliche PDF-Nutzung
+### 5. Vorschau-Endpunkt
+
+`GET /api/company-logo` liefert das aktuell gespeicherte PNG für die Vorschau und andere nicht-sensitive Branding-Verwendungen. Das Logo selbst gilt nicht als vertrauliche Information. Der Endpunkt setzt einen sicheren Bild-Content-Type, `nosniff` und eine versionsabhängige Cache-Strategie. Wenn kein eigenes Logo existiert, kann die UI direkt `/habun-logo.png` anzeigen.
+
+### 6. Einheitliche PDF-Nutzung
 
 Eine gemeinsame Helper-Funktion liefert für alle PDF-Generatoren:
 
@@ -116,7 +121,7 @@ Alle PDF-Generatoren verwenden denselben Helper und dieselbe Wasserzeichen-Posit
 - horizontal und vertikal mittig;
 - Seitenverhältnis bleibt erhalten;
 - maximale Bounding-Box statt fixer Breite/Höhe;
-- Deckkraft ungefähr 5–8 %, je nach Lesbarkeit;
+- Deckkraft 6 % als Standard;
 - Logo hinter Tabellen/Text.
 
 Die vorhandenen PDF-Funktionen `schedule-pdf`, `schedule-pdf-fixed`, `timesheet-reports`, `unified-reports` und `unified-reports-fixed` werden geprüft und auf denselben Branding-Helfer vereinheitlicht, soweit sie noch aktive PDF-Pfade darstellen.
@@ -124,21 +129,23 @@ Die vorhandenen PDF-Funktionen `schedule-pdf`, `schedule-pdf-fixed`, `timesheet-
 ## Fehlerbehandlung
 
 - Ungültiger Dateityp: verständliche Meldung in den Einstellungen.
-- Datei zu groß: Speichern wird abgelehnt, bestehendes Logo bleibt unverändert.
+- Datei über 5 MB: Auswahl wird abgelehnt.
+- Verarbeitetes PNG über 3 MB: Speichern wird abgelehnt, bestehendes Logo bleibt unverändert.
 - Blob-Speicherung schlägt fehl: bestehendes Logo bleibt unverändert.
 - PDF kann das benutzerdefinierte Logo nicht laden: PDF wird trotzdem erzeugt und fällt auf das Standardlogo zurück.
-- Hintergrundentfernung ergibt kein brauchbares Ergebnis: Nutzer kann die Datei erneut auswählen; das Portal darf kein leeres/unsichtbares Logo speichern.
+- Hintergrundentfernung ergibt ein vollständig transparentes/unsichtbares Ergebnis: Speichern wird blockiert und das bestehende Logo bleibt erhalten.
 
 ## Tests
 
 1. Unit-/Source-Tests für Owner-only Logoänderung.
 2. Test, dass Admin textuelle Firmendaten speichern kann, aber keine Logo-Daten ändern darf.
-3. Test für PNG-Validierung und Größenlimit.
-4. Test für Fallback auf `/habun-logo.png`.
-5. Test, dass alle aktiven PDF-Generatoren den zentralen Logo-Helfer verwenden.
-6. PDF-Branding-Test: Wasserzeichen wird zentriert, proportional und transparent gezeichnet.
-7. Frontend-Source-/E2E-Test: Logo-Bereich ist für Hauptadmin sichtbar und für Admin nicht editierbar.
-8. Bestehende Portal-, PDF-, Stundenzettel- und Dienstplan-Tests müssen weiterhin grün sein.
+3. Test für PNG-Signatur und 3-MB-Serverlimit.
+4. Test für 5-MB-Frontendlimit und maximale 1600 × 1600 Pixel.
+5. Test für Fallback auf `/habun-logo.png`.
+6. Test, dass alle aktiven PDF-Generatoren den zentralen Logo-Helfer verwenden.
+7. PDF-Branding-Test: Wasserzeichen wird zentriert, proportional und mit 6 % Deckkraft gezeichnet.
+8. Frontend-Source-/E2E-Test: Logo-Bereich ist für Hauptadmin sichtbar und für Admin nicht editierbar.
+9. Bestehende Portal-, PDF-, Stundenzettel- und Dienstplan-Tests müssen weiterhin grün sein.
 
 ## Erfolgskriterien
 
