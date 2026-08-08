@@ -1,20 +1,16 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const source = await readFile('scripts/process-schedule-command-build.mjs', 'utf8')
+const packageJson = JSON.parse(await readFile('package.json', 'utf8'))
+const workerPatch = await readFile('scripts/apply-schedule-command-worker.mjs', 'utf8')
+const workflow = await readFile('.github/workflows/schedule-oidc-publish.yml', 'utf8')
 
-assert.match(source, /ops\/schedule-command\.envelope\.json/)
-assert.match(source, /SCHEDULE_COMMAND_PRIVATE_KEY_B64/)
-assert.match(source, /decryptScheduleCommandEnvelope/)
-assert.match(source, /SCHEDULE_ASSISTANT_BRIDGE_TOKEN/)
-assert.match(source, /https:\/\/habun-mitarbeiterportal\.netlify\.app\/api\/schedule-assistant/)
-assert.match(source, /Authorization/)
-assert.match(source, /Bearer/)
-assert.match(source, /publish-shifts/)
-assert.match(source, /sync-directory/)
-assert.match(source, /schedule-command-result\.json/)
-assert.doesNotMatch(source, /process\.env\.SCHEDULE_ASSISTANT_COMMAND/)
-assert.doesNotMatch(source, /console\.log\([^\n]*employeeName/)
-assert.doesNotMatch(source, /console\.log\([^\n]*shifts/)
+assert.doesNotMatch(String(packageJson.scripts?.build || ''), /process-schedule-command-build\.mjs/)
+assert.doesNotMatch(workerPatch, /Netlify\.env\.get\('SCHEDULE_ASSISTANT_BRIDGE_TOKEN'\)/)
+assert.doesNotMatch(workerPatch, /bridgeToken/)
+assert.match(workerPatch, /SCHEDULE_ASSISTANT_TOKEN/)
+assert.match(workerPatch, /action === 'sync-directory'/)
+assert.match(workflow, /id-token:\s*write/)
+assert.match(workflow, /node scripts\/run-schedule-oidc-relay\.mjs/)
 
-console.log('Schedule build bridge source tests passed')
+console.log('Legacy schedule build relay is disabled')
