@@ -262,8 +262,8 @@ export default function TimesheetPage({ session }) {
     setNotice(null)
     try {
       const expected = format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf'
-      const { blob, filename } = await requestBlob('/api/timesheet-export', {
-        from, to, userIds: userId ? [userId] : [], format,
+      const { blob, filename } = await requestBlob('/api/timesheet-reports', {
+        from, to, userIds: userId ? [userId] : [], format, scope: 'unified',
       }, expected)
       downloadBlob(blob, filename)
       setNotice({ tone: 'success', text: 'Stundenzettel wurde erstellt.' })
