@@ -15,32 +15,24 @@ if (!source.includes('type DirectoryDiagnostics = {')) {
   changed = true
 }
 
-const oldSignature = `async function activePortalEmployees(requestedNames: string[] = []): Promise<AssistantDirectoryEmployee[]> {`
-const newSignature = `async function activePortalEmployees(requestedNames: string[] = []): Promise<{\n  employees: AssistantDirectoryEmployee[]\n  directoryDiagnostics: DirectoryDiagnostics\n}> {`
-if (!source.includes(newSignature)) {
-  if (!source.includes(oldSignature)) throw new Error('Schedule diagnostics function marker fehlt')
-  source = source.replace(oldSignature, newSignature)
+const constantsMarker = `const MAX_BATCH = 100\n`
+const diagnosticsStorage = `const MAX_BATCH = 100\nconst directoryDiagnosticsByEmployees = new WeakMap<AssistantDirectoryEmployee[], DirectoryDiagnostics>()\n\nfunction emptyDirectoryDiagnostics(): DirectoryDiagnostics {\n  return {\n    identityUserCount: 0,\n    accessCount: 0,\n    registrationCount: 0,\n    combinedAccessCount: 0,\n    employeeCount: 0,\n    requestedCount: 0,\n    identityLookupSucceeded: false,\n  }\n}\n`
+if (!source.includes('directoryDiagnosticsByEmployees')) {
+  if (!source.includes(constantsMarker)) throw new Error('Schedule diagnostics storage marker fehlt')
+  source = source.replace(constantsMarker, diagnosticsStorage)
   changed = true
 }
 
 const diagnosticsMarker = `  if (requestedNames.length) {\n    await writeScheduleAudit({`
-const diagnosticsReplacement = `  const directoryDiagnostics: DirectoryDiagnostics = {\n    identityUserCount: identityUsers.length,\n    accessCount: accessRows.length,\n    registrationCount: registrations.length,\n    combinedAccessCount: combinedAccess.length,\n    employeeCount: employees.length,\n    requestedCount: requestedNames.length,\n    identityLookupSucceeded,\n  }\n\n  if (requestedNames.length) {\n    await writeScheduleAudit({`
+const diagnosticsReplacement = `  const directoryDiagnostics: DirectoryDiagnostics = {\n    identityUserCount: identityUsers.length,\n    accessCount: accessRows.length,\n    registrationCount: registrations.length,\n    combinedAccessCount: combinedAccess.length,\n    employeeCount: employees.length,\n    requestedCount: requestedNames.length,\n    identityLookupSucceeded,\n  }\n  directoryDiagnosticsByEmployees.set(employees, directoryDiagnostics)\n\n  if (requestedNames.length) {\n    await writeScheduleAudit({`
 if (!source.includes('const directoryDiagnostics: DirectoryDiagnostics = {')) {
   if (!source.includes(diagnosticsMarker)) throw new Error('Schedule diagnostics values marker fehlt')
   source = source.replace(diagnosticsMarker, diagnosticsReplacement)
   changed = true
 }
 
-const returnEmployeesMarker = `  return employees\n}`
-const returnEmployeesReplacement = `  return { employees, directoryDiagnostics }\n}`
-if (!source.includes(returnEmployeesReplacement)) {
-  if (!source.includes(returnEmployeesMarker)) throw new Error('Schedule diagnostics return marker fehlt')
-  source = source.replace(returnEmployeesMarker, returnEmployeesReplacement)
-  changed = true
-}
-
-const loadEmployeesMarker = `    const employees = await activePortalEmployees(requestedNames)`
-const loadEmployeesReplacement = `    const { employees, directoryDiagnostics } = await activePortalEmployees(requestedNames)`
+const loadEmployeesMarker = `    const employees = await activePortalEmployees(requestedNames)\n    const action = text(body.action)`
+const loadEmployeesReplacement = `    const employees = await activePortalEmployees(requestedNames)\n    const directoryDiagnostics = directoryDiagnosticsByEmployees.get(employees) || emptyDirectoryDiagnostics()\n    const action = text(body.action)`
 if (!source.includes(loadEmployeesReplacement)) {
   if (!source.includes(loadEmployeesMarker)) throw new Error('Schedule diagnostics load marker fehlt')
   source = source.replace(loadEmployeesMarker, loadEmployeesReplacement)
