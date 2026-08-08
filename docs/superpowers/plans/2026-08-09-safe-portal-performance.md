@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Das Habun Mitarbeiterportal soll sich nach der Anmeldung und beim erneuten Öffnen bereits besuchter Bereiche schneller anfühlen, ohne Dienstplan, Zeiterfassung, PDF/Excel, Rollen, Berechtigungen, Datenbankverhalten, Design oder Bedienabläufe fachlich zu verändern.
+**Goal:** Das Habun Mitarbeiterportal soll sich nach der Anmeldung und beim Wechsel zwischen Bereichen schneller und stabiler anfühlen, ohne Dienstplan, Zeiterfassung, PDF/Excel, Rollen, Berechtigungen, Datenbankverhalten, Design oder Bedienabläufe fachlich zu verändern.
 
-**Architecture:** Die Optimierung bleibt im Frontend. Ein kleiner sitzungsgebundener In-Memory-Read-Cache dedupliziert identische GET-Anfragen und stellt bereits geladene Daten kurzzeitig sofort wieder bereit; im Hintergrund wird weiterhin frisch vom Server geladen. Schreibaktionen, Session-Prüfung und sicherheitskritische Autorisierung bleiben unverändert und umgehen den Cache vollständig. Zusätzlich nutzt die nachträglich injizierte Mitarbeiterrollen-/Profilverwaltung die bereits von React geladene Mitarbeiterliste, statt dieselben Daten erneut vom Server zu holen.
+**Architecture:** Die Optimierung bleibt vollständig im Frontend. Nur relativ stabile Verzeichnisdaten (`/api/registrations` und Einsatzort-/Objektliste) dürfen innerhalb derselben Anmeldung kurz im Arbeitsspeicher gehalten werden. Beim erneuten Öffnen werden diese Daten sofort angezeigt, gleichzeitig aber immer frisch vom Server bestätigt und danach ersetzt. Dienstplan-Einträge, Anwesenheit, Session, Rollenentscheidungen, PDF/Excel und alle Schreibaktionen werden niemals aus dem Cache beantwortet. Die Mitarbeiter-Rollen-/Profil-Erweiterung verwendet die bereits von React geladene Mitarbeiterliste statt einen zweiten identischen Serverabruf zu starten.
 
 **Tech Stack:** React 19, JavaScript/ESM, Netlify Identity, Netlify Functions, esbuild, Node-Testskripte, Playwright E2E
 
@@ -18,12 +18,13 @@
 - Keine Änderung an Einsatzort-Daten oder Geofence-Regeln.
 - Keine Änderung an Neon-Datenbankstruktur, Netlify-Blobs oder bestehenden API-Verträgen.
 - Keine Änderung an Design, Navigation, sichtbaren Texten oder Bedienabläufen.
-- Nur GET-/Leseanfragen dürfen in den In-Memory-Cache gelangen.
-- Kein localStorage, kein IndexedDB, keine Offline-Persistenz.
-- Session- und Sicherheitsprüfungen dürfen nicht aus dem Read-Cache beantwortet werden.
+- Kein `localStorage`, kein `IndexedDB`, keine Offline-Persistenz.
+- `/api/session` wird nie gecacht.
+- `/api/attendance*` wird nie gecacht.
+- Dienstplan-Einträge `/api/schedule-v2?resource=entries...` werden nie gecacht.
+- PDF-/Excel-/Berichtsrouten werden nie gecacht.
 - Fehlerantworten und Schreibantworten werden nie gecacht.
-- Cache wird bei Logout und Sessionwechsel vollständig geleert.
-- Dienstplan-Cache-Schlüssel enthalten immer den vollständigen Ressourcenpfad inklusive Zeitraum/Woche.
+- Cache wird bei Logout und Identitäts-/Sessionwechsel vollständig geleert.
 - Mitarbeiterzuordnung erfolgt ausschließlich über stabile `userId`/`id`-Werte, niemals über Listenpositionen.
 - Produktion wird erst nach vollständigem Verify, Build, E2E, Preview-Prüfung und ausdrücklicher Freigabe veröffentlicht.
 
@@ -31,17 +32,18 @@
 
 ## File Structure
 
-- Create: `frontend/src/read-cache.js` — einzige Verantwortung: sitzungsgebundene GET-Deduplizierung, TTL, synchrones Lesen vorhandener Snapshots, gezielte Invalidierung und komplettes Leeren.
-- Modify: `frontend/src/App.jsx` — verwendet den Cache ausschließlich bei ausgewählten nicht-sicherheitskritischen Leseabfragen; invalidiert ihn nach bestehenden Schreibaktionen; veröffentlicht den bereits geladenen Mitarbeiter-Snapshot an die Rollen-/Profilverwaltung.
-- Modify: `frontend/src/employee-role-management-auto.js` — verwendet bevorzugt den von React gelieferten Mitarbeiter-/Session-Snapshot und greift nur als Fallback auf bestehende API-Leseaufrufe zurück.
-- Create: `scripts/read-cache-test.mjs` — isolierte Tests für TTL, Inflight-Deduplizierung, Invalidierung und Logout-Clear.
-- Modify: `scripts/employee-role-management-policy-test.mjs` — Source-Contract für Snapshot-Wiederverwendung und unveränderte serverseitige Rollenprüfung.
-- Create: `tests/e2e/performance-loading.spec.mjs` — Request-Zählung, Cache-Revisit, Wochenisolation, Logout-Clear und unveränderte Schreibpfade.
-- Modify: `package.json` — neue Performance-Regressionsprüfung in `verify:v2` und E2E-Datei in `test:e2e` aufnehmen.
+- Create: `frontend/src/read-cache.js` — sitzungsgebundene Snapshots für ausgewählte GET-Verzeichnisdaten, Inflight-Deduplizierung, Invalidierung und vollständiges Leeren.
+- Modify: `frontend/src/App.jsx` — nutzt Snapshots nur bei Mitarbeiter-/Objektverzeichnissen, lädt danach immer frisch, invalidiert nach bestehenden Schreibaktionen und parallelisiert eine bestehende Anwesenheits-Leseabfolge.
+- Modify: `frontend/src/employee-role-management-auto.js` — verwendet den bereits geladenen React-Mitarbeitersnapshot statt `/api/session` und `/api/registrations` nochmals unmittelbar zu lesen.
+- Create: `scripts/read-cache-test.mjs` — isolierte Tests für Snapshot, Inflight-Deduplizierung, Invalidierung und Clear.
+- Modify: `scripts/employee-role-management-policy-test.mjs` — Source-Contract für Snapshot-Wiederverwendung bei unveränderter serverseitiger Autorisierung.
+- Modify: `tests/e2e/employee-role-management.spec.mjs` — Request-Zählung für die Mitarbeiterseite sowie bestehende Hauptadmin-/Admin-Regressionen.
+- Create: `tests/e2e/performance-loading.spec.mjs` — Cache-Revisit, frische Serverbestätigung, Logout-Clear und Dienstplan-Nicht-Caching.
+- Modify: `package.json` — neue Cache-Prüfung und Performance-E2E in Standard-Gates aufnehmen.
 
 ---
 
-### Task 1: Kleinen sitzungsgebundenen Read-Cache einführen
+### Task 1: Sicheren In-Memory-Verzeichnis-Cache einführen
 
 **Files:**
 - Create: `frontend/src/read-cache.js`
@@ -49,16 +51,16 @@
 - Modify: `package.json`
 
 **Interfaces:**
-- Produces: `readCachedJson(key, loader, { ttlMs, backgroundRefresh }) -> Promise<unknown>`
 - Produces: `peekCachedJson(key) -> unknown | undefined`
+- Produces: `refreshCachedJson(key, loader, { ttlMs }) -> Promise<unknown>`
 - Produces: `invalidateCachedJson(keyOrPredicate) -> void`
 - Produces: `clearReadCache() -> void`
-- Produces: `primeCachedJson(key, value, ttlMs) -> void`
-- Cache keys are exact request strings, e.g. `/api/registrations` or `/api/schedule-v2?resource=entries&from=2026-08-03&to=2026-08-09`.
+- Produces: `primeCachedJson(key, value, ttlMs) -> unknown`
+- `refreshCachedJson()` führt bei jedem neuen Seiten-Ladevorgang einen echten Loader-Aufruf aus, dedupliziert aber gleichzeitig laufende identische Requests. Dadurch kann ein vorhandener Snapshot sofort angezeigt werden, ohne die anschließende Serverbestätigung zu überspringen.
 
-- [ ] **Step 1: Write the failing cache tests**
+- [ ] **Step 1: Write the failing unit test**
 
-Create `scripts/read-cache-test.mjs` with a fake clock and loader counters. Cover these exact cases:
+Create `scripts/read-cache-test.mjs`:
 
 ```js
 import assert from 'node:assert/strict'
@@ -67,29 +69,31 @@ import {
   invalidateCachedJson,
   peekCachedJson,
   primeCachedJson,
-  readCachedJson,
+  refreshCachedJson,
 } from '../frontend/src/read-cache.js'
 
 clearReadCache()
+assert.equal(peekCachedJson('/api/registrations'), undefined)
 
-let calls = 0
-const loader = async () => ({ version: ++calls })
-
-const first = await readCachedJson('/api/registrations', loader, { ttlMs: 30000 })
-const second = await readCachedJson('/api/registrations', loader, { ttlMs: 30000 })
-assert.deepEqual(first, { version: 1 })
-assert.deepEqual(second, { version: 1 })
-assert.equal(calls, 1, 'fresh cache must avoid duplicate GET')
+primeCachedJson('/api/registrations', { employees: [{ userId: 'e1' }] }, 30000)
+assert.deepEqual(peekCachedJson('/api/registrations'), { employees: [{ userId: 'e1' }] })
 
 invalidateCachedJson('/api/registrations')
-const third = await readCachedJson('/api/registrations', loader, { ttlMs: 30000 })
-assert.deepEqual(third, { version: 2 })
-assert.equal(calls, 2)
+assert.equal(peekCachedJson('/api/registrations'), undefined)
 
-primeCachedJson('/api/schedule-v2?resource=entries&from=A&to=B', { entries: ['week-a'] }, 30000)
-primeCachedJson('/api/schedule-v2?resource=entries&from=C&to=D', { entries: ['week-b'] }, 30000)
-assert.deepEqual(peekCachedJson('/api/schedule-v2?resource=entries&from=A&to=B'), { entries: ['week-a'] })
-assert.deepEqual(peekCachedJson('/api/schedule-v2?resource=entries&from=C&to=D'), { entries: ['week-b'] })
+let calls = 0
+let release
+const loader = () => {
+  calls += 1
+  return new Promise((resolve) => { release = resolve })
+}
+const p1 = refreshCachedJson('/api/registrations', loader, { ttlMs: 30000 })
+const p2 = refreshCachedJson('/api/registrations', loader, { ttlMs: 30000 })
+assert.equal(calls, 1, 'gleichzeitige identische GETs müssen dedupliziert werden')
+release({ employees: [{ userId: 'e2' }] })
+assert.deepEqual(await p1, { employees: [{ userId: 'e2' }] })
+assert.deepEqual(await p2, { employees: [{ userId: 'e2' }] })
+assert.deepEqual(peekCachedJson('/api/registrations'), { employees: [{ userId: 'e2' }] })
 
 clearReadCache()
 assert.equal(peekCachedJson('/api/registrations'), undefined)
@@ -97,25 +101,7 @@ assert.equal(peekCachedJson('/api/registrations'), undefined)
 console.log('read-cache-test: PASS')
 ```
 
-Add a second assertion block where two simultaneous calls share one in-flight loader promise:
-
-```js
-clearReadCache()
-let resolveLoader
-let inflightCalls = 0
-const slowLoader = () => {
-  inflightCalls += 1
-  return new Promise((resolve) => { resolveLoader = resolve })
-}
-const p1 = readCachedJson('/api/worksites', slowLoader, { ttlMs: 30000 })
-const p2 = readCachedJson('/api/worksites', slowLoader, { ttlMs: 30000 })
-assert.equal(inflightCalls, 1)
-resolveLoader({ objects: [] })
-assert.deepEqual(await p1, { objects: [] })
-assert.deepEqual(await p2, { objects: [] })
-```
-
-- [ ] **Step 2: Run the new test and verify RED**
+- [ ] **Step 2: Run the test to verify RED**
 
 Run:
 
@@ -125,46 +111,38 @@ node scripts/read-cache-test.mjs
 
 Expected: FAIL because `frontend/src/read-cache.js` does not exist yet.
 
-- [ ] **Step 3: Implement the minimal cache module**
+- [ ] **Step 3: Implement the minimal cache**
 
-Create `frontend/src/read-cache.js` with only in-memory module state:
+Create `frontend/src/read-cache.js`:
 
 ```js
 const values = new Map()
 const inflight = new Map()
 
-function now() { return Date.now() }
-
 export function peekCachedJson(key) {
-  const entry = values.get(String(key))
-  if (!entry || entry.expiresAt <= now()) return undefined
+  const cacheKey = String(key)
+  const entry = values.get(cacheKey)
+  if (!entry) return undefined
+  if (entry.expiresAt <= Date.now()) {
+    values.delete(cacheKey)
+    return undefined
+  }
   return entry.value
 }
 
 export function primeCachedJson(key, value, ttlMs = 15000) {
   values.set(String(key), {
     value,
-    expiresAt: now() + Math.max(0, Number(ttlMs) || 0),
+    expiresAt: Date.now() + Math.max(0, Number(ttlMs) || 0),
   })
   return value
 }
 
-export async function readCachedJson(key, loader, { ttlMs = 15000, backgroundRefresh = false } = {}) {
+export async function refreshCachedJson(key, loader, { ttlMs = 15000 } = {}) {
   const cacheKey = String(key)
-  const cached = peekCachedJson(cacheKey)
-  if (cached !== undefined) {
-    if (backgroundRefresh && !inflight.has(cacheKey)) {
-      const refresh = Promise.resolve().then(loader)
-        .then((value) => primeCachedJson(cacheKey, value, ttlMs))
-        .finally(() => inflight.delete(cacheKey))
-      inflight.set(cacheKey, refresh)
-      refresh.catch(() => {})
-    }
-    return cached
-  }
-
   if (inflight.has(cacheKey)) return inflight.get(cacheKey)
-  const request = Promise.resolve().then(loader)
+  const request = Promise.resolve()
+    .then(loader)
     .then((value) => primeCachedJson(cacheKey, value, ttlMs))
     .finally(() => inflight.delete(cacheKey))
   inflight.set(cacheKey, request)
@@ -173,13 +151,10 @@ export async function readCachedJson(key, loader, { ttlMs = 15000, backgroundRef
 
 export function invalidateCachedJson(keyOrPredicate) {
   if (typeof keyOrPredicate === 'function') {
-    for (const key of values.keys()) if (keyOrPredicate(key)) values.delete(key)
-    for (const key of inflight.keys()) if (keyOrPredicate(key)) inflight.delete(key)
+    for (const key of [...values.keys()]) if (keyOrPredicate(key)) values.delete(key)
     return
   }
-  const key = String(keyOrPredicate)
-  values.delete(key)
-  inflight.delete(key)
+  values.delete(String(keyOrPredicate))
 }
 
 export function clearReadCache() {
@@ -188,9 +163,9 @@ export function clearReadCache() {
 }
 ```
 
-Do not add storage APIs or cache persistence.
+No browser persistence API may be added.
 
-- [ ] **Step 4: Run the focused test**
+- [ ] **Step 4: Run focused test**
 
 Run:
 
@@ -200,356 +175,11 @@ node scripts/read-cache-test.mjs
 
 Expected: `read-cache-test: PASS`.
 
-- [ ] **Step 5: Wire the test into verification**
+- [ ] **Step 5: Add the test to `verify:v2`**
 
-In `package.json`, add `node scripts/read-cache-test.mjs` to `verify:v2` without removing any existing checks.
+Append `node scripts/read-cache-test.mjs` to the existing `verify:v2` command in `package.json`; keep every existing command.
 
-- [ ] **Step 6: Run the full source verification**
-
-Run:
-
-```bash
-npm run verify
-```
-
-Expected: exit code 0; all existing verification remains green.
-
-- [ ] **Step 7: Commit Task 1**
-
-```bash
-git add frontend/src/read-cache.js scripts/read-cache-test.mjs package.json
-git commit -m "perf: add safe session read cache"
-```
-
----
-
-### Task 2: Doppelte Mitarbeiter- und Session-Leseaufrufe entfernen
-
-**Files:**
-- Modify: `frontend/src/App.jsx`
-- Modify: `frontend/src/employee-role-management-auto.js`
-- Modify: `scripts/employee-role-management-policy-test.mjs`
-- Test: `tests/e2e/employee-role-management.spec.mjs`
-
-**Interfaces:**
-- Consumes: existing React `EmployeesPage` data from `/api/registrations`.
-- Produces browser event: `habun:employee-snapshot` with `detail: { session: { role, userId }, employees: Array }`.
-- `employee-role-management-auto.js` stores the latest snapshot only in module memory and uses it for rendering controls.
-- Server PATCH calls remain exactly on `/api/registrations` and server authorization remains authoritative.
-
-- [ ] **Step 1: Add failing source-contract assertions**
-
-Extend `scripts/employee-role-management-policy-test.mjs`:
-
-```js
-assert.match(appSource, /habun:employee-snapshot/)
-assert.match(editor, /habun:employee-snapshot/)
-assert.match(editor, /snapshotEmployees/)
-```
-
-Also assert the existing server policy text still exists:
-
-```js
-assert.match(registrations, /employeeManagementPolicy/)
-assert.match(registrations, /requirePortalRole/)
-```
-
-- [ ] **Step 2: Run the focused test and verify RED**
-
-Run:
-
-```bash
-node scripts/employee-role-management-policy-test.mjs
-```
-
-Expected: FAIL on missing snapshot event/source symbols.
-
-- [ ] **Step 3: Publish the already loaded React snapshot**
-
-In `EmployeesPage`, after successful `setData(...)`, dispatch the exact event with the same data already returned by the server:
-
-```js
-const next = await apiJson('/api/registrations')
-setData(next)
-window.dispatchEvent(new CustomEvent('habun:employee-snapshot', {
-  detail: {
-    session: { role: session.role, userId: session.userId },
-    employees: Array.isArray(next.employees) ? next.employees : [],
-  },
-}))
-```
-
-Do not dispatch registration requests, archived data, passwords, tokens, email-auth state or any new private fields.
-
-- [ ] **Step 4: Consume the snapshot in the injected editor**
-
-In `employee-role-management-auto.js`, add module-memory values:
-
-```js
-let snapshotEmployees = []
-let snapshotSession = null
-```
-
-Register one listener inside `installEmployeeRoleManagement()`:
-
-```js
-window.addEventListener('habun:employee-snapshot', (event) => {
-  const detail = event.detail || {}
-  snapshotEmployees = Array.isArray(detail.employees) ? detail.employees : []
-  snapshotSession = detail.session && typeof detail.session === 'object' ? detail.session : null
-  scheduleRefresh(0)
-})
-```
-
-Update `refresh()` to prefer the snapshot:
-
-```js
-const currentSession = snapshotSession || await session()
-const employees = snapshotEmployees.length
-  ? snapshotEmployees
-  : (await api('/api/registrations')).employees || []
-```
-
-When leaving the Mitarbeiter page, clear only the page-local snapshot:
-
-```js
-snapshotEmployees = []
-snapshotSession = null
-```
-
-Keep the existing API fallback so direct loads and unexpected render orders remain functional.
-
-- [ ] **Step 5: Ensure server-protected writes are unchanged**
-
-Do not change these existing request bodies:
-
-```js
-{ id, action: 'update-profile', fullName, company, location }
-{ id, action: 'update-role', role: nextRole }
-{ id, action: 'deactivate-account' }
-```
-
-No authorization decision may be added to the client.
-
-- [ ] **Step 6: Run policy and role-management E2E tests**
-
-Run:
-
-```bash
-node scripts/employee-role-management-policy-test.mjs
-npx playwright test tests/e2e/employee-role-management.spec.mjs
-```
-
-Expected: both pass; Hauptadmin edit/protection behavior unchanged.
-
-- [ ] **Step 7: Commit Task 2**
-
-```bash
-git add frontend/src/App.jsx frontend/src/employee-role-management-auto.js scripts/employee-role-management-policy-test.mjs
-git commit -m "perf: reuse employee data in profile controls"
-```
-
----
-
-### Task 3: Sichere Wiederverwendung ausgewählter GET-Daten beim Seitenwechsel
-
-**Files:**
-- Modify: `frontend/src/App.jsx`
-- Create: `tests/e2e/performance-loading.spec.mjs`
-
-**Interfaces:**
-- Consumes: `readCachedJson`, `peekCachedJson`, `invalidateCachedJson`, `clearReadCache` from `frontend/src/read-cache.js`.
-- Cache allowed only for:
-  - `/api/registrations` — TTL 20 seconds.
-  - `/api/schedule-v2?resource=objects` — TTL 30 seconds.
-  - exact week-scoped schedule entry GET URL — TTL 8 seconds, key includes `from` and `to`.
-- Cache explicitly forbidden for `/api/session`, attendance state/live/history, PDF/Excel blob routes and all non-GET requests.
-
-- [ ] **Step 1: Write failing E2E tests for request reduction and week isolation**
-
-Create `tests/e2e/performance-loading.spec.mjs` with mocked APIs and counters. Cover at least:
-
-```js
-test('revisiting Mitarbeiter reuses one short-lived registration snapshot', async ({ page }) => {
-  let registrationGets = 0
-  await page.route('**/api/registrations', async (route) => {
-    if (route.request().method() === 'GET') registrationGets += 1
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ requests: [], employees: [{ userId: 'e1', fullName: 'Test', role: 'employee', status: 'active' }], archived: [] }) })
-  })
-  // mock login/session and other required endpoints using the existing helpers/patterns
-  // open Mitarbeiter, switch away, open Mitarbeiter again quickly
-  expect(registrationGets).toBeLessThanOrEqual(2)
-})
-```
-
-And week isolation:
-
-```js
-test('schedule cache never mixes two different weeks', async ({ page }) => {
-  const seen = []
-  await page.route('**/api/schedule-v2?resource=entries**', async (route) => {
-    const url = new URL(route.request().url())
-    const from = url.searchParams.get('from')
-    seen.push(from)
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [{ id: from, date: from, start: '07:00', end: '17:00' }] }) })
-  })
-  // navigate current week then next week and assert each rendered id/date matches its requested `from`
-})
-```
-
-- [ ] **Step 2: Run the new E2E file and verify RED**
-
-Run:
-
-```bash
-npx playwright test tests/e2e/performance-loading.spec.mjs
-```
-
-Expected: RED because no shared read-cache integration exists yet.
-
-- [ ] **Step 3: Import cache helpers into App.jsx**
-
-Add:
-
-```js
-import {
-  clearReadCache,
-  invalidateCachedJson,
-  peekCachedJson,
-  readCachedJson,
-} from './read-cache.js'
-```
-
-Do not modify `apiJson()` itself. Keeping `apiJson()` uncached guarantees all existing callers remain unchanged unless explicitly opted into the new cache.
-
-- [ ] **Step 4: Add an opt-in cached GET helper inside App.jsx**
-
-Add:
-
-```js
-function cachedGet(path, ttlMs) {
-  return readCachedJson(path, () => apiJson(path), {
-    ttlMs,
-    backgroundRefresh: true,
-  })
-}
-```
-
-No method/options argument is accepted. This prevents accidental caching of writes.
-
-- [ ] **Step 5: Use cached GET only for employee directory reads**
-
-Replace selected plain GETs of `/api/registrations` in `EmployeesPage`, schedule employee directory loading and Reports employee selector loading with:
-
-```js
-cachedGet('/api/registrations', 20000)
-```
-
-Do not change registration approval/reject/profile/role/deactivate PATCH calls.
-
-- [ ] **Step 6: Use exact-key cache for schedule objects and week entries**
-
-In `SchedulePage.load()` construct the existing exact URLs first:
-
-```js
-const entriesUrl = `/api/schedule-v2?resource=entries&from=${from}&to=${to}`
-const calls = [cachedGet(entriesUrl, 8000)]
-if (management) {
-  calls.push(
-    cachedGet('/api/schedule-v2?resource=objects', 30000),
-    cachedGet('/api/registrations', 20000),
-  )
-}
-```
-
-This preserves the existing `Promise.all` structure and guarantees different weeks receive different keys.
-
-- [ ] **Step 7: Invalidate only affected read data after existing writes**
-
-After a successful employee approve/reject/profile/role/deactivate mutation:
-
-```js
-invalidateCachedJson('/api/registrations')
-```
-
-After a successful schedule save/delete/repeat/publish/copy action:
-
-```js
-invalidateCachedJson((key) => key.startsWith('/api/schedule-v2?resource=entries'))
-```
-
-If a schedule action can create/update employee directory metadata, additionally invalidate `/api/registrations`; otherwise do not broaden invalidation.
-
-After worksite create/update/delete:
-
-```js
-invalidateCachedJson('/api/schedule-v2?resource=objects')
-```
-
-Do not invalidate PDF/report cache because no PDF/report cache exists.
-
-- [ ] **Step 8: Clear cache on logout and session identity changes**
-
-At the start of `signOut()`:
-
-```js
-clearReadCache()
-```
-
-Before applying a newly authenticated user/session inside the auth change callback, call `clearReadCache()` whenever the identity user id changes.
-
-Do not cache `/api/session`.
-
-- [ ] **Step 9: Run focused performance E2E**
-
-Run:
-
-```bash
-npx playwright test tests/e2e/performance-loading.spec.mjs
-```
-
-Expected: PASS.
-
-- [ ] **Step 10: Run existing schedule, attendance and employee E2E**
-
-Run:
-
-```bash
-npx playwright test tests/e2e/unified-portal.spec.mjs tests/e2e/worksite-feature.spec.mjs tests/e2e/admin-time-editing.spec.mjs tests/e2e/employee-role-management.spec.mjs
-```
-
-Expected: PASS with no behavior changes.
-
-- [ ] **Step 11: Commit Task 3**
-
-```bash
-git add frontend/src/App.jsx tests/e2e/performance-loading.spec.mjs
-git commit -m "perf: reuse safe read data between portal pages"
-```
-
----
-
-### Task 4: Final regression gate, build and preview
-
-**Files:**
-- Modify: `package.json`
-- Verify only: all production source and tests
-
-**Interfaces:**
-- No new runtime interface.
-- Final gate requires all existing tests plus the new performance suite.
-
-- [ ] **Step 1: Add performance E2E file to the standard command**
-
-Update `test:e2e` so it includes:
-
-```text
-tests/e2e/performance-loading.spec.mjs
-```
-
-Keep every existing E2E file already present in the command.
-
-- [ ] **Step 2: Run full verification**
+- [ ] **Step 6: Run full verification**
 
 Run:
 
@@ -559,19 +189,455 @@ npm run verify
 
 Expected: exit code 0.
 
-- [ ] **Step 3: Run production build**
+- [ ] **Step 7: Commit**
+
+```bash
+git add frontend/src/read-cache.js scripts/read-cache-test.mjs package.json
+git commit -m "perf: add safe session directory cache"
+```
+
+---
+
+### Task 2: Mitarbeiterseite ohne zweiten Datenabruf rendern
+
+**Files:**
+- Modify: `frontend/src/App.jsx`
+- Modify: `frontend/src/employee-role-management-auto.js`
+- Modify: `scripts/employee-role-management-policy-test.mjs`
+- Modify: `tests/e2e/employee-role-management.spec.mjs`
+
+**Interfaces:**
+- Produces event: `habun:employee-snapshot`
+- Event detail: `{ session: { role: string, userId: string }, employees: Array<object> }`
+- Server PATCH requests and `employeeManagementPolicy` bleiben unverändert.
+
+- [ ] **Step 1: Add failing source assertions**
+
+In `scripts/employee-role-management-policy-test.mjs`, read `frontend/src/App.jsx` into `appSource` and add:
+
+```js
+assert.match(appSource, /habun:employee-snapshot/)
+assert.match(editor, /habun:employee-snapshot/)
+assert.match(editor, /snapshotEmployees/)
+assert.match(registrations, /employeeManagementPolicy/)
+assert.match(registrations, /requirePortalRole/)
+```
+
+- [ ] **Step 2: Run focused source test to verify RED**
 
 Run:
+
+```bash
+node scripts/employee-role-management-policy-test.mjs
+```
+
+Expected: FAIL on missing snapshot symbols.
+
+- [ ] **Step 3: Change `EmployeesPage.load()` to show cached directory immediately and always refresh**
+
+Import cache helpers into `App.jsx`:
+
+```js
+import {
+  clearReadCache,
+  invalidateCachedJson,
+  peekCachedJson,
+  refreshCachedJson,
+} from './read-cache.js'
+```
+
+Add constants:
+
+```js
+const REGISTRATIONS_CACHE_KEY = '/api/registrations'
+const OBJECTS_CACHE_KEY = '/api/schedule-v2?resource=objects'
+```
+
+Replace only the GET implementation inside `EmployeesPage.load()` with this pattern:
+
+```js
+const publishSnapshot = (next) => {
+  setData(next)
+  window.dispatchEvent(new CustomEvent('habun:employee-snapshot', {
+    detail: {
+      session: { role: session.role, userId: session.userId },
+      employees: Array.isArray(next.employees) ? next.employees : [],
+    },
+  }))
+}
+
+const load = useCallback(async () => {
+  try {
+    const cached = peekCachedJson(REGISTRATIONS_CACHE_KEY)
+    if (cached) publishSnapshot(cached)
+
+    const fresh = await refreshCachedJson(
+      REGISTRATIONS_CACHE_KEY,
+      () => apiJson('/api/registrations'),
+      { ttlMs: 20000 },
+    )
+    publishSnapshot(fresh)
+    setNotice(null)
+  } catch (error) {
+    setNotice({ tone: 'error', text: error.message })
+  }
+}, [session.role, session.userId])
+```
+
+The cached value is never treated as a security decision; the fresh server result always replaces it as soon as it returns.
+
+- [ ] **Step 4: Invalidate employee directory after existing employee writes**
+
+After a successful approve/reject operation in `EmployeesPage.decide()` and after successful profile/role/deactivate actions from the injected editor, call:
+
+```js
+invalidateCachedJson(REGISTRATIONS_CACHE_KEY)
+```
+
+For `employee-role-management-auto.js`, add a small event-based invalidation request rather than importing React internals:
+
+```js
+window.dispatchEvent(new CustomEvent('habun:invalidate-read-cache', {
+  detail: { key: '/api/registrations' },
+}))
+```
+
+In `App.jsx`, install one listener in `UnifiedPortal` or `App` that accepts only the two explicit allowlisted keys:
+
+```js
+useEffect(() => {
+  const allowed = new Set([REGISTRATIONS_CACHE_KEY, OBJECTS_CACHE_KEY])
+  const onInvalidate = (event) => {
+    const key = String(event.detail?.key || '')
+    if (allowed.has(key)) invalidateCachedJson(key)
+  }
+  window.addEventListener('habun:invalidate-read-cache', onInvalidate)
+  return () => window.removeEventListener('habun:invalidate-read-cache', onInvalidate)
+}, [])
+```
+
+- [ ] **Step 5: Make the injected employee controls consume the React snapshot first**
+
+In `employee-role-management-auto.js`, add:
+
+```js
+let snapshotEmployees = []
+let snapshotSession = null
+let snapshotReceivedAt = 0
+```
+
+Inside `installEmployeeRoleManagement()` register:
+
+```js
+window.addEventListener('habun:employee-snapshot', (event) => {
+  const detail = event.detail || {}
+  snapshotEmployees = Array.isArray(detail.employees) ? detail.employees : []
+  snapshotSession = detail.session && typeof detail.session === 'object' ? detail.session : null
+  snapshotReceivedAt = Date.now()
+  scheduleRefresh(0)
+})
+```
+
+In `refresh()`, prefer the snapshot when it belongs to the current rendered page:
+
+```js
+const hasRecentSnapshot = snapshotSession && Date.now() - snapshotReceivedAt < 60000
+const currentSession = hasRecentSnapshot ? snapshotSession : await session()
+const employees = hasRecentSnapshot
+  ? snapshotEmployees
+  : (Array.isArray((await api('/api/registrations')).employees) ? (await api('/api/registrations')).employees : [])
+```
+
+Do not use the duplicated fallback expression above literally. Implement the fallback with one request variable:
+
+```js
+let employees = snapshotEmployees
+if (!hasRecentSnapshot) {
+  const data = await api('/api/registrations')
+  employees = Array.isArray(data.employees) ? data.employees : []
+}
+```
+
+Keep all server-side PATCH authorization unchanged.
+
+- [ ] **Step 6: Add a GET-count regression to existing Playwright test**
+
+In `tests/e2e/employee-role-management.spec.mjs`, extend `mockPortal()` with `let registrationGets = 0`. Increment only for GET requests:
+
+```js
+if (request.method() === 'GET') registrationGets += 1
+```
+
+Return it:
+
+```js
+return { user, getLastPatch: () => lastPatch, getRegistrationGets: () => registrationGets }
+```
+
+In `Hauptadmin may assign Admin and deactivate normal accounts`, after the page and controls are visible, assert:
+
+```js
+await expect.poll(() => portal.getRegistrationGets()).toBeLessThanOrEqual(2)
+```
+
+The expected maximum of 2 permits the initial React directory load plus one fallback during unusual startup ordering, but prevents uncontrolled repeated reads caused by MutationObserver refreshes.
+
+- [ ] **Step 7: Run employee regressions**
+
+Run:
+
+```bash
+node scripts/employee-role-management-policy-test.mjs
+npx playwright test tests/e2e/employee-role-management.spec.mjs
+```
+
+Expected: PASS; existing Hauptadmin, Admin, role and profile tests remain unchanged.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add frontend/src/App.jsx frontend/src/employee-role-management-auto.js scripts/employee-role-management-policy-test.mjs tests/e2e/employee-role-management.spec.mjs
+git commit -m "perf: reuse loaded employee directory"
+```
+
+---
+
+### Task 3: Schnelle Verzeichnis-Snapshots und parallele Anwesenheits-Leseabfragen
+
+**Files:**
+- Modify: `frontend/src/App.jsx`
+- Create: `tests/e2e/performance-loading.spec.mjs`
+
+**Interfaces:**
+- Employee directory key: `/api/registrations`, TTL 20 seconds.
+- Object directory key: `/api/schedule-v2?resource=objects`, TTL 30 seconds.
+- Schedule entry URLs are explicitly excluded from cache.
+- Attendance URLs are explicitly excluded from cache.
+
+- [ ] **Step 1: Add an exact helper for cached-then-fresh directory loads**
+
+Inside `App.jsx`, add:
+
+```js
+async function loadDirectoryFresh(key, path, ttlMs, apply) {
+  const cached = peekCachedJson(key)
+  if (cached !== undefined) apply(cached)
+  const fresh = await refreshCachedJson(key, () => apiJson(path), { ttlMs })
+  apply(fresh)
+  return fresh
+}
+```
+
+This helper is used only with the two allowlisted directory keys.
+
+- [ ] **Step 2: Use the helper in SchedulePage only for objects and employee directory**
+
+Keep schedule entries completely fresh:
+
+```js
+const from = week
+const to = addDays(week, 6)
+const entriesUrl = `/api/schedule-v2?resource=entries&from=${from}&to=${to}`
+const shiftPromise = apiJson(entriesUrl)
+```
+
+For management, read cached directory values synchronously first:
+
+```js
+const cachedObjects = peekCachedJson(OBJECTS_CACHE_KEY)
+if (cachedObjects) setObjects(cachedObjects.objects || [])
+const cachedEmployees = peekCachedJson(REGISTRATIONS_CACHE_KEY)
+if (cachedEmployees) setEmployees(cachedEmployees.employees || [])
+```
+
+Then refresh all three sources in parallel:
+
+```js
+const calls = [
+  shiftPromise,
+  refreshCachedJson(OBJECTS_CACHE_KEY, () => apiJson('/api/schedule-v2?resource=objects'), { ttlMs: 30000 }),
+  refreshCachedJson(REGISTRATIONS_CACHE_KEY, () => apiJson('/api/registrations'), { ttlMs: 20000 }),
+]
+const [shiftData, objectData, employeeData] = await Promise.all(calls)
+setEntries(shiftData.entries || [])
+setObjects(objectData.objects || [])
+setEmployees(employeeData.employees || [])
+```
+
+For employees, keep only `shiftPromise`; do not fetch management directories.
+
+- [ ] **Step 3: Use employee directory snapshot in ReportsPage**
+
+On ReportsPage mount, first apply `peekCachedJson(REGISTRATIONS_CACHE_KEY)?.employees`, then call `refreshCachedJson(REGISTRATIONS_CACHE_KEY, () => apiJson('/api/registrations'), { ttlMs: 20000 })` and replace the list with the fresh result.
+
+Do not change `apiBlob`, report payloads, PDF preview code, PDF routes or Excel routes.
+
+- [ ] **Step 4: Parallelize existing AttendancePage management reads without caching**
+
+Replace the sequential management load:
+
+```js
+const data = await apiJson('/api/attendance?resource=state')
+setState(data)
+if (MANAGEMENT.has(session.role)) {
+  const liveData = await apiJson('/api/attendance?resource=live')
+  setLive(liveData.entries || [])
+}
+```
+
+with:
+
+```js
+const calls = [apiJson('/api/attendance?resource=state')]
+if (MANAGEMENT.has(session.role)) calls.push(apiJson('/api/attendance?resource=live'))
+const [data, liveData] = await Promise.all(calls)
+setState(data)
+if (MANAGEMENT.has(session.role)) setLive(liveData?.entries || [])
+```
+
+No attendance response is stored in the read-cache.
+
+- [ ] **Step 5: Invalidate object directory after existing worksite mutations**
+
+In the existing success paths for worksite create/update/delete in `WorksitesPage`, add only:
+
+```js
+invalidateCachedJson(OBJECTS_CACHE_KEY)
+```
+
+Do not alter worksite request URLs, payloads, map logic or geofence values.
+
+- [ ] **Step 6: Clear all cached directory snapshots on logout and identity changes**
+
+At the start of `signOut()`:
+
+```js
+clearReadCache()
+```
+
+Track the authenticated user id in a `useRef`. In the auth callback, before applying a different user id, clear the cache:
+
+```js
+const identityIdRef = useRef('')
+
+// after resolving currentUser
+const nextId = String(currentUser?.id || '')
+if (identityIdRef.current && identityIdRef.current !== nextId) clearReadCache()
+identityIdRef.current = nextId
+```
+
+When `currentUser` becomes null, clear the cache and set the ref to an empty string.
+
+- [ ] **Step 7: Create performance E2E with complete local auth mocks**
+
+Create `tests/e2e/performance-loading.spec.mjs`. Copy these exact helper shapes into the file so it is self-contained:
+
+```js
+import { test, expect } from '@playwright/test'
+
+const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url')
+function testUser() {
+  return {
+    id: 'owner-performance-test', email: 'owner.performance@example.test', aud: '', role: 'authenticated',
+    app_metadata: { provider: 'email', roles: ['owner'] },
+    user_metadata: { full_name: 'Hauptadmin Performance' },
+    created_at: '2026-08-09T00:00:00.000Z', confirmed_at: '2026-08-09T00:00:00.000Z', updated_at: '2026-08-09T00:00:00.000Z',
+  }
+}
+function tokenResponse(user) {
+  const now = Math.floor(Date.now() / 1000)
+  return {
+    access_token: `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({ aud: 'authenticated', sub: user.id, email: user.email, role: 'authenticated', exp: now + 3600, iat: now, app_metadata: user.app_metadata, user_metadata: user.user_metadata })}.test-signature`,
+    token_type: 'bearer', expires_in: 3600, expires_at: now + 3600, refresh_token: 'test-refresh-token', user,
+  }
+}
+async function mockIdentity(page, user) {
+  let authenticated = false
+  await page.route('**/.netlify/identity**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (url.pathname.endsWith('/settings')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ disable_signup: false, autoconfirm: true, external: {} }) })
+    if (url.pathname.endsWith('/token') && request.method() === 'POST') {
+      authenticated = true
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tokenResponse(user)) })
+    }
+    if (url.pathname.endsWith('/user')) return route.fulfill({ status: authenticated ? 200 : 401, contentType: 'application/json', body: JSON.stringify(authenticated ? user : { error: 'invalid_token' }) })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+  })
+}
+async function navigate(page, label) {
+  const sidebar = page.locator('.sidebar')
+  const menu = page.getByRole('button', { name: 'Menü öffnen' })
+  if (await menu.isVisible().catch(() => false)) {
+    await menu.click()
+    await expect(sidebar).toHaveClass(/open/)
+  }
+  const target = sidebar.getByRole('button', { name: label, exact: true })
+  await expect(target).toBeVisible()
+  await target.evaluate((button) => button.click())
+  await expect(page.locator('.topbar h1')).toHaveText(label)
+}
+```
+
+- [ ] **Step 8: Add exact E2E assertions**
+
+Mock `/api/session`, `/api/registrations`, `/api/schedule-v2`, `/api/attendance` and `/api/worksite-v2` with deterministic JSON. Then implement these tests:
+
+1. `Mitarbeiter snapshot appears immediately on revisit and is replaced by fresh server data` — first GET returns `Adel Alt`, second GET returns `Adel Neu`; after leaving and returning, `Adel Alt` may render immediately, then the test must eventually see `Adel Neu` without reload.
+2. `schedule entries are requested fresh for every week` — count every GET whose URL contains `resource=entries`; navigate current week, then click `Nächste ›`; assert a second distinct request with a different `from` parameter and assert the rendered date belongs to the second response.
+3. `logout clears directory snapshots` — load Mitarbeiter once, logout, authenticate a second mock user with a different employee response, and assert the first employee name never appears after the second login.
+4. `attendance state and live are still fresh network reads` — navigate to Zeiterfassung and assert one GET for `resource=state` and one GET for `resource=live`; neither may be satisfied from a stored directory snapshot.
+
+- [ ] **Step 9: Run new performance E2E**
+
+Run:
+
+```bash
+npx playwright test tests/e2e/performance-loading.spec.mjs
+```
+
+Expected: PASS.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add frontend/src/App.jsx tests/e2e/performance-loading.spec.mjs
+git commit -m "perf: speed up safe portal reads"
+```
+
+---
+
+### Task 4: Vollständiges Regression-Gate und Preview
+
+**Files:**
+- Modify: `package.json`
+- Verify: complete repository
+
+**Interfaces:**
+- No new runtime API.
+- Final gate must prove protected areas remain unchanged.
+
+- [ ] **Step 1: Add performance E2E to standard command**
+
+Append `tests/e2e/performance-loading.spec.mjs` to the existing `test:e2e` command. Do not remove any existing E2E file.
+
+- [ ] **Step 2: Run full verification**
+
+```bash
+npm run verify
+```
+
+Expected: exit code 0.
+
+- [ ] **Step 3: Run production build**
 
 ```bash
 npm run build
 ```
 
-Expected: exit code 0 and frontend bundle created successfully.
+Expected: exit code 0.
 
 - [ ] **Step 4: Run complete E2E suite**
-
-Run:
 
 ```bash
 npm run test:e2e
@@ -579,15 +645,13 @@ npm run test:e2e
 
 Expected: 0 failed tests.
 
-- [ ] **Step 5: Explicitly verify protected areas were not modified**
-
-Run git diff checks and confirm there are no changes under PDF/report backend files or database/schema files:
+- [ ] **Step 5: Verify the change set is limited to performance/frontend files**
 
 ```bash
 git diff --name-only main...HEAD
 ```
 
-Expected runtime changes are limited to:
+Allowed runtime/test files:
 
 ```text
 frontend/src/read-cache.js
@@ -595,35 +659,45 @@ frontend/src/App.jsx
 frontend/src/employee-role-management-auto.js
 scripts/read-cache-test.mjs
 scripts/employee-role-management-policy-test.mjs
+tests/e2e/employee-role-management.spec.mjs
 tests/e2e/performance-loading.spec.mjs
 package.json
 ```
 
-Documentation files under `docs/superpowers/` are also expected.
+Documentation under `docs/superpowers/` is also expected.
 
-If any `netlify/functions/*pdf*`, `netlify/functions/*report*`, schedule database repository, attendance backend, Neon schema or migration file appears unexpectedly, stop and inspect before proceeding.
+Stop before PR if any of these unexpected areas appear:
 
-- [ ] **Step 6: Verify critical user flows in preview**
+```text
+netlify/functions/*pdf*
+netlify/functions/*report*
+netlify/functions/attendance*.mts
+netlify/functions/schedule-v2*.mts
+netlify/functions/_shared/schedule-*.mts
+any migration/schema file
+```
 
-In the Netlify deploy preview, verify:
+- [ ] **Step 6: Verify critical flows in Deploy Preview**
 
-1. Login completes and the initial management page loads without showing a false final empty state.
+Check these exact behaviors in preview:
+
+1. Login succeeds with normal server session validation.
 2. Mitarbeiter page shows the same names, roles and Hauptadmin protection as production.
-3. Open Mitarbeiter, switch to another area, return quickly; controls appear without a second visible delayed phase.
-4. Open Dienstplan current week, then next week; employees and shifts remain correctly assigned.
-5. Save/edit a test shift in preview; refresh data and verify the just-written shift is immediately visible.
-6. Clock-in/out and pause flows behave identically in E2E; do not perform production attendance writes.
-7. PDF/Excel routes are tested only through existing automated contracts in this change; no export implementation file is touched.
-8. Logout, login as a different mocked/test identity, and confirm no prior cached employee/schedule data remains.
+3. Reopening Mitarbeiter shows the last directory quickly, then confirms/replaces it with the fresh server result.
+4. Dienstplan current week and next week each load their own fresh `resource=entries` data; no week entry is cached.
+5. Employee assignment remains based on `userId`/`id`.
+6. Stempeluhr, Pause and Ausstempeln remain covered by existing E2E and no attendance backend file is changed.
+7. PDF/Excel contract tests remain green and no PDF/report source file is changed.
+8. Logout and different test login do not retain previous directory snapshots.
 
-- [ ] **Step 7: Commit final test-command update**
+- [ ] **Step 7: Commit standard gate update**
 
 ```bash
 git add package.json
-git commit -m "test: gate portal performance changes with e2e"
+git commit -m "test: gate portal performance optimization"
 ```
 
-- [ ] **Step 8: Create a draft PR only after all gates pass**
+- [ ] **Step 8: Create draft PR only after every gate passes**
 
 PR title:
 
@@ -631,15 +705,16 @@ PR title:
 Portal-Ladezeiten sicher beschleunigen
 ```
 
-PR body must explicitly state:
+PR body must include:
 
 ```text
 - Keine Änderungen an PDF/Excel-Erzeugung
 - Keine Änderungen an Dienstplan- oder Zeiterfassungs-Backendlogik
 - Keine Änderungen an Rollen-/Rechtepolicy
-- In-Memory-Cache nur für ausgewählte GET-Leseanfragen
+- In-Memory-Snapshots nur für Mitarbeiter- und Objektverzeichnisse
+- Dienstplan-Einträge, Attendance und Session bleiben immer frisch
 - Cache wird nach Writes und bei Logout/Sessionwechsel invalidiert
 - Vollständiges verify, build und E2E erfolgreich
 ```
 
-Do not merge or deploy production in this task. Wait for explicit publication approval after preview verification.
+Do not merge or deploy production. Wait for explicit publication approval after preview verification.
