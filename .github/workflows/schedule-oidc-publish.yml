@@ -1,11 +1,8 @@
 name: Habun schedule OIDC relay
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ops/schedule-command.envelope.json
-      - ops/schedule-command-trigger.txt
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -13,9 +10,17 @@ permissions:
 
 jobs:
   publish:
+    if: >-
+      github.repository == 'pubgsufian-afk/z.B.-mein-projekt' &&
+      github.event.issue.pull_request == null &&
+      github.event.issue.number == 71 &&
+      github.event.comment.user.id == 249184348 &&
+      github.event.comment.body == 'Dienstplan ausführen'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
