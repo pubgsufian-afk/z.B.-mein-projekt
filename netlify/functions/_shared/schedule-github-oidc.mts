@@ -65,7 +65,7 @@ export function validateScheduleGithubOidcClaims(
   claims: Record<string, unknown>,
   now = new Date(),
 ): ScheduleGithubOidcClaims {
-  const iss = exactString(claims, 'issuer', GITHUB_OIDC_ISSUER)
+  const iss = exactString({ issuer: claims.iss }, 'issuer', GITHUB_OIDC_ISSUER)
   const aud = exactString({ audience: claims.aud }, 'audience', EXPECTED_AUDIENCE)
   const repository = exactString(claims, 'repository', EXPECTED_REPOSITORY)
   const ref = exactString(claims, 'ref', EXPECTED_REF)
