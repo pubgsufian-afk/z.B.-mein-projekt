@@ -29,6 +29,9 @@ async function mockIdentity(page, user) {
 async function mockPortal(page, actorRole, targetRole = 'employee', targetId = 'employee-adel') {
   const user = userFor(actorRole)
   let lastPatch = null, active = true, role = targetRole
+  let fullName = targetId === user.id ? user.user_metadata.full_name : 'Adel Abdal'
+  let company = 'Habun Security'
+  let location = 'Abbott'
   await page.route('**/api/session', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ userId: user.id, email: user.email, fullName: user.user_metadata.full_name, role: actorRole }) }))
   await page.route('**/api/registrations', async (route) => {
     const request = route.request()
@@ -36,9 +39,14 @@ async function mockPortal(page, actorRole, targetRole = 'employee', targetId = '
       lastPatch = request.postDataJSON()
       if (lastPatch.action === 'update-role') role = lastPatch.role
       if (lastPatch.action === 'deactivate-account') active = false
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, role, deactivated: !active }) })
+      if (lastPatch.action === 'update-profile') {
+        fullName = lastPatch.fullName
+        company = lastPatch.company
+        location = lastPatch.location
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, employee: { userId: targetId, fullName, company, location, role, status: active ? 'active' : 'inactive' }, role, deactivated: !active }) })
     }
-    const employee = { userId: targetId, fullName: targetId === user.id ? user.user_metadata.full_name : 'Adel Abdal', location: 'Abbott', role, status: active ? 'active' : 'inactive' }
+    const employee = { userId: targetId, fullName, company, location, role, status: active ? 'active' : 'inactive' }
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ requests: [], employees: active ? [employee] : [], archived: active ? [] : [employee] }) })
   })
   await page.route('**/api/schedule-v2**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [], objects: [] }) }))
@@ -106,4 +114,40 @@ test('Hauptadmin own account stays protected', async ({ page }) => {
   await navigate(page, 'Mitarbeiter')
   await expect(page.getByText('Hauptadmin ist geschützt.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Konto deaktivieren' })).toHaveCount(0)
+})
+
+test('Hauptadmin can edit employee profile data', async ({ page }) => {
+  const portal = await openEmployees(page, 'owner')
+  await page.getByRole('button', { name: 'Daten bearbeiten' }).click()
+  await page.getByLabel('Name für Adel Abdal').fill('Adel Neu')
+  await page.getByLabel('Firma für Adel Abdal').fill('Habun Security')
+  await page.getByLabel('Einsatzort für Adel Abdal').fill('GMB')
+  await page.getByRole('button', { name: 'Speichern' }).click()
+  await expect.poll(() => portal.getLastPatch()).toMatchObject({
+    id: 'employee-adel', action: 'update-profile', fullName: 'Adel Neu', company: 'Habun Security', location: 'GMB',
+  })
+  await expect(page.locator('.employee-grid article').first()).toContainText('Adel Neu')
+  await expect(page.locator('.employee-grid article').first()).toContainText('GMB')
+})
+
+test('Hauptadmin can edit own profile while role and deactivation stay protected', async ({ page }) => {
+  const portal = await mockPortal(page, 'owner', 'owner', 'owner-role-test')
+  await mockIdentity(page, portal.user)
+  await page.goto('/')
+  await page.getByLabel('E-Mail-Adresse').fill(portal.user.email)
+  await page.getByLabel('Passwort').fill('TestPasswort123!')
+  await page.getByRole('button', { name: 'Sicher anmelden' }).click()
+  await navigate(page, 'Mitarbeiter')
+  await expect(page.getByRole('button', { name: 'Daten bearbeiten' })).toBeVisible()
+  await page.getByRole('button', { name: 'Daten bearbeiten' }).click()
+  await page.getByLabel('Name für Hauptadmin Test').fill('Hauptadmin Neu')
+  await page.getByRole('button', { name: 'Speichern' }).click()
+  await expect.poll(() => portal.getLastPatch()).toMatchObject({ id: 'owner-role-test', action: 'update-profile', fullName: 'Hauptadmin Neu' })
+  await expect(page.getByText('Hauptadmin ist geschützt.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Konto deaktivieren' })).toHaveCount(0)
+})
+
+test('normal Admin has no profile edit action', async ({ page }) => {
+  await openEmployees(page, 'admin')
+  await expect(page.getByRole('button', { name: 'Daten bearbeiten' })).toHaveCount(0)
 })

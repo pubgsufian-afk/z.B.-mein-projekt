@@ -71,7 +71,14 @@ async function enrichEmployeeRoles(
     const role = current.role === 'owner' && current.userId === userId
       ? 'owner'
       : String(record?.role || employee.role || 'employee');
-    const enriched = { ...employee, role, status: record?.status || employee.status || 'active' };
+    const enriched = {
+      ...employee,
+      ...(record?.fullName ? { fullName: record.fullName } : {}),
+      ...(record?.company !== undefined ? { company: record.company } : {}),
+      ...(record?.location !== undefined ? { location: record.location } : {}),
+      role,
+      status: record?.status || employee.status || 'active',
+    };
     if (record?.status === 'inactive') {
       newlyArchived.push(enriched);
       return [];
@@ -97,7 +104,7 @@ async function manageActiveEmployee(
   const action = String(body.action || '') as EmployeeManagementAction;
   const id = String(body.id || '').trim();
   const requestedRole = String(body.role || '').trim();
-  if (!id || !['update-role', 'deactivate-account'].includes(action)) {
+  if (!id || !['update-role', 'deactivate-account', 'update-profile'].includes(action)) {
     return json({ message: 'Mitarbeiter und Verwaltungsaktion sind erforderlich.' }, 400);
   }
   if (action === 'update-role' && !ASSIGNABLE_ROLES.has(requestedRole)) {
@@ -138,6 +145,32 @@ async function manageActiveEmployee(
     return json({ ok: true, employee, deactivated: true });
   }
 
+  if (action === 'update-profile') {
+    const fullName = String(body.fullName || '').trim();
+    const company = String(body.company || '').trim();
+    const location = String(body.location || '').trim();
+    if (!fullName) return json({ message: 'Der Name darf nicht leer sein.' }, 400);
+
+    const employee: AccessRecord = {
+      ...target,
+      userId: String(target.userId || id),
+      fullName,
+      company,
+      location,
+      grantedAt: now,
+      grantedBy: access.current.userId,
+    };
+    await store.setJSON(key, employee);
+    await upsertScheduleEmployee({
+      userId: String(employee.userId || id),
+      fullName,
+      role: effectiveTargetRole as ScheduleEmployee['role'],
+      status: 'active',
+      location,
+    });
+    return json({ ok: true, employee });
+  }
+
   const employee: AccessRecord = {
     ...target,
     userId: String(target.userId || id),
@@ -167,7 +200,7 @@ export default async (request: Request, context: Context) => {
 
   if (request.method === 'PATCH') {
     const payload = await request.clone().json().catch(() => null) as Record<string, unknown> | null;
-    if (payload?.action === 'update-role' || payload?.action === 'deactivate-account') {
+    if (payload?.action === 'update-role' || payload?.action === 'deactivate-account' || payload?.action === 'update-profile') {
       return manageActiveEmployee(request, access, payload);
     }
   }
