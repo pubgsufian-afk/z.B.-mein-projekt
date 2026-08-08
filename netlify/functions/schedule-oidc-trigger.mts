@@ -12,7 +12,18 @@ type AssistantEntry = {
 
 type AssistantResponse = {
   employeeCount?: unknown
+  directoryDiagnostics?: unknown
   results?: unknown
+}
+
+type SafeDirectoryDiagnostics = {
+  identityUserCount: number
+  accessCount: number
+  registrationCount: number
+  combinedAccessCount: number
+  employeeCount: number
+  requestedCount: number
+  identityLookupSucceeded: boolean
 }
 
 function json(data: unknown, status = 200) {
@@ -29,6 +40,26 @@ function json(data: unknown, status = 200) {
 function number(value: unknown) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+function safeCount(value: unknown) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : 0
+}
+
+function safeDirectoryDiagnostics(value: unknown): SafeDirectoryDiagnostics {
+  const row = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+  return {
+    identityUserCount: safeCount(row.identityUserCount),
+    accessCount: safeCount(row.accessCount),
+    registrationCount: safeCount(row.registrationCount),
+    combinedAccessCount: safeCount(row.combinedAccessCount),
+    employeeCount: safeCount(row.employeeCount),
+    requestedCount: safeCount(row.requestedCount),
+    identityLookupSucceeded: row.identityLookupSucceeded === true,
+  }
 }
 
 function safeStatus(value: unknown) {
@@ -96,12 +127,14 @@ export default async function scheduleOidcTrigger(request: Request, context: Con
   const publishedCount = publicResults.filter((entry) => entry.status === 'published').length
   const duplicateCount = publicResults.filter((entry) => entry.status === 'duplicate').length
   const rejectedCount = publicResults.filter((entry) => !['published', 'duplicate'].includes(entry.status)).length
+  const directoryDiagnostics = safeDirectoryDiagnostics(data.directoryDiagnostics)
   const commandHash = createHash('sha256').update(parsed.command.commandId).digest('hex').slice(0, 12)
 
   return json({
     commandHash,
     action: parsed.command.action,
     employeeCount: number(data.employeeCount),
+    directoryDiagnostics,
     publishedCount,
     duplicateCount,
     rejectedCount,
