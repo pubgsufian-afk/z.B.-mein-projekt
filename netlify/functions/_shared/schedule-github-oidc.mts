@@ -11,11 +11,11 @@ const EXPECTED_REPOSITORY = 'pubgsufian-afk/z.B.-mein-projekt'
 const EXPECTED_REPOSITORY_ID = '1184469401'
 const EXPECTED_REPOSITORY_OWNER_ID = '249184348'
 const EXPECTED_ACTOR_ID = '249184348'
-const EXPECTED_EVENT_NAME = 'pull_request'
-const EXPECTED_REF = 'refs/pull/73/merge'
-const LEGACY_SUBJECT = 'repo:pubgsufian-afk/z.B.-mein-projekt:pull_request'
-const IMMUTABLE_SUBJECT = 'repo:pubgsufian-afk@249184348/z.B.-mein-projekt@1184469401:pull_request'
-const EXPECTED_WORKFLOW_REF = 'pubgsufian-afk/z.B.-mein-projekt/.github/workflows/schedule-oidc-publish.yml@refs/pull/73/merge'
+const EXPECTED_EVENT_NAME = 'issue_comment'
+const EXPECTED_REF = 'refs/heads/main'
+const LEGACY_SUBJECT = 'repo:pubgsufian-afk/z.B.-mein-projekt:ref:refs/heads/main'
+const IMMUTABLE_SUBJECT = 'repo:pubgsufian-afk@249184348/z.B.-mein-projekt@1184469401:ref:refs/heads/main'
+const EXPECTED_WORKFLOW_REF = 'pubgsufian-afk/z.B.-mein-projekt/.github/workflows/schedule-oidc-publish.yml@refs/heads/main'
 const MAX_TOKEN_AGE_SECONDS = 10 * 60
 const CLOCK_SKEW_SECONDS = 30
 
