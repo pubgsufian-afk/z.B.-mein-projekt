@@ -22,6 +22,26 @@ const ambiguous = resolveAssistantEmployee('amin test', employees)
 assert.equal(ambiguous.status, 'ambiguous')
 assert.equal(ambiguous.candidates.length, 2)
 
+const shortNameEmployees = [
+  { userId: '4', fullName: 'Aras Khalaf', role: 'employee', status: 'active', location: 'Abbott' },
+  { userId: '5', fullName: 'Amin Hassan', role: 'employee', status: 'active', location: 'GMP' },
+  { userId: '6', fullName: 'Amin Ali', role: 'employee', status: 'active', location: 'GMP' },
+]
+
+const uniqueFirstName = resolveAssistantEmployee('Aras', shortNameEmployees)
+assert.equal(uniqueFirstName.status, 'matched')
+assert.equal(uniqueFirstName.employee?.userId, '4')
+
+const ambiguousFirstName = resolveAssistantEmployee('Amin', shortNameEmployees)
+assert.equal(ambiguousFirstName.status, 'ambiguous')
+assert.equal(ambiguousFirstName.candidates.length, 2)
+
+const surnameOnly = resolveAssistantEmployee('Khalaf', shortNameEmployees)
+assert.equal(surnameOnly.status, 'not_found')
+
+const partialFullName = resolveAssistantEmployee('Aras K', shortNameEmployees)
+assert.equal(partialFullName.status, 'not_found')
+
 const missing = resolveAssistantEmployee('Sarmad', employees)
 assert.equal(missing.status, 'not_found')
 assert.equal(missing.candidates.length, 0)
