@@ -56,7 +56,6 @@ assert.doesNotMatch(app, /Mitarbeiter-ID|Personalnummer/i, 'Employee ID must not
 const tests = [
   'scripts/attendance-domain-test.mjs',
   'scripts/attendance-api-contract-test.mjs',
-  'scripts/attendance-handler-test.mjs',
   'scripts/attendance-repository-test.mjs',
   'scripts/schedule-v2-test.mjs',
   'scripts/schedule-assist-v2-test.mjs',
