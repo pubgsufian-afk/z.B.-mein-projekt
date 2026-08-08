@@ -1,0 +1,38 @@
+import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+
+const workflow = await readFile('.github/workflows/schedule-oidc-publish.yml', 'utf8')
+const relay = await readFile('scripts/run-schedule-oidc-relay.mjs', 'utf8')
+
+assert.match(workflow, /^name:\s*Habun schedule OIDC relay/m)
+assert.match(workflow, /push:/)
+assert.match(workflow, /branches:\s*\[main\]/)
+assert.match(workflow, /ops\/schedule-command\.envelope\.json/)
+assert.match(workflow, /ops\/schedule-command-trigger\.txt/)
+assert.match(workflow, /permissions:\s*\n\s*contents:\s*read\s*\n\s*id-token:\s*write/m)
+assert.match(workflow, /node scripts\/run-schedule-oidc-relay\.mjs/)
+assert.doesNotMatch(workflow, /secrets\./i)
+assert.doesNotMatch(workflow, /SCHEDULE_ASSISTANT_TOKEN/)
+assert.doesNotMatch(workflow, /SCHEDULE_ASSISTANT_BRIDGE_TOKEN/)
+assert.doesNotMatch(workflow, /SCHEDULE_COMMAND_PRIVATE_KEY_B64/)
+assert.doesNotMatch(workflow, /DATABASE_URL|NETLIFY_DATABASE_URL|NEON_DATABASE_URL/i)
+assert.doesNotMatch(workflow, /contents:\s*write/i)
+assert.doesNotMatch(workflow, /actions:\s*write/i)
+assert.doesNotMatch(workflow, /packages:\s*write/i)
+
+assert.match(relay, /ACTIONS_ID_TOKEN_REQUEST_URL/)
+assert.match(relay, /ACTIONS_ID_TOKEN_REQUEST_TOKEN/)
+assert.match(relay, /const OIDC_AUDIENCE = ['"]habun-schedule-assistant['"]/)
+assert.match(relay, /searchParams\.set\(['"]audience['"],\s*OIDC_AUDIENCE\)/)
+assert.match(relay, /ops\/schedule-command\.envelope\.json/)
+assert.match(relay, /https:\/\/habun-mitarbeiterportal\.netlify\.app\/api\/schedule-oidc-trigger/)
+assert.match(relay, /oidcToken/)
+assert.match(relay, /publishedCount/)
+assert.match(relay, /duplicateCount/)
+assert.match(relay, /rejectedCount/)
+assert.doesNotMatch(relay, /SCHEDULE_ASSISTANT_TOKEN/)
+assert.doesNotMatch(relay, /SCHEDULE_ASSISTANT_BRIDGE_TOKEN/)
+assert.doesNotMatch(relay, /SCHEDULE_COMMAND_PRIVATE_KEY_B64/)
+assert.doesNotMatch(relay, /console\.log\([^\n]*(oidcToken|envelope|responseBody)/i)
+
+console.log('Schedule OIDC workflow source tests passed')

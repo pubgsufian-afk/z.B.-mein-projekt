@@ -6,6 +6,7 @@ import {
   randomBytes,
 } from 'node:crypto'
 import { decryptScheduleCommandEnvelope } from './schedule-command-envelope-crypto.mjs'
+import { decryptScheduleCommandEnvelopeRuntime } from '../netlify/functions/_shared/schedule-command-envelope-runtime.mts'
 
 function encrypt(payload, publicKeyPem) {
   const aesKey = randomBytes(32)
@@ -42,8 +43,12 @@ const payload = {
 }
 const envelope = encrypt(payload, publicKey)
 assert.deepEqual(decryptScheduleCommandEnvelope(envelope, privateKey), payload)
+assert.deepEqual(decryptScheduleCommandEnvelopeRuntime(envelope, privateKey), payload)
 assert.throws(() => decryptScheduleCommandEnvelope({ ...envelope, tag: Buffer.alloc(16).toString('base64') }, privateKey))
+assert.throws(() => decryptScheduleCommandEnvelopeRuntime({ ...envelope, tag: Buffer.alloc(16).toString('base64') }, privateKey))
 assert.throws(() => decryptScheduleCommandEnvelope({ ...envelope, algorithm: 'wrong' }, privateKey))
+assert.throws(() => decryptScheduleCommandEnvelopeRuntime({ ...envelope, algorithm: 'wrong' }, privateKey))
 assert.throws(() => decryptScheduleCommandEnvelope({ state: 'idle' }, privateKey))
+assert.throws(() => decryptScheduleCommandEnvelopeRuntime({ state: 'idle' }, privateKey))
 
 console.log('Encrypted schedule command envelope tests passed')
