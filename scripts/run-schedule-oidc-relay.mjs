@@ -50,6 +50,16 @@ const employeeCount = count(result?.employeeCount ?? 0)
 const publishedCount = count(result?.publishedCount ?? 0)
 const duplicateCount = count(result?.duplicateCount ?? 0)
 const rejectedCount = count(result?.rejectedCount ?? 0)
+const directoryDiagnostics = result?.directoryDiagnostics && typeof result.directoryDiagnostics === 'object'
+  ? result.directoryDiagnostics
+  : {}
+const identityUserCount = count(directoryDiagnostics.identityUserCount ?? 0)
+const accessCount = count(directoryDiagnostics.accessCount ?? 0)
+const registrationCount = count(directoryDiagnostics.registrationCount ?? 0)
+const combinedAccessCount = count(directoryDiagnostics.combinedAccessCount ?? 0)
+const requestedCount = count(directoryDiagnostics.requestedCount ?? 0)
+const identityLookupSucceeded = directoryDiagnostics.identityLookupSucceeded === true
 
 console.log(`Habun schedule OIDC relay: employees=${employeeCount} published=${publishedCount} duplicate=${duplicateCount} rejected=${rejectedCount}`)
+console.log(`Habun schedule OIDC relay: directory identity=${identityUserCount} access=${accessCount} registrations=${registrationCount} combined=${combinedAccessCount} employees=${employeeCount} requested=${requestedCount} identityOk=${identityLookupSucceeded}`)
 if (rejectedCount > 0) process.exitCode = 2
