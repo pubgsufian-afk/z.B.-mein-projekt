@@ -1,71 +1,106 @@
-import { expect, test } from '@playwright/test'
-import { attachAccess, attachIdentity, portalJson, registerPortalMocks } from './support/portal-mocks.mjs'
+import { test, expect } from '@playwright/test'
 
-const ADMIN = { id: 'admin-1', email: 'admin@example.com', user_metadata: { full_name: 'Admin Test' }, app_metadata: { roles: ['admin'] } }
-const MANAGER = { id: 'manager-1', email: 'manager@example.com', user_metadata: { full_name: 'Manager Test' }, app_metadata: { roles: ['manager'] } }
+const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url')
+
+function userFor(role) {
+  return {
+    id: `${role}-1`,
+    email: `${role}@example.test`,
+    aud: '',
+    role: 'authenticated',
+    app_metadata: { provider: 'email', roles: [role] },
+    user_metadata: { full_name: role === 'admin' ? 'Test Admin' : role === 'manager' ? 'Test Einsatzleiter' : 'Test Hauptadmin' },
+    created_at: '2026-08-07T00:00:00.000Z',
+    confirmed_at: '2026-08-07T00:00:00.000Z',
+    updated_at: '2026-08-07T00:00:00.000Z',
+  }
+}
+
+function tokenResponse(user) {
+  const now = Math.floor(Date.now() / 1000)
+  const accessToken = `${encode({ alg: 'HS256', typ: 'JWT' })}.${encode({
+    aud: 'authenticated', sub: user.id, email: user.email, role: 'authenticated', exp: now + 3600, iat: now,
+    app_metadata: user.app_metadata, user_metadata: user.user_metadata,
+  })}.test-signature`
+  return { access_token: accessToken, token_type: 'bearer', expires_in: 3600, expires_at: now + 3600, refresh_token: 'test-refresh-token', user }
+}
 
 async function mockIdentity(page, user) {
-  await attachIdentity(page, user)
-  await attachAccess(page, user, user.app_metadata.roles[0])
+  let authenticated = false
+  await page.route('**/.netlify/identity**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (url.pathname.endsWith('/settings')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ disable_signup: false, autoconfirm: true, external: {} }) })
+    if (url.pathname.endsWith('/token') && request.method() === 'POST') {
+      authenticated = true
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tokenResponse(user)) })
+    }
+    if (url.pathname.endsWith('/user')) return route.fulfill({ status: authenticated ? 200 : 401, contentType: 'application/json', body: JSON.stringify(authenticated ? user : { error: 'invalid_token' }) })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+  })
 }
 
 async function mockPortal(page, role, initialPauseAdjustment = null, mode = 'completed') {
-  const user = role === 'admin' ? ADMIN : MANAGER
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date())
-  const clockInAt = `${today}T06:00:00.000Z`
-  const clockOutAt = mode === 'open' ? '' : `${today}T07:00:00.000Z`
+  const user = userFor(role)
+  const today = new Date().toISOString().slice(0, 10)
   let lastEditBody = null
   const entries = [
     {
-      id: 'clock-in-1', userId: 'employee-1', userName: 'Mitarbeiter Eins', action: 'clock-in',
-      clientOccurredAt: clockInAt, serverReceivedAt: clockInAt, objectId: 'site-1', scheduleId: 'shift-1',
-      locationStatus: 'inside', location: { latitude: 52.3, longitude: 9.7, accuracyMeters: 10 },
+      id: 'clock-in-1', userId: 'employee-anna', clientEventId: 'in-1', action: 'clock-in',
+      clientOccurredAt: `${today}T07:00:00.000Z`, serverOccurredAt: `${today}T07:00:01.000Z`, eventDate: today,
+      scheduleId: 'shift-1', objectId: 'site-1', locationStatus: 'inside', offlineCaptured: false,
     },
-    ...(mode === 'open' ? [] : [{
-      id: 'clock-out-1', userId: 'employee-1', userName: 'Mitarbeiter Eins', action: 'clock-out',
-      clientOccurredAt: clockOutAt, serverReceivedAt: clockOutAt, objectId: 'site-1', scheduleId: 'shift-1',
-      locationStatus: 'inside', location: { latitude: 52.3, longitude: 9.7, accuracyMeters: 10 },
-    }]),
   ]
-  if (initialPauseAdjustment != null) {
+  if (mode === 'completed') {
     entries.push({
-      id: 'adjustment-1', userId: 'employee-1', userName: 'Mitarbeiter Eins', action: 'adjustment',
-      clientOccurredAt: `${today}T07:01:00.000Z`, serverReceivedAt: `${today}T07:01:00.000Z`,
-      adjustment: { pauseMinutes: initialPauseAdjustment, reason: 'Bestehende Korrektur' },
+      id: 'clock-out-1', userId: 'employee-anna', clientEventId: 'out-1', action: 'clock-out',
+      clientOccurredAt: `${today}T08:00:00.000Z`, serverOccurredAt: `${today}T08:00:01.000Z`, eventDate: today,
+      scheduleId: 'shift-1', objectId: 'site-1', locationStatus: 'inside', offlineCaptured: false,
+      ...(initialPauseAdjustment === null ? {} : { pauseMinutesAdjustment: initialPauseAdjustment }),
     })
   }
 
-  await registerPortalMocks(page, { user, role })
-  await page.route('**/api/session', async (route) => route.fulfill(portalJson({
-    authenticated: true,
-    user: { id: user.id, email: user.email, fullName: user.user_metadata.full_name, role },
-  })))
+  await page.route('**/api/session', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ userId: user.id, email: user.email, fullName: user.user_metadata.full_name, role }),
+  }))
+  await page.route('**/api/registrations', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ requests: [], employees: [{ userId: 'employee-anna', fullName: 'Anna Beispiel', location: 'Objekt Nord' }], archived: [] }),
+  }))
+  await page.route('**/api/schedule-v2**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [], objects: [] }) }))
+  await page.route('**/api/attendance-maintenance**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ corrections: [] }) }))
   await page.route('**/api/attendance-time-edit', async (route) => {
-    lastEditBody = route.request().postDataJSON()
-    if (lastEditBody?.endAt && !entries.some((entry) => entry.action === 'clock-out')) {
-      entries.push({
-        id: 'clock-out-created', userId: 'employee-1', userName: 'Mitarbeiter Eins', action: 'clock-out',
-        clientOccurredAt: lastEditBody.endAt, serverReceivedAt: lastEditBody.endAt,
-        objectId: 'site-1', scheduleId: 'shift-1', locationStatus: 'inside',
-      })
+    const body = route.request().postDataJSON()
+    lastEditBody = body
+    const clockIn = entries.find((entry) => entry.id === body.clockInEventId)
+    clockIn.clientOccurredAt = body.clockInAt
+    clockIn.eventDate = body.clockInAt.slice(0, 10)
+
+    let clockOut = body.clockOutEventId ? entries.find((entry) => entry.id === body.clockOutEventId) : null
+    if (body.clockOutAt) {
+      if (!clockOut) {
+        clockOut = {
+          id: 'managed-clock-out-1', userId: 'employee-anna', clientEventId: 'managed-out-1', action: 'clock-out',
+          clientOccurredAt: body.clockOutAt, serverOccurredAt: body.clockOutAt, eventDate: body.clockOutAt.slice(0, 10),
+          scheduleId: 'shift-1', objectId: 'site-1', locationStatus: 'unavailable', offlineCaptured: false,
+        }
+        entries.push(clockOut)
+      } else {
+        clockOut.clientOccurredAt = body.clockOutAt
+        clockOut.eventDate = body.clockOutAt.slice(0, 10)
+      }
+      clockOut.pauseMinutesAdjustment = body.pauseMinutes
     }
-    const adjustment = entries.find((entry) => entry.action === 'adjustment')
-    if (adjustment) adjustment.adjustment = { pauseMinutes: Number(lastEditBody?.pauseMinutes || 0), reason: lastEditBody?.reason || '' }
-    else entries.push({
-      id: 'adjustment-created', userId: 'employee-1', userName: 'Mitarbeiter Eins', action: 'adjustment',
-      clientOccurredAt: `${today}T08:01:00.000Z`, serverReceivedAt: `${today}T08:01:00.000Z`,
-      adjustment: { pauseMinutes: Number(lastEditBody?.pauseMinutes || 0), reason: lastEditBody?.reason || '' },
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ saved: true, clockInEventId: clockIn.id, clockOutEventId: clockOut?.id || null, open: !clockOut }),
     })
-    return route.fulfill(portalJson({ message: mode === 'open' ? 'Laufender Dienst wurde korrigiert und abgeschlossen.' : 'Arbeitszeit wurde aktualisiert.' }))
   })
-  await page.route('**/api/attendance?**', async (route) => {
-    const url = new URL(route.request().url())
-    const resource = url.searchParams.get('resource')
-    if (resource === 'history') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries }) })
-    if (resource === 'live') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [] }) })
-    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ phase: 'idle', events: [], schedules: [] }) })
-  })
-  await page.route('**/api/attendance', async (route) => {
+  await page.route('**/api/attendance**', async (route) => {
     const url = new URL(route.request().url())
     if (url.pathname !== '/api/attendance') return route.fallback()
     const resource = url.searchParams.get('resource')
@@ -153,5 +188,13 @@ test('manager can edit an already checked-in running session and close it with p
   await page.getByRole('button', { name: 'Änderung speichern', exact: true }).click()
 
   await expect(page.getByText(/Laufender Dienst wurde korrigiert und abgeschlossen/)).toBeVisible()
-  expect(portal.getLastEditBody()).toMatchObject({ pauseMinutes: 10, reason: 'Laufenden Dienst korrigiert' })
+  await expect(card.getByText('10 Min.', { exact: true })).toBeVisible()
+  await expect(card.getByText('0:50 Std.', { exact: true })).toBeVisible()
+  expect(portal.getLastEditBody()).toMatchObject({
+    clockInEventId: 'clock-in-1',
+    clockOutEventId: null,
+    pauseMinutes: 10,
+    reason: 'Laufenden Dienst korrigiert',
+  })
+  expect(portal.getLastEditBody().clockOutAt).toContain(`${portal.today}T08:00`)
 })
