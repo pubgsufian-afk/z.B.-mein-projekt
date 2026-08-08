@@ -3,10 +3,12 @@ import { readFile, writeFile } from 'node:fs/promises'
 
 const path = 'netlify/functions/timesheet-reports.mts'
 let source = await readFile(path, 'utf8')
-const placeholderPattern = /const placeholders = userIds\.map\(\(_, index\) => `\$\$\{index \+ \d+\}`\)\.join\(', '\)/
-const expectedInput = "const placeholders = userIds.map((_, index) => `$${index + 4}`).join(', ')"
+const placeholderPattern = /^\s*const placeholders = userIds\.map[^\n]*$/m
 const match = source.match(placeholderPattern)
 assert.ok(match, 'Stundenzettel-Platzhalterzeile wurde nicht gefunden.')
+
+const indent = match[0].match(/^\s*/)?.[0] || ''
+const expectedInput = `${indent}const placeholders = userIds.map((_, index) => \`$\${index + 4}\`).join(', ')`
 
 if (match[0] !== expectedInput) {
   source = source.replace(placeholderPattern, expectedInput)
