@@ -48,13 +48,13 @@ export default async function scheduleOidcTrigger(request: Request, context: Con
     return json({ message: 'Nicht autorisiert.' }, 401)
   }
 
-  const privateKeyB64 = String(Netlify.env.get('SCHEDULE_COMMAND_PRIVATE_KEY_B64') || '').trim()
-  if (!privateKeyB64) return json({ message: 'Dienstplan-Verbindung ist nicht konfiguriert.' }, 500)
+  const privateKeyDerB64 = String(Netlify.env.get('SCHEDULE_COMMAND_PRIVATE_KEY_DER_B64') || '').trim()
+  if (!privateKeyDerB64) return json({ message: 'Dienstplan-Verbindung ist nicht konfiguriert.' }, 500)
 
   let command: Record<string, unknown>
   try {
-    const privateKeyPem = Buffer.from(privateKeyB64, 'base64').toString('utf8')
-    command = decryptScheduleCommandEnvelopeRuntime(body.envelope, privateKeyPem)
+    const privateKeyDer = Buffer.from(privateKeyDerB64, 'base64')
+    command = decryptScheduleCommandEnvelopeRuntime(body.envelope, privateKeyDer)
   } catch {
     return json({ message: 'Verschlüsselter Dienstplan-Auftrag ist ungültig.' }, 400)
   }
