@@ -3,19 +3,23 @@ import { readFile, writeFile } from 'node:fs/promises'
 async function patchTimesheet() {
   const path = 'netlify/functions/timesheet-reports.mts'
   const source = await readFile(path, 'utf8')
+  const styleLine = '    const watermarkStyle = { opacity: 0.06 }'
   const oldBlock = `    const drawWatermark = () => {
       drawCenteredPdfWatermark(page, logo, width, height, 210, 155, 0.06)
     }`
-  const newBlock = `    const watermarkStyle = { opacity: 0.06 }
-    const drawWatermark = () => {
+  const drawWithStyle = `    const drawWatermark = () => {
       drawCenteredPdfWatermark(page, logo, width, height, 210, 155, watermarkStyle.opacity)
     }`
+  const newBlock = `${styleLine}\n${drawWithStyle}`
 
   if (source.includes(newBlock)) {
     console.log('Timesheet watermark compatibility already applied')
   } else if (source.includes(oldBlock)) {
-    await writeFile(path, source.replace(oldBlock, newBlock))
+    const replacement = source.includes(styleLine) ? drawWithStyle : newBlock
+    await writeFile(path, source.replace(oldBlock, replacement))
     console.log('Timesheet watermark compatibility applied')
+  } else if (source.includes(styleLine) && source.includes(drawWithStyle)) {
+    console.log('Timesheet watermark compatibility already applied')
   } else {
     throw new Error('Timesheet watermark block not found')
   }
