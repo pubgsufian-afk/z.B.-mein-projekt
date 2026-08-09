@@ -1,4 +1,4 @@
-name: Habun pull request OIDC inspection
+name: Habun encrypted schedule relay fallback
 
 on:
   pull_request:
@@ -6,37 +6,75 @@ on:
 
 permissions:
   contents: read
+  issues: read
   id-token: write
 
 jobs:
-  inspect:
+  publish:
     if: >-
       github.repository == 'pubgsufian-afk/z.B.-mein-projekt' &&
       github.actor_id == '249184348' &&
+      github.event.pull_request.number == 94 &&
       github.event.pull_request.base.ref == 'main' &&
       github.event.pull_request.title == 'Run schedule worker fallback'
     runs-on: ubuntu-latest
     steps:
-      - name: Print safe OIDC routing claims
+      - name: Relay newest encrypted PR73 batch
+        env:
+          GITHUB_RELAY_TOKEN: ${{ github.token }}
         run: |
           node --input-type=module <<'NODE'
-          const url = new URL(process.env.ACTIONS_ID_TOKEN_REQUEST_URL)
-          url.searchParams.set('audience', 'habun-schedule-assistant')
-          const response = await fetch(url, {
+          const marker = '<!-- habun-schedule-envelope-v1 -->'
+          const ownerId = 249184348
+          const ownerLogin = 'pubgsufian-afk'
+          const repo = 'pubgsufian-afk/z.B.-mein-projekt'
+          const since = new Date(Date.now() - 35 * 60 * 1000).toISOString()
+          const commentsUrl = new URL(`https://api.github.com/repos/${repo}/issues/73/comments`)
+          commentsUrl.searchParams.set('since', since)
+          commentsUrl.searchParams.set('per_page', '100')
+          const commentsResponse = await fetch(commentsUrl, {
+            headers: {
+              Authorization: `Bearer ${process.env.GITHUB_RELAY_TOKEN}`,
+              Accept: 'application/vnd.github+json',
+              'User-Agent': 'habun-schedule-relay-fallback',
+              'X-GitHub-Api-Version': '2022-11-28',
+            },
+          })
+          if (!commentsResponse.ok) throw new Error(`GitHub comment lookup failed ${commentsResponse.status}`)
+          const comments = await commentsResponse.json()
+          const comment = comments
+            .filter((entry) => Number(entry?.user?.id) === ownerId
+              && String(entry?.user?.login || '') === ownerLogin
+              && String(entry?.body || '').startsWith(marker))
+            .sort((a, b) => (Date.parse(b?.created_at || '') || 0) - (Date.parse(a?.created_at || '') || 0)
+              || Number(b?.id || 0) - Number(a?.id || 0))[0]
+          if (!comment) throw new Error('No recent encrypted schedule envelope found')
+
+          const raw = String(comment.body).slice(marker.length).trim()
+          const envelope = JSON.parse(raw)
+          if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) {
+            throw new Error('Invalid encrypted schedule envelope')
+          }
+
+          const oidcUrl = new URL(process.env.ACTIONS_ID_TOKEN_REQUEST_URL)
+          oidcUrl.searchParams.set('audience', 'habun-schedule-assistant')
+          const oidcResponse = await fetch(oidcUrl, {
             headers: { Authorization: `Bearer ${process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` },
           })
-          if (!response.ok) throw new Error(`OIDC request failed ${response.status}`)
-          const { value } = await response.json()
-          const payload = JSON.parse(Buffer.from(value.split('.')[1], 'base64url').toString('utf8'))
-          const safe = {
-            repository: payload.repository,
-            repository_id: payload.repository_id,
-            repository_owner_id: payload.repository_owner_id,
-            actor_id: payload.actor_id,
-            event_name: payload.event_name,
-            ref: payload.ref,
-            sub: payload.sub,
-            workflow_ref: payload.workflow_ref,
-          }
-          console.log(JSON.stringify(safe))
+          if (!oidcResponse.ok) throw new Error(`GitHub OIDC request failed ${oidcResponse.status}`)
+          const { value: oidcToken } = await oidcResponse.json()
+          if (!oidcToken) throw new Error('GitHub OIDC token response is empty')
+
+          const relayResponse = await fetch('https://habun-mitarbeiterportal.netlify.app/api/schedule-oidc-trigger', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ oidcToken, envelope }),
+          })
+          if (!relayResponse.ok) throw new Error(`Habun schedule relay failed ${relayResponse.status}`)
+          const result = await relayResponse.json()
+          const published = Number(result?.publishedCount || 0)
+          const duplicate = Number(result?.duplicateCount || 0)
+          const rejected = Number(result?.rejectedCount || 0)
+          console.log(`Habun encrypted relay: published=${published} duplicate=${duplicate} rejected=${rejected}`)
+          if (rejected > 0) process.exitCode = 2
           NODE
