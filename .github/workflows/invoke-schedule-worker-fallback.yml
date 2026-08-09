@@ -1,14 +1,15 @@
-name: Habun production deploy fallback
+name: Habun pull request OIDC inspection
 
 on:
   pull_request:
     types: [synchronize]
 
 permissions:
-  contents: write
+  contents: read
+  id-token: write
 
 jobs:
-  trigger-production:
+  inspect:
     if: >-
       github.repository == 'pubgsufian-afk/z.B.-mein-projekt' &&
       github.actor_id == '249184348' &&
@@ -16,19 +17,26 @@ jobs:
       github.event.pull_request.title == 'Run schedule worker fallback'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-      - name: Push one-time production deploy marker
+      - name: Print safe OIDC routing claims
         run: |
-          git config user.name 'habun-deploy-bot'
-          git config user.email 'actions@users.noreply.github.com'
-          printf '%s\n' '${{ github.event.pull_request.head.sha }}' > ops/netlify-production-trigger.txt
-          git add ops/netlify-production-trigger.txt
-          if git diff --cached --quiet; then
-            echo 'Production deploy marker already current'
-          else
-            git commit -m 'Trigger Netlify production deploy'
-            git push origin HEAD:main
-          fi
+          node --input-type=module <<'NODE'
+          const url = new URL(process.env.ACTIONS_ID_TOKEN_REQUEST_URL)
+          url.searchParams.set('audience', 'habun-schedule-assistant')
+          const response = await fetch(url, {
+            headers: { Authorization: `Bearer ${process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` },
+          })
+          if (!response.ok) throw new Error(`OIDC request failed ${response.status}`)
+          const { value } = await response.json()
+          const payload = JSON.parse(Buffer.from(value.split('.')[1], 'base64url').toString('utf8'))
+          const safe = {
+            repository: payload.repository,
+            repository_id: payload.repository_id,
+            repository_owner_id: payload.repository_owner_id,
+            actor_id: payload.actor_id,
+            event_name: payload.event_name,
+            ref: payload.ref,
+            sub: payload.sub,
+            workflow_ref: payload.workflow_ref,
+          }
+          console.log(JSON.stringify(safe))
+          NODE
