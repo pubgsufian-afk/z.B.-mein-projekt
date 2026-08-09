@@ -1,35 +1,14 @@
-name: Habun one-time production deploy
+name: Retired one-time production deploy helper
 
 on:
-  pull_request:
-    types: [opened, synchronize]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  deploy-marker:
-    if: >-
-      github.repository == 'pubgsufian-afk/z.B.-mein-projekt' &&
-      github.actor_id == '249184348' &&
-      github.event.pull_request.number == 96 &&
-      github.event.pull_request.base.ref == 'main' &&
-      github.event.pull_request.title == 'Trigger verified production deploy'
+  retired:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-      - name: Push verified production marker
-        run: |
-          git config user.name 'habun-deploy-bot'
-          git config user.email 'actions@users.noreply.github.com'
-          printf '%s\n' '${{ github.event.pull_request.head.sha }}' > ops/netlify-production-trigger.txt
-          git add ops/netlify-production-trigger.txt
-          if git diff --cached --quiet; then
-            echo 'Production marker already current'
-          else
-            git commit -m 'Trigger verified Netlify production deploy'
-            git push origin HEAD:main
-          fi
+      - run: echo 'Retired'
