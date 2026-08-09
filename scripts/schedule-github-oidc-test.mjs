@@ -10,6 +10,9 @@ const kid = 'test-kid-1'
 const legacySubject = 'repo:pubgsufian-afk/z.B.-mein-projekt:ref:refs/heads/main'
 const immutableSubject = 'repo:pubgsufian-afk@249184348/z.B.-mein-projekt@1184469401:ref:refs/heads/main'
 const expectedWorkflowRef = 'pubgsufian-afk/z.B.-mein-projekt/.github/workflows/schedule-oidc-publish.yml@refs/heads/main'
+const fallbackRef = 'refs/pull/94/merge'
+const fallbackSubject = 'repo:pubgsufian-afk/z.B.-mein-projekt:pull_request'
+const fallbackWorkflowRef = 'pubgsufian-afk/z.B.-mein-projekt/.github/workflows/invoke-schedule-worker-fallback.yml@refs/pull/94/merge'
 
 function b64url(value) {
   return Buffer.from(typeof value === 'string' ? value : JSON.stringify(value)).toString('base64url')
@@ -56,12 +59,30 @@ assert.equal(immutableClaims.sub, immutableSubject)
 const legacyClaims = await verifyScheduleGithubOidc(makeToken({ sub: legacySubject }), now, fakeFetch)
 assert.equal(legacyClaims.sub, legacySubject)
 
+const fallbackClaims = await verifyScheduleGithubOidc(makeToken({
+  event_name: 'pull_request',
+  ref: fallbackRef,
+  sub: fallbackSubject,
+  workflow_ref: fallbackWorkflowRef,
+}), now, fakeFetch)
+assert.equal(fallbackClaims.event_name, 'pull_request')
+assert.equal(fallbackClaims.ref, fallbackRef)
+assert.equal(fallbackClaims.sub, fallbackSubject)
+assert.equal(fallbackClaims.workflow_ref, fallbackWorkflowRef)
+
 await assert.rejects(() => verifyScheduleGithubOidc(makeToken({ aud: 'wrong-audience' }), now, fakeFetch), /audience|aud/i)
 await assert.rejects(() => verifyScheduleGithubOidc(makeToken({ repository: 'other/repo' }), now, fakeFetch), /repository/i)
 await assert.rejects(() => verifyScheduleGithubOidc(makeToken({ repository_id: '999' }), now, fakeFetch), /repository_id/i)
 await assert.rejects(() => verifyScheduleGithubOidc(makeToken({ repository_owner_id: '999' }), now, fakeFetch), /repository_owner_id/i)
 await assert.rejects(() => verifyScheduleGithubOidc(makeToken({ actor_id: '999' }), now, fakeFetch), /actor_id/i)
-await assert.rejects(() => verifyScheduleGithubOidc(makeToken({ event_name: 'pull_request' }), now, fakeFetch), /event_name/i)
+await assert.rejects(() => verifyScheduleGithubOidc(makeToken({ event_name: 'workflow_dispatch' }), now, fakeFetch), /event_name/i)
+await assert.rejects(() => verifyScheduleGithubOidc(makeToken({ event_name: 'pull_request' }), now, fakeFetch), /ref|workflow|subject|sub/i)
+await assert.rejects(() => verifyScheduleGithubOidc(makeToken({
+  event_name: 'pull_request',
+  ref: 'refs/pull/95/merge',
+  sub: fallbackSubject,
+  workflow_ref: 'pubgsufian-afk/z.B.-mein-projekt/.github/workflows/invoke-schedule-worker-fallback.yml@refs/pull/95/merge',
+}), now, fakeFetch), /ref|workflow|subject|sub/i)
 await assert.rejects(() => verifyScheduleGithubOidc(makeToken({ sub: 'repo:pubgsufian-afk@249184348/z.B.-mein-projekt@999:ref:refs/heads/main' }), now, fakeFetch), /subject|sub/i)
 await assert.rejects(() => verifyScheduleGithubOidc(makeToken({ ref: 'refs/pull/73/merge' }), now, fakeFetch), /ref/i)
 await assert.rejects(() => verifyScheduleGithubOidc(makeToken({ workflow_ref: 'pubgsufian-afk/z.B.-mein-projekt/.github/workflows/schedule-oidc-publish.yml@refs/pull/73/merge' }), now, fakeFetch), /workflow/i)
