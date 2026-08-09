@@ -1,0 +1,24 @@
+name: Habun schedule worker fallback
+
+on:
+  pull_request:
+    types: [opened]
+
+permissions:
+  contents: read
+
+jobs:
+  invoke:
+    if: >-
+      github.repository == 'pubgsufian-afk/z.B.-mein-projekt' &&
+      github.actor_id == '249184348' &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.title == 'Run schedule worker fallback'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Invoke existing production worker
+        run: |
+          curl --fail --silent --show-error --max-time 25 \
+            https://habun-mitarbeiterportal.netlify.app/.netlify/functions/schedule-command-worker \
+            -o /dev/null
+          echo 'Schedule worker invoked'
