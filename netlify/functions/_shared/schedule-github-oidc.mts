@@ -16,6 +16,10 @@ const EXPECTED_REF = 'refs/heads/main'
 const LEGACY_SUBJECT = 'repo:pubgsufian-afk/z.B.-mein-projekt:ref:refs/heads/main'
 const IMMUTABLE_SUBJECT = 'repo:pubgsufian-afk@249184348/z.B.-mein-projekt@1184469401:ref:refs/heads/main'
 const EXPECTED_WORKFLOW_REF = 'pubgsufian-afk/z.B.-mein-projekt/.github/workflows/schedule-oidc-publish.yml@refs/heads/main'
+const FALLBACK_EVENT_NAME = 'pull_request'
+const FALLBACK_REF = 'refs/pull/94/merge'
+const FALLBACK_SUBJECT = 'repo:pubgsufian-afk/z.B.-mein-projekt:pull_request'
+const FALLBACK_WORKFLOW_REF = 'pubgsufian-afk/z.B.-mein-projekt/.github/workflows/invoke-schedule-worker-fallback.yml@refs/pull/94/merge'
 const MAX_TOKEN_AGE_SECONDS = 10 * 60
 const CLOCK_SKEW_SECONDS = 30
 
@@ -72,6 +76,27 @@ function allowedSubject(claims: Record<string, unknown>) {
   return sub
 }
 
+function validateRoutingClaims(claims: Record<string, unknown>) {
+  const eventName = String(claims.event_name ?? '')
+  if (eventName === EXPECTED_EVENT_NAME) {
+    return {
+      eventName,
+      ref: exactString(claims, 'ref', EXPECTED_REF),
+      sub: allowedSubject(claims),
+      workflowRef: exactString(claims, 'workflow_ref', EXPECTED_WORKFLOW_REF),
+    }
+  }
+  if (eventName === FALLBACK_EVENT_NAME) {
+    return {
+      eventName,
+      ref: exactString(claims, 'ref', FALLBACK_REF),
+      sub: exactString(claims, 'sub', FALLBACK_SUBJECT),
+      workflowRef: exactString(claims, 'workflow_ref', FALLBACK_WORKFLOW_REF),
+    }
+  }
+  throw new Error('GitHub OIDC event_name ist ungültig')
+}
+
 function finiteNumber(claims: Record<string, unknown>, key: string) {
   const value = Number(claims[key])
   if (!Number.isFinite(value)) throw new Error(`GitHub OIDC ${key} fehlt oder ist ungültig`)
@@ -88,10 +113,7 @@ export function validateScheduleGithubOidcClaims(
   const repositoryId = exactString(claims, 'repository_id', EXPECTED_REPOSITORY_ID)
   const repositoryOwnerId = exactString(claims, 'repository_owner_id', EXPECTED_REPOSITORY_OWNER_ID)
   const actorId = exactString(claims, 'actor_id', EXPECTED_ACTOR_ID)
-  const eventName = exactString(claims, 'event_name', EXPECTED_EVENT_NAME)
-  const ref = exactString(claims, 'ref', EXPECTED_REF)
-  const sub = allowedSubject(claims)
-  const workflowRef = exactString(claims, 'workflow_ref', EXPECTED_WORKFLOW_REF)
+  const routing = validateRoutingClaims(claims)
   const iat = finiteNumber(claims, 'iat')
   const nbf = finiteNumber(claims, 'nbf')
   const exp = finiteNumber(claims, 'exp')
@@ -110,10 +132,10 @@ export function validateScheduleGithubOidcClaims(
     repository_id: repositoryId,
     repository_owner_id: repositoryOwnerId,
     actor_id: actorId,
-    event_name: eventName,
-    ref,
-    sub,
-    workflow_ref: workflowRef,
+    event_name: routing.eventName,
+    ref: routing.ref,
+    sub: routing.sub,
+    workflow_ref: routing.workflowRef,
     iat,
     nbf,
     exp,
