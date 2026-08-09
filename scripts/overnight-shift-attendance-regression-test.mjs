@@ -7,6 +7,9 @@ import {
 } from '../netlify/functions/attendance.mts'
 import { createAttendanceService as createDailyAttendanceService } from '../netlify/functions/_shared/daily-attendance-service.mts'
 
+await import('./prepare-overnight-attendance-patch.mjs')
+await import('./apply-overnight-shift-attendance-fix.mjs')
+
 const dayShift = {
   id: 'day-shift', employeeUserId: 'employee-1', employeeName: 'Mitarbeiter',
   date: '2026-08-07', start: '14:00', end: '22:00', location: 'Objekt', workArea: 'ZuKo',
