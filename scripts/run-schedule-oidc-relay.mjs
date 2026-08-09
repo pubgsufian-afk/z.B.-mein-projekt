@@ -1,5 +1,4 @@
 const OIDC_AUDIENCE = 'habun-schedule-assistant'
-const ENVELOPE_PATH = 'ops/schedule-command.envelope.json'
 const EXPECTED_REPOSITORY = 'pubgsufian-afk/z.B.-mein-projekt'
 const TRIGGER_URL = 'https://habun-mitarbeiterportal.netlify.app/api/schedule-oidc-trigger'
 
@@ -22,7 +21,7 @@ async function loadEnvelope() {
   if (repository !== EXPECTED_REPOSITORY) throw new Error('Ungültiges Dienstplan-Repository')
   const relayToken = requiredEnv('GITHUB_RELAY_TOKEN')
 
-  const response = await fetch(`https://api.github.com/repos/${repository}/contents/${ENVELOPE_PATH}?ref=${encodeURIComponent(ref)}`, {
+  const response = await fetch(`https://api.github.com/repos/${repository}/contents/ops/schedule-command.envelope.json?ref=${encodeURIComponent(ref)}`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${relayToken}`,
