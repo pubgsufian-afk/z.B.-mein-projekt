@@ -76,5 +76,7 @@ jobs:
           const duplicate = Number(result?.duplicateCount || 0)
           const rejected = Number(result?.rejectedCount || 0)
           console.log(`Habun encrypted relay: published=${published} duplicate=${duplicate} rejected=${rejected}`)
+          console.log(`Habun encrypted relay statuses: ${JSON.stringify(Array.isArray(result?.results) ? result.results : [])}`)
+          console.log(`Habun encrypted relay directory: ${JSON.stringify(result?.directoryDiagnostics || {})}`)
           if (rejected > 0) process.exitCode = 2
           NODE
