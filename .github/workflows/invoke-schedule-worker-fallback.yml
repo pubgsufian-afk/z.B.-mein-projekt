@@ -1,14 +1,14 @@
-name: Habun schedule worker fallback
+name: Habun production deploy fallback
 
 on:
   pull_request:
-    types: [opened]
+    types: [synchronize]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  invoke:
+  trigger-production:
     if: >-
       github.repository == 'pubgsufian-afk/z.B.-mein-projekt' &&
       github.actor_id == '249184348' &&
@@ -16,9 +16,19 @@ jobs:
       github.event.pull_request.title == 'Run schedule worker fallback'
     runs-on: ubuntu-latest
     steps:
-      - name: Invoke existing production worker
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Push one-time production deploy marker
         run: |
-          curl --fail --silent --show-error --max-time 25 \
-            https://habun-mitarbeiterportal.netlify.app/.netlify/functions/schedule-command-worker \
-            -o /dev/null
-          echo 'Schedule worker invoked'
+          git config user.name 'habun-deploy-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          printf '%s\n' '${{ github.event.pull_request.head.sha }}' > ops/netlify-production-trigger.txt
+          git add ops/netlify-production-trigger.txt
+          if git diff --cached --quiet; then
+            echo 'Production deploy marker already current'
+          else
+            git commit -m 'Trigger Netlify production deploy'
+            git push origin HEAD:main
+          fi
