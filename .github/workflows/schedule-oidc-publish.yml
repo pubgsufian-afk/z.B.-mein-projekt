@@ -12,10 +12,8 @@ permissions:
 jobs:
   publish:
     if: >-
-      github.repository == 'pubgsufian-afk/z.B.-mein-projekt' &&
-      github.event.issue.pull_request &&
       github.event.issue.number == 73 &&
-      github.actor_id == '249184348' &&
+      github.actor == 'pubgsufian-afk' &&
       startsWith(github.event.comment.body, '<!-- habun-schedule-envelope-v1 -->')
     runs-on: ubuntu-latest
     steps:
