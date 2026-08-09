@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
+await import('./apply-worksite-delete-feature.mjs')
+
 const [schedule, scheduleNeon, app, attendance] = await Promise.all([
   readFile('netlify/functions/schedule-v2.mts', 'utf8'),
   readFile('netlify/functions/schedule-v2-neon.mts', 'utf8'),
