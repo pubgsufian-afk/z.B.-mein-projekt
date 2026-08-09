@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
+await import('./apply-attendance-schedule-source-fix.mjs')
+
 const source = await readFile('netlify/functions/attendance.mts', 'utf8')
 const loadSchedules = source.match(/async function loadSchedules\(\): Promise<ScheduleEntry\[]> \{[\s\S]*?\n\}/)?.[0] || ''
 

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 
-async function replaceInFile(path, before, after, label) {
+async function replaceInFile(path, before, after, label, alreadyAppliedVariants = []) {
   let source = await readFile(path, 'utf8')
-  if (source.includes(after)) return
+  if (source.includes(after) || alreadyAppliedVariants.some((variant) => source.includes(variant))) return
   assert.ok(source.includes(before), `${label} wurde in ${path} nicht gefunden.`)
   source = source.replace(before, after)
   await writeFile(path, source)
@@ -112,6 +112,9 @@ await replaceInFile(
   `    async listEvents(userId: string) {\n      const entries = await repository.listEvents(userId)\n      const today = eventDateInBerlin(now())\n      return (Array.isArray(entries) ? entries : []).filter((entry) => String(entry.eventDate || '') === today)\n    },`,
   `    async listEvents(userId: string) {\n      const entries = [...(Array.isArray(await repository.listEvents(userId)) ? await repository.listEvents(userId) : [])]\n        .sort((left, right) => String(left.clientOccurredAt || '').localeCompare(String(right.clientOccurredAt || '')))\n      const today = eventDateInBerlin(now())\n      const todayEntries = entries.filter((entry) => String(entry.eventDate || '') === today)\n      let phase = 'idle'\n      let openStart = -1\n      for (let index = 0; index < entries.length; index += 1) {\n        const entry = entries[index]\n        if (String(entry.eventDate || '') >= today) break\n        if (entry.action === 'clock-in' && (phase === 'idle' || phase === 'completed')) { phase = 'working'; openStart = index }\n        else if (entry.action === 'break-start' && phase === 'working') phase = 'paused'\n        else if (entry.action === 'break-end' && phase === 'paused') phase = 'working'\n        else if (entry.action === 'clock-out' && phase === 'working') { phase = 'completed'; openStart = -1 }\n      }\n      if ((phase === 'working' || phase === 'paused') && openStart >= 0) {\n        const carried = entries.slice(openStart).filter((entry) => String(entry.eventDate || '') <= today)\n        return carried\n      }\n      return todayEntries\n    },`,
   'Nachtschicht-Fortsetzung in der Zeiterfassung',
+  [
+    `    async listEvents(userId: string) {\n      const rawEntries = await repository.listEvents(userId)\n      const entries = [...(Array.isArray(rawEntries) ? rawEntries : [])]\n        .sort((left, right) => String(left.clientOccurredAt || '').localeCompare(String(right.clientOccurredAt || '')))\n      const today = eventDateInBerlin(now())\n      const todayEntries = entries.filter((entry) => String(entry.eventDate || '') === today)\n      let phase = 'idle'\n      let openStart = -1\n      for (let index = 0; index < entries.length; index += 1) {\n        const entry = entries[index]\n        if (String(entry.eventDate || '') >= today) break\n        if (entry.action === 'clock-in' && (phase === 'idle' || phase === 'completed')) { phase = 'working'; openStart = index }\n        else if (entry.action === 'break-start' && phase === 'working') phase = 'paused'\n        else if (entry.action === 'break-end' && phase === 'paused') phase = 'working'\n        else if (entry.action === 'clock-out' && phase === 'working') { phase = 'completed'; openStart = -1 }\n      }\n      if ((phase === 'working' || phase === 'paused') && openStart >= 0) {\n        const carried = entries.slice(openStart).filter((entry) => String(entry.eventDate || '') <= today)\n        return carried\n      }\n      return todayEntries\n    },`,
+  ],
 )
 
 // Avoid reading the repository twice in the daily attendance wrapper.

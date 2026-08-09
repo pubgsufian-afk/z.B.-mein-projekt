@@ -13,10 +13,13 @@ import {
 } from './_shared/schedule-neon-repository.mts'
 import {
   defaultAssistantLocation,
+  findAssistantTimeDuplicate,
   resolveAssistantEmployee,
+  resolveAssistantWorksite,
   validateAssistantShiftInput,
   type AssistantDirectoryEmployee,
   type AssistantShiftInput,
+  type AssistantWorksite,
 } from './_shared/schedule-assistant-core.mts'
 import {
   combineScheduleAccessRows,
@@ -184,6 +187,20 @@ async function activePortalEmployees(requestedNames: string[] = []): Promise<Act
   return { employees, directoryDiagnostics }
 }
 
+async function activePortalWorksites(): Promise<AssistantWorksite[]> {
+  try {
+    const worksiteStore = getStore({ name: 'portal-schedule-v2', consistency: 'strong' })
+    const listed = await worksiteStore.list({ prefix: 'objects/' })
+    const rows = await Promise.all(
+      listed.blobs.map((blob) => worksiteStore.get(blob.key, { type: 'json' }) as Promise<AssistantWorksite | null>),
+    )
+    return rows.filter((row): row is AssistantWorksite => Boolean(row))
+  } catch (error) {
+    console.error('schedule-assistant worksites unavailable', error)
+    throw new Error('Gespeicherte Einsatzorte konnten nicht geladen werden.')
+  }
+}
+
 function publicResolution(name: string, employees: AssistantDirectoryEmployee[]) {
   const resolved = resolveAssistantEmployee(name, employees)
   if (resolved.status === 'matched' && resolved.employee) {
@@ -204,7 +221,13 @@ function publicResolution(name: string, employees: AssistantDirectoryEmployee[])
   return { inputName: name, status: 'not_found' }
 }
 
-async function publishOne(input: PublishInput, index: number, requestId: string, employees: AssistantDirectoryEmployee[]) {
+async function publishOne(
+  input: PublishInput,
+  index: number,
+  requestId: string,
+  employees: AssistantDirectoryEmployee[],
+  worksites: AssistantWorksite[],
+) {
   const validation = validateAssistantShiftInput(input)
   if (!validation.ok) {
     return { index, employeeName: text(input.employeeName), status: 'invalid', message: validation.message }
@@ -226,8 +249,29 @@ async function publishOne(input: PublishInput, index: number, requestId: string,
   const employee = resolved.employee
   if (!employee) return { index, employeeName: text(input.employeeName), status: 'not_found' }
 
+  const resolvedWorksite = resolveAssistantWorksite(input.location, worksites)
+  if (resolvedWorksite.status === 'not_found') {
+    return { index, employeeName: employee.fullName, status: 'location_not_found', location: text(input.location) }
+  }
+  if (resolvedWorksite.status === 'ambiguous') {
+    return {
+      index,
+      employeeName: employee.fullName,
+      status: 'location_ambiguous',
+      location: text(input.location),
+      candidates: resolvedWorksite.candidates.map((candidate) => text(candidate.name)),
+    }
+  }
+  if (resolvedWorksite.status === 'unconfigured') {
+    return { index, employeeName: employee.fullName, status: 'location_unconfigured', location: text(input.location) }
+  }
+
+  const worksite = resolvedWorksite.worksite
+  if (!worksite) {
+    return { index, employeeName: employee.fullName, status: 'location_not_found', location: text(input.location) }
+  }
+
   const now = new Date().toISOString()
-  const location = text(input.location) || defaultAssistantLocation(employee)
   const pauseMinutes = input.pauseMinutes == null || input.pauseMinutes === '' ? 0 : Math.round(Number(input.pauseMinutes))
   const candidate: ScheduleShift = {
     id: crypto.randomUUID(),
@@ -237,8 +281,8 @@ async function publishOne(input: PublishInput, index: number, requestId: string,
     start: text(input.start),
     end: text(input.end),
     pauseMinutes,
-    objectId: null,
-    location,
+    objectId: text(worksite.id),
+    location: text(worksite.name),
     workArea: text(input.workArea),
     note: text(input.note),
     status: 'published',
@@ -255,17 +299,17 @@ async function publishOne(input: PublishInput, index: number, requestId: string,
     sourceRef: `assistant:${requestId}:${index}`,
   }
 
-  const duplicate = await findExactScheduleDuplicate(candidate)
-  if (duplicate) {
+  const overlaps = await listScheduleOverlaps(candidate)
+  const timeDuplicate = findAssistantTimeDuplicate(candidate, overlaps)
+  if (timeDuplicate) {
     return {
       index,
       employeeName: employee.fullName,
       status: 'duplicate',
-      shiftId: duplicate.id,
+      shiftId: timeDuplicate.id,
     }
   }
 
-  const overlaps = await listScheduleOverlaps(candidate)
   try {
     const shift = await upsertScheduleShift(candidate)
     await writeScheduleAudit({
@@ -334,6 +378,21 @@ export default async function scheduleAssistant(request: Request, _context: Cont
     const { employees, directoryDiagnostics } = await activePortalEmployees(requestedNames)
     const action = text(body.action)
 
+    if (action === 'sync-directory') {
+      await writeScheduleAudit({
+        actorId: 'dienstplan-assistent',
+        actorType: 'chatgpt',
+        action: 'directory-synced',
+        details: { employeeCount: employees.length },
+      })
+      return json({
+        integration: 'Dienstplan-Assistent',
+        role: 'scheduler',
+        employeeCount: employees.length,
+        directoryDiagnostics,
+      })
+    }
+
     if (action === 'resolve-employees') {
       const names = Array.isArray(body.names) ? body.names.map(text).filter(Boolean).slice(0, MAX_BATCH) : []
       if (!names.length) return json({ message: 'Mindestens ein Mitarbeitername ist erforderlich.' }, 400)
@@ -348,6 +407,7 @@ export default async function scheduleAssistant(request: Request, _context: Cont
     if (action === 'publish-shifts') {
       const shifts = Array.isArray(body.shifts) ? body.shifts.slice(0, MAX_BATCH) : []
       if (!shifts.length) return json({ message: 'Mindestens ein Dienst ist erforderlich.' }, 400)
+      const worksites = await activePortalWorksites()
       const requestId = text(body.requestId) || crypto.randomUUID()
       const results = []
       for (let index = 0; index < shifts.length; index += 1) {
@@ -356,7 +416,7 @@ export default async function scheduleAssistant(request: Request, _context: Cont
           results.push({ index, status: 'invalid', message: 'Dienst ist ungültig.' })
           continue
         }
-        results.push(await publishOne(input as PublishInput, index, requestId, employees))
+        results.push(await publishOne(input as PublishInput, index, requestId, employees, worksites))
       }
       return json({
         integration: 'Dienstplan-Assistent',
