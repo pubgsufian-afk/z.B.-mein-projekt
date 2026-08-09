@@ -1,5 +1,5 @@
 const OIDC_AUDIENCE = 'habun-schedule-assistant'
-const EXPECTED_REPOSITORY = 'pubgsufian-afk/z.B.-mein-projekt'
+const ENVELOPE_MARKER = '<!-- habun-schedule-envelope-v1 -->'
 const TRIGGER_URL = 'https://habun-mitarbeiterportal.netlify.app/api/schedule-oidc-trigger'
 
 function requiredEnv(name) {
@@ -14,33 +14,18 @@ function count(value) {
   return Math.trunc(parsed)
 }
 
-async function loadEnvelope() {
-  const ref = requiredEnv('SCHEDULE_ENVELOPE_REF')
-  if (!/^[0-9a-f]{40}$/i.test(ref)) throw new Error('Ungültige Dienstplan-Envelope-Revision')
-  const repository = requiredEnv('GITHUB_REPOSITORY_NAME')
-  if (repository !== EXPECTED_REPOSITORY) throw new Error('Ungültiges Dienstplan-Repository')
-  const relayToken = requiredEnv('GITHUB_RELAY_TOKEN')
-
-  const response = await fetch(`https://api.github.com/repos/${repository}/contents/ops/schedule-command.envelope.json?ref=${encodeURIComponent(ref)}`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${relayToken}`,
-      Accept: 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-    signal: AbortSignal.timeout(10_000),
-  })
-  if (!response.ok) throw new Error(`GitHub Dienstplan-Envelope konnte nicht geladen werden (${response.status})`)
-  const payload = await response.json()
-  const encoded = String(payload?.content || '').replace(/\s+/g, '')
-  if (!encoded) throw new Error('GitHub Dienstplan-Envelope ist leer')
-  const envelope = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8'))
+function envelopeFromComment(value) {
+  const comment = String(value || '')
+  if (!comment.startsWith(ENVELOPE_MARKER)) throw new Error('Ungültiger Dienstplan-Envelope-Marker')
+  const raw = comment.slice(ENVELOPE_MARKER.length).trim()
+  const envelope = JSON.parse(raw)
   if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) {
-    throw new Error('GitHub Dienstplan-Envelope ist ungültig')
+    throw new Error('Ungültiger Dienstplan-Envelope')
   }
   return envelope
 }
 
+const envelope = envelopeFromComment(requiredEnv('SCHEDULE_ENVELOPE_COMMENT'))
 const requestUrl = new URL(requiredEnv('ACTIONS_ID_TOKEN_REQUEST_URL'))
 requestUrl.searchParams.set('audience', OIDC_AUDIENCE)
 const requestToken = requiredEnv('ACTIONS_ID_TOKEN_REQUEST_TOKEN')
@@ -58,7 +43,6 @@ const tokenPayload = await tokenResponse.json()
 const oidcToken = String(tokenPayload?.value || '').trim()
 if (!oidcToken) throw new Error('GitHub OIDC token response is empty')
 
-const envelope = await loadEnvelope()
 const relayResponse = await fetch(TRIGGER_URL, {
   method: 'POST',
   headers: {
