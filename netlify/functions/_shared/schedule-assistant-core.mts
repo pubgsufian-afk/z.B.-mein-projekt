@@ -17,6 +17,21 @@ export type AssistantShiftInput = {
   note?: unknown
 }
 
+export type AssistantWorksite = {
+  id?: unknown
+  name?: unknown
+  latitude?: unknown
+  longitude?: unknown
+  radiusMeters?: unknown
+}
+
+export type AssistantTimeShift = {
+  start?: unknown
+  end?: unknown
+}
+
+export const DEFAULT_ASSISTANT_WORKSITE_NAME = 'Abbott Laboratories GmbH'
+
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/
 
@@ -70,6 +85,53 @@ export function resolveAssistantEmployee(name: unknown, employees: AssistantDire
 
 export function defaultAssistantLocation(employee: Pick<AssistantDirectoryEmployee, 'location'>) {
   return text(employee.location) || 'Abbott'
+}
+
+function configuredAssistantWorksite(worksite: AssistantWorksite) {
+  const latitude = Number(worksite.latitude)
+  const longitude = Number(worksite.longitude)
+  const radiusMeters = Number(worksite.radiusMeters)
+  return Boolean(
+    text(worksite.id)
+      && text(worksite.name)
+      && worksite.latitude !== null
+      && worksite.latitude !== ''
+      && Number.isFinite(latitude)
+      && latitude >= -90
+      && latitude <= 90
+      && worksite.longitude !== null
+      && worksite.longitude !== ''
+      && Number.isFinite(longitude)
+      && longitude >= -180
+      && longitude <= 180
+      && worksite.radiusMeters !== null
+      && worksite.radiusMeters !== ''
+      && Number.isFinite(radiusMeters)
+      && radiusMeters >= 0
+      && radiusMeters <= 10000,
+  )
+}
+
+export function resolveAssistantWorksite(requestedName: unknown, worksites: AssistantWorksite[]) {
+  const effectiveName = text(requestedName) || DEFAULT_ASSISTANT_WORKSITE_NAME
+  const normalized = normalizeAssistantName(effectiveName)
+  const candidates = worksites.filter((worksite) => normalizeAssistantName(worksite.name) === normalized)
+  if (!candidates.length) {
+    return { status: 'not_found' as const, worksite: null, candidates: [] as AssistantWorksite[] }
+  }
+  if (candidates.length > 1) {
+    return { status: 'ambiguous' as const, worksite: null, candidates }
+  }
+  if (!configuredAssistantWorksite(candidates[0])) {
+    return { status: 'unconfigured' as const, worksite: null, candidates }
+  }
+  return { status: 'matched' as const, worksite: candidates[0], candidates }
+}
+
+export function findAssistantTimeDuplicate<T extends AssistantTimeShift>(candidate: AssistantTimeShift, shifts: T[]) {
+  const start = text(candidate.start)
+  const end = text(candidate.end)
+  return shifts.find((shift) => text(shift.start) === start && text(shift.end) === end) || null
 }
 
 export function validateAssistantShiftInput(input: AssistantShiftInput): { ok: true } | { ok: false; message: string } {
