@@ -7,6 +7,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  issues: write
 
 jobs:
   publish:
@@ -27,3 +28,6 @@ jobs:
       - run: node scripts/run-schedule-oidc-relay.mjs
         env:
           SCHEDULE_ENVELOPE_COMMENT: ${{ github.event.comment.body }}
+          GITHUB_COMMENT_ID: ${{ github.event.comment.id }}
+          GITHUB_REPOSITORY_NAME: ${{ github.repository }}
+          GITHUB_RELAY_TOKEN: ${{ github.token }}
