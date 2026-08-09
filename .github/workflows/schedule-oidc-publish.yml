@@ -6,14 +6,15 @@ on:
 
 permissions:
   contents: read
-  issues: write
   id-token: write
 
 jobs:
   publish:
     if: >-
+      github.repository == 'pubgsufian-afk/z.B.-mein-projekt' &&
+      github.event.issue.pull_request &&
       github.event.issue.number == 73 &&
-      github.actor == 'pubgsufian-afk' &&
+      github.actor_id == '249184348' &&
       startsWith(github.event.comment.body, '<!-- habun-schedule-envelope-v1 -->')
     runs-on: ubuntu-latest
     steps:
@@ -26,6 +27,3 @@ jobs:
       - run: node scripts/run-schedule-oidc-relay.mjs
         env:
           SCHEDULE_ENVELOPE_COMMENT: ${{ github.event.comment.body }}
-          GITHUB_RELAY_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY_NAME: ${{ github.repository }}
-          GITHUB_COMMENT_ID: ${{ github.event.comment.id }}
