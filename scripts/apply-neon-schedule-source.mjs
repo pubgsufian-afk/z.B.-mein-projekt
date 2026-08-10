@@ -26,4 +26,31 @@ if (!assist.includes('const shifts = await loadSharedSchedule(request)')) {
 }
 await writeFile(assistPath, assist)
 
-console.log('Neon schedule source routing applied')
+const repositoryPath = 'netlify/functions/_shared/schedule-neon-repository.mts'
+let repository = await readFile(repositoryPath, 'utf8')
+if (!repository.includes('export async function rebindInactiveScheduleShifts()')) {
+  const marker = `export async function upsertScheduleEmployee(employee: ScheduleEmployee) {\n  return syncScheduleEmployees([employee], false)\n}\n`
+  assert.ok(repository.includes(marker), 'Einfügepunkt für Dienstplan-Neuverknüpfung wurde nicht gefunden.')
+  const helper = `export async function rebindInactiveScheduleShifts() {\n  const database = getDatabase()\n  const result = await database.pool.query(\n    \`WITH unique_active AS (\n       SELECT lower(btrim(full_name)) AS name_key, MIN(user_id) AS user_id, MIN(full_name) AS full_name\n         FROM schedule_employees\n        WHERE status = 'active'\n        GROUP BY lower(btrim(full_name))\n       HAVING COUNT(*) = 1\n     )\n     UPDATE schedule_shifts s\n        SET employee_user_id = active.user_id,\n            employee_name = active.full_name,\n            updated_at = now(),\n            updated_by = 'identity-rebind'\n       FROM unique_active active\n      WHERE lower(btrim(s.employee_name)) = active.name_key\n        AND s.employee_user_id <> active.user_id\n        AND NOT EXISTS (\n          SELECT 1 FROM schedule_employees stale\n           WHERE stale.user_id = s.employee_user_id AND stale.status = 'active'\n        )\n     RETURNING s.id\`,\n  )\n  return result.rowCount || 0\n}\n\n${marker}`
+  repository = repository.replace(marker, helper)
+}
+if (!repository.includes('if (markMissingInactive && clean.length) await rebindInactiveScheduleShifts()')) {
+  const marker = `  return clean.length\n}\n\nexport async function rebindInactiveScheduleShifts()`
+  assert.ok(repository.includes(marker), 'Aufrufpunkt für Dienstplan-Neuverknüpfung wurde nicht gefunden.')
+  repository = repository.replace(
+    marker,
+    `  if (markMissingInactive && clean.length) await rebindInactiveScheduleShifts()\n  return clean.length\n}\n\nexport async function rebindInactiveScheduleShifts()`,
+  )
+}
+await writeFile(repositoryPath, repository)
+
+const neonSchedulePath = 'netlify/functions/schedule-v2-neon.mts'
+let neonSchedule = await readFile(neonSchedulePath, 'utf8')
+const conditionalSync = `    if (SCHEDULING.has(String(current.role))) await syncActiveEmployees()`
+if (neonSchedule.includes(conditionalSync)) {
+  neonSchedule = neonSchedule.replace(conditionalSync, `    await syncActiveEmployees()`)
+}
+assert.ok(neonSchedule.includes('    await syncActiveEmployees()'), 'Aktive Mitarbeiter werden beim Dienstplanaufruf nicht synchronisiert.')
+await writeFile(neonSchedulePath, neonSchedule)
+
+console.log('Neon schedule source routing and re-registration rebinding applied')
