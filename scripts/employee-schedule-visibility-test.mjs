@@ -12,6 +12,7 @@ assert.ok(scheduleSource.includes('publishedOnly: true'))
 assert.ok(appSource.includes('const visibleEntries = entries'))
 assert.ok(!appSource.includes('const employeeSessionUserId = session.userId || session.id'))
 assert.ok(browserSource.includes("role === 'employee'"))
-assert.ok(browserSource.includes("{ id: 'employee-anna'"))
+assert.ok(browserSource.includes("{ id: 'legacy-session-anna'"))
+assert.ok(browserSource.includes("entry.employeeUserId === 'employee-anna' && entry.status === 'published'"))
 
 console.log('Employee schedule visibility tests passed')
