@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const [index, app, styles, packageJson] = await Promise.all([
+const [index, app, styles, packageJson, registrations, timesheetPatch] = await Promise.all([
   readFile('public/index.html', 'utf8'),
   readFile('frontend/src/App.jsx', 'utf8'),
   readFile('frontend/src/styles.css', 'utf8'),
   readFile('package.json', 'utf8'),
+  readFile('netlify/functions/registrations.mts', 'utf8'),
+  readFile('scripts/apply-stundenzettel-feature.mjs', 'utf8'),
 ])
 
 assert.match(index, /assets\/habun-portal\.js/)
@@ -41,5 +43,21 @@ assert.match(styles, /safe-area-inset-top/)
 assert.match(styles, /safe-area-inset-bottom/)
 assert.match(packageJson, /"react"/)
 assert.match(packageJson, /"build:frontend"/)
+
+// Password recovery must stop on a real new-password screen instead of dropping the user into the portal.
+assert.match(app, /updateUser/)
+assert.match(app, /callback\?\.type === 'recovery'/)
+assert.match(app, /Neues Passwort/)
+assert.match(app, /Passwort wiederholen/)
+
+// Employees may use only the clock and their schedule; the timesheet stays a management tool.
+assert.match(app, /\{ key: 'timesheet', label: 'Stundenzettel', roles: \['owner', 'admin', 'manager'\] \}/)
+assert.doesNotMatch(app, /navigate\('timesheet'\)>Stundenzettel<\/button>/)
+assert.doesNotMatch(timesheetPatch, /label: 'Stundenzettel', roles: \['owner', 'admin', 'manager', 'employee'\]/)
+
+// Re-registration with the same email must not leave two selectable active employee rows.
+assert.match(registrations, /dedupeActiveEmployees/)
+assert.match(registrations, /normalizedEmail/)
+assert.match(registrations, /grantedAt/)
 
 console.log('Unified portal source tests passed')
