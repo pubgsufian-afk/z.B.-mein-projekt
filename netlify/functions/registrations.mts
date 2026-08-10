@@ -46,6 +46,98 @@ function json(data: unknown, status = 200) {
   });
 }
 
+function normalizedText(value: unknown) {
+  return String(value || '').trim().toLocaleLowerCase('de');
+}
+
+function normalizedEmail(employee: Record<string, unknown>) {
+  return normalizedText(employee.email || employee.mail || employee.emailAddress || employee.email_address);
+}
+
+function employeeTimestamp(employee: Record<string, unknown>, record?: AccessRecord) {
+  for (const value of [record?.grantedAt, employee.updatedAt, employee.updated_at, employee.createdAt, employee.created_at]) {
+    const timestamp = Date.parse(String(value || ''));
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+  return 0;
+}
+
+function preferredEmployee(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+  accessByUser: Map<string, AccessRecord>,
+) {
+  const leftId = String(left.userId || left.id || '');
+  const rightId = String(right.userId || right.id || '');
+  const leftRecord = accessByUser.get(leftId);
+  const rightRecord = accessByUser.get(rightId);
+  const leftActiveAccess = leftRecord?.status === 'active' ? 1 : 0;
+  const rightActiveAccess = rightRecord?.status === 'active' ? 1 : 0;
+  if (leftActiveAccess !== rightActiveAccess) return rightActiveAccess > leftActiveAccess ? right : left;
+  const leftTime = employeeTimestamp(left, leftRecord);
+  const rightTime = employeeTimestamp(right, rightRecord);
+  if (leftTime !== rightTime) return rightTime > leftTime ? right : left;
+  return right;
+}
+
+function dedupeActiveEmployees(
+  values: Record<string, unknown>[],
+  accessByUser: Map<string, AccessRecord>,
+) {
+  const byUserId = new Map<string, Record<string, unknown>>();
+  for (const employee of values) {
+    const userId = String(employee.userId || employee.id || '').trim();
+    if (!userId) continue;
+    const previous = byUserId.get(userId);
+    byUserId.set(userId, previous ? preferredEmployee(previous, employee, accessByUser) : employee);
+  }
+
+  const uniqueUsers = [...byUserId.values()];
+  const emailWinners = new Map<string, Record<string, unknown>>();
+  for (const employee of uniqueUsers) {
+    const email = normalizedEmail(employee);
+    if (!email) continue;
+    const previous = emailWinners.get(email);
+    emailWinners.set(email, previous ? preferredEmployee(previous, employee, accessByUser) : employee);
+  }
+
+  const afterEmail = uniqueUsers.filter((employee) => {
+    const email = normalizedEmail(employee);
+    return !email || emailWinners.get(email) === employee;
+  });
+
+  // If an old upstream row has no usable email, only collapse same-name rows when
+  // exactly one of them has an active portal-access record. This avoids hiding two
+  // genuinely different employees who happen to share a name.
+  const byName = new Map<string, Record<string, unknown>[]>();
+  for (const employee of afterEmail) {
+    const name = normalizedText(employee.fullName || employee.name);
+    if (!name) continue;
+    const group = byName.get(name) || [];
+    group.push(employee);
+    byName.set(name, group);
+  }
+  const staleIds = new Set<string>();
+  for (const group of byName.values()) {
+    if (group.length < 2) continue;
+    const activeAccess = group.filter((employee) => {
+      const userId = String(employee.userId || employee.id || '');
+      return accessByUser.get(userId)?.status === 'active';
+    });
+    if (activeAccess.length !== 1) continue;
+    const keepId = String(activeAccess[0].userId || activeAccess[0].id || '');
+    for (const employee of group) {
+      const userId = String(employee.userId || employee.id || '');
+      if (userId && userId !== keepId && accessByUser.get(userId)?.status !== 'active') staleIds.add(userId);
+    }
+  }
+
+  const employees = afterEmail.filter((employee) => !staleIds.has(String(employee.userId || employee.id || '')));
+  const activeIds = new Set(employees.map((employee) => String(employee.userId || employee.id || '')));
+  const duplicates = uniqueUsers.filter((employee) => !activeIds.has(String(employee.userId || employee.id || '')));
+  return { employees, duplicates };
+}
+
 async function enrichEmployeeRoles(
   upstream: Response,
   current: NonNullable<Awaited<ReturnType<typeof requirePortalRole>>['current']>,
@@ -64,7 +156,7 @@ async function enrichEmployeeRoles(
   );
 
   const newlyArchived: Record<string, unknown>[] = [];
-  const employees = data.employees.flatMap((value) => {
+  const activeEmployees = data.employees.flatMap((value) => {
     const employee = value && typeof value === 'object' ? value as Record<string, unknown> : {};
     const userId = String(employee.userId || employee.id || '');
     const record = accessByUser.get(userId);
@@ -86,9 +178,11 @@ async function enrichEmployeeRoles(
     return [enriched];
   });
 
+  const { employees, duplicates } = dedupeActiveEmployees(activeEmployees, accessByUser);
   const archived = [
     ...(Array.isArray(data.archived) ? data.archived : []),
     ...newlyArchived,
+    ...duplicates.map((employee) => ({ ...employee, status: 'inactive', duplicate: true })),
   ];
   return json({ ...data, employees, archived });
 }
