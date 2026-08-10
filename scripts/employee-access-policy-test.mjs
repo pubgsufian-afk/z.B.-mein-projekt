@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const [app, styles, logoStyles, main, sessionEndpoint, attendance, service, maintenance, schedule, legacyWork, companySettings, registrations, legacySettings, index] = await Promise.all([
+const [app, styles, logoStyles, main, sessionEndpoint, attendance, service, maintenance, schedule, neonSchedule, legacyWork, companySettings, registrations, legacySettings, index] = await Promise.all([
   readFile('frontend/src/App.jsx', 'utf8'),
   readFile('frontend/src/styles.css', 'utf8'),
   readFile('frontend/src/logo-visibility.css', 'utf8'),
@@ -11,6 +11,7 @@ const [app, styles, logoStyles, main, sessionEndpoint, attendance, service, main
   readFile('netlify/functions/_shared/attendance-service.mts', 'utf8'),
   readFile('netlify/functions/attendance-maintenance.mts', 'utf8'),
   readFile('netlify/functions/schedule-v2.mts', 'utf8'),
+  readFile('netlify/functions/schedule-v2-neon.mts', 'utf8'),
   readFile('netlify/functions/work.mts', 'utf8'),
   readFile('netlify/functions/company-settings.mts', 'utf8'),
   readFile('netlify/functions/registrations.mts', 'utf8'),
@@ -27,8 +28,8 @@ assert.doesNotMatch(app, /key: 'overview'[^\n]+employee/)
 assert.match(app, /employee-kiosk-shell/)
 assert.match(app, /employee-kiosk-nav/)
 assert.doesNotMatch(app, /navigate\('timesheet'\).*Stundenzettel/)
-assert.match(app, /const employeeSessionUserId = session\.userId \|\| session\.id/)
-assert.match(app, /String\(entry\.employeeUserId \|\| ''\) === String\(employeeSessionUserId \|\| ''\) && entry\.status === 'published'/)
+assert.match(app, /const visibleEntries = entries/)
+assert.doesNotMatch(app, /const employeeSessionUserId = session\.userId \|\| session\.id/)
 assert.match(app, /session\.role === 'employee' \? 'attendance' : session\.role === 'scheduler' \? 'schedule' : 'overview'/)
 assert.match(app, /employeeOnly/)
 assert.match(app, /!employeeOnly && <section className="panel">/)
@@ -54,6 +55,7 @@ assert.match(maintenance, /if \(!MANAGEMENT\.has\(current\.role\)\) return json\
 assert.match(schedule, /resource === 'entries'[\s\S]*?getEntries\(current, url\)/)
 assert.match(schedule, /entry\.employeeUserId === current\.userId && entry\.status === 'published'/)
 assert.match(schedule, /resource === 'entries'[\s\S]*?if \(!SCHEDULING\.has\(current\.role\)\) return json\(\{ message: 'Keine Berechtigung\.' \}, 403\)/)
+assert.match(neonSchedule, /employeeUserId:\s*current\.userId,\s*publishedOnly:\s*true/)
 assert.match(legacyWork, /currentAccess[\s\S]*?!MANAGEMENT_ROLES\.includes\(currentAccess\.role\)[\s\S]*?Keine Berechtigung/)
 assert.match(companySettings, /if \(!\['owner', 'admin'\]\.includes\(current\.role\)\) return json\(\{ message: 'Keine Berechtigung\.' \}, 403\)/)
 assert.match(registrations, /requirePortalRole\(\['owner', 'admin', 'manager'\]\)/)
