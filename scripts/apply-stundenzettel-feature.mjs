@@ -244,10 +244,11 @@ mark('frontend/src/App.jsx', await replaceInFile(
   'Passwort-Reset Callback',
 ))
 
-mark('frontend/src/App.jsx', await replaceInFile(
+mark('frontend/src/App.jsx', await replaceRegexInFile(
   'frontend/src/App.jsx',
-  "  async function signOut() { await logout(); setIdentityUser(null); setSession(null) }\n  if (loading) return <div className=\"loading-screen\"><Brand /><span>Portal wird sicher geladen …</span></div>\n  if (!identityUser || !session) return <AuthScreen notice={notice} setNotice={setNotice} />",
+  /  async function signOut\(\) \{ await logout\(\); setIdentityUser\(null\); setSession\(null\) \}\n  if \(loading\) return <div className="loading-screen"><Brand \/><span>Portal wird sicher geladen …<\/span><\/div>\n  if \(!identityUser \|\| !session\) return <AuthScreen notice=\{notice\} setNotice=\{setNotice\} \/>/,
   "  async function signOut() { await logout(); setIdentityUser(null); setSession(null) }\n  async function finishPasswordRecovery() {\n    await logout()\n    setRecovering(false)\n    setIdentityUser(null)\n    setSession(null)\n    setNotice({ tone: 'success', text: 'Das neue Passwort wurde gespeichert. Du kannst dich jetzt damit anmelden.' })\n  }\n  if (loading) return <div className=\"loading-screen\"><Brand /><span>Portal wird sicher geladen …</span></div>\n  if (recovering) return <PasswordRecoveryScreen notice={notice} setNotice={setNotice} onComplete={finishPasswordRecovery} />\n  if (!identityUser || !session) return <AuthScreen notice={notice} setNotice={setNotice} />",
+  'if (recovering) return <PasswordRecoveryScreen',
   'Passwort-Reset Ansicht',
 ))
 
