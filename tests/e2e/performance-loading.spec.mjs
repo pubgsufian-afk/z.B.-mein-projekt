@@ -59,6 +59,24 @@ async function loginOwner(page, setupRoutes) {
   await expect(page.locator('.topbar h1')).toHaveText('Übersicht')
 }
 
+test('Übersicht requests only the current day schedule range', async ({ page }) => {
+  const overviewRanges = []
+
+  await loginOwner(page, async () => {
+    await page.route('**/api/registrations', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ requests: [], employees: [], archived: [] }) }))
+    await page.route('**/api/attendance**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ phase: 'idle', events: [], entries: [] }) }))
+    await page.route('**/api/schedule-v2**', (route) => {
+      const url = new URL(route.request().url())
+      if (url.searchParams.get('resource') === 'entries') overviewRanges.push({ from: url.searchParams.get('from'), to: url.searchParams.get('to') })
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [], objects: [] }) })
+    })
+  })
+
+  await expect.poll(() => overviewRanges.length).toBeGreaterThanOrEqual(1)
+  expect(overviewRanges[0].from).toBeTruthy()
+  expect(overviewRanges[0].from).toBe(overviewRanges[0].to)
+})
+
 test('Mitarbeiter controls reuse the React directory instead of adding another GET', async ({ page }) => {
   let registrationGets = 0
 
@@ -147,4 +165,32 @@ test('Dienstplan entries render while editor directories are still loading', asy
   await expect(page.getByText('Adel Abdal').first()).toBeVisible({ timeout: 1500 })
   releaseDirectories()
   await expect(page.getByText('Abbott').first()).toBeVisible()
+})
+
+test('Einsatzorte show cached stable data while a fresh refresh is delayed', async ({ page }) => {
+  let objectGets = 0
+  let releaseSecondObjectRead
+  const secondReadGate = new Promise((resolve) => { releaseSecondObjectRead = resolve })
+
+  await loginOwner(page, async () => {
+    await page.route('**/api/registrations', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ requests: [], employees: [], archived: [] }) }))
+    await page.route('**/api/attendance**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ phase: 'idle', events: [], entries: [] }) }))
+    await page.route('**/api/schedule-v2**', async (route) => {
+      const url = new URL(route.request().url())
+      if (url.searchParams.get('resource') === 'objects') {
+        objectGets += 1
+        if (objectGets >= 2) await secondReadGate
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ objects: [{ id: 'site-abbott', name: 'Abbott', address: 'Teststraße 1', latitude: 52.1, longitude: 9.7, radiusMeters: 500 }] }) })
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [] }) })
+    })
+  })
+
+  await navigate(page, 'Einsatzorte')
+  await expect(page.getByText('Abbott').first()).toBeVisible()
+  await navigate(page, 'Übersicht')
+  await navigate(page, 'Einsatzorte')
+  await expect(page.getByText('Abbott').first()).toBeVisible({ timeout: 500 })
+  releaseSecondObjectRead()
+  await expect.poll(() => objectGets).toBeGreaterThanOrEqual(2)
 })
