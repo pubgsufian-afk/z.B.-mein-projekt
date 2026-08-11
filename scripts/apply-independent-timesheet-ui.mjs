@@ -18,8 +18,10 @@ app = app.replace(attendanceImport, `${attendanceImport}import TimesheetPage fro
 
 const timesheetNav = "  { key: 'timesheet', label: 'Stundenzettel', roles: ['owner', 'admin', 'manager'] },"
 const stampNav = "  { key: 'stamp-log', label: 'Stempelprotokoll', roles: ['owner', 'admin', 'manager'] },"
+const reportsNav = "  { key: 'reports', label: 'Berichte', roles: ['owner', 'admin', 'manager'] },"
 assert.ok(app.includes(timesheetNav), 'Stundenzettel-Navigation fehlt.')
 if (!app.includes(stampNav)) app = app.replace(timesheetNav, `${timesheetNav}\n${stampNav}`)
+app = app.replace(`${reportsNav}\n`, '')
 
 const timesheetRoute = ": page === 'timesheet' ? <TimesheetPage session={session} />"
 const stampRoute = ": page === 'stamp-log' ? <AttendanceTimesheetPage session={session} />"
