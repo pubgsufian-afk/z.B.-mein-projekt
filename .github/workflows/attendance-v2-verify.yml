@@ -3,7 +3,6 @@ name: Unified portal verification
 on:
   push:
     branches:
-      - main
       - work/attendance-v2-complete
       - fix/unified-portal-mobile-settings
   pull_request:
@@ -15,26 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  source-snapshot:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: 12f58e679ca8293270c232edd582dec1ef05654c
-      - name: Pack exact merged source
-        run: tar --exclude=.git -czf /tmp/habun-netlify-source.tar.gz .
-      - name: Upload exact merged source
-        uses: actions/upload-artifact@v4
-        with:
-          name: netlify-source-snapshot
-          path: /tmp/habun-netlify-source.tar.gz
-          if-no-files-found: error
-          retention-days: 1
-
   verify:
-    if: github.event_name != 'push' || github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
