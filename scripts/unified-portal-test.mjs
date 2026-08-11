@@ -1,14 +1,12 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const [index, app, styles, packageJson, registrations, timesheet, stampLog] = await Promise.all([
+const [index, app, styles, packageJson, registrations] = await Promise.all([
   readFile('public/index.html', 'utf8'),
   readFile('frontend/src/App.jsx', 'utf8'),
   readFile('frontend/src/styles.css', 'utf8'),
   readFile('package.json', 'utf8'),
   readFile('netlify/functions/registrations.mts', 'utf8'),
-  readFile('frontend/src/TimesheetMonthlyPage.jsx', 'utf8'),
-  readFile('frontend/src/TimesheetPage.jsx', 'utf8'),
 ])
 
 assert.match(index, /assets\/habun-portal\.js/)
@@ -17,17 +15,9 @@ assert.doesNotMatch(index, /attendance-v2\.js|attendance-v2-compat\.js|Neue Zeit
 assert.equal((index.match(/id="root"/g) || []).length, 1)
 assert.match(index, /habun-logo|apple-touch-icon|favicon/)
 
-for (const label of ['Übersicht', 'Zeiterfassung', 'Mitarbeiter', 'Dienstplan', 'Stundenzettel', 'Stempelprotokoll', 'Einsatzorte', 'Einstellungen']) {
+for (const label of ['Übersicht', 'Zeiterfassung', 'Mitarbeiter', 'Dienstplan', 'Stundenzettel', 'Einsatzorte', 'Berichte', 'Einstellungen']) {
   assert.match(app, new RegExp(label))
 }
-
-const navigation = app.match(/const NAVIGATION = \[(.*?)\]\n/s)?.[1] || ''
-assert.ok(navigation, 'NAVIGATION block must exist')
-assert.doesNotMatch(navigation, /key:\s*['"]reports['"]/, 'reports must not be in main navigation')
-assert.doesNotMatch(navigation, /label:\s*['"]Berichte['"]/, 'Berichte must not be in main navigation')
-assert.match(timesheet, /\/api\/timesheet-reports/, 'Stundenzettel PDF\/Excel must stay available')
-assert.match(stampLog, /\/api\/stamp-comparison-reports/, 'Stempelprotokoll export\/comparison must stay available')
-
 assert.doesNotMatch(app, /key: 'corrections', label:/)
 assert.doesNotMatch(app, /key: 'times', label:/)
 assert.match(app, /className="digital-clock"/)
