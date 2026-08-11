@@ -28,7 +28,7 @@ if (!app.includes(stampRoute)) app = app.replace(timesheetRoute, `${timesheetRou
 
 await writeFile(appPath, app)
 
-// The real Stundenzettel uses the standard timesheet report endpoint.
+// The real Stundenzettel uses the standard report endpoint.
 const monthlyPagePath = 'frontend/src/TimesheetMonthlyPage.jsx'
 let monthlyPage = await readFile(monthlyPagePath, 'utf8')
 if (monthlyPage.includes("'/api/timesheet-monthly-reports'")) {
@@ -36,6 +36,14 @@ if (monthlyPage.includes("'/api/timesheet-monthly-reports'")) {
   await writeFile(monthlyPagePath, monthlyPage)
 }
 assert.ok(monthlyPage.includes("'/api/timesheet-reports'"), 'Unabhängiger Stundenzettel-Export fehlt.')
+
+const cleanReportPath = 'netlify/functions/timesheet-monthly-reports.mts'
+let cleanReport = await readFile(cleanReportPath, 'utf8')
+if (cleanReport.includes("path: '/api/timesheet-monthly-reports'")) {
+  cleanReport = cleanReport.replace("path: '/api/timesheet-monthly-reports'", "path: '/api/timesheet-reports'")
+  await writeFile(cleanReportPath, cleanReport)
+}
+assert.ok(cleanReport.includes("path: '/api/timesheet-reports'"), 'Standard-Stundenzettel-Reportpfad fehlt.')
 
 // The former mixed Stundenzettel is now only the separate stamp log/comparison tool.
 const stampPagePath = 'frontend/src/TimesheetPage.jsx'
