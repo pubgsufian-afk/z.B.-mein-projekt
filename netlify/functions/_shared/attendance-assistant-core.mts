@@ -32,7 +32,6 @@ export function detectAttendanceDuplicates(
       text(event.action),
       text(event.clientOccurredAt),
       text(event.eventDate),
-      text(event.scheduleId),
     ].join('|')
     const ids = eventGroups.get(key) || []
     ids.push(text(event.id))
