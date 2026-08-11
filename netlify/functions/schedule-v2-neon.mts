@@ -2,20 +2,19 @@ import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { verifyRequestOrigin } from '@netlify/identity'
 import { currentPortalActor } from './_shared/portal-role.mts'
+import { ensureLegacyScheduleMigrated as ensureSharedLegacyScheduleMigrated } from './_shared/schedule-legacy-bootstrap.mts'
+import { classifyAssistantDuplicate } from './_shared/schedule-assistant-core.mts'
 import {
   deleteScheduleShift,
   findExactScheduleDuplicate,
   findScheduleShift,
-  hasScheduleMigration,
   listActiveScheduleEmployees,
   listScheduleOverlaps,
   listScheduleShifts,
   listScheduleVersions,
-  markScheduleMigration,
   publishScheduleWeek,
   syncScheduleEmployees,
   upsertScheduleShift,
-  upsertScheduleVersion,
   writeScheduleAudit,
   type ScheduleEmployee,
   type ScheduleShift,
@@ -43,7 +42,6 @@ type AccessRecord = {
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/
 const SCHEDULING = new Set(['owner', 'admin', 'manager', 'scheduler'])
-const LEGACY_MIGRATION_KEY = 'portal-schedule-v2-blobs-v1'
 
 function json(data: unknown, status = 200) {
   return Response.json(data, {
@@ -156,68 +154,6 @@ async function syncActiveEmployees() {
   return employees
 }
 
-async function ensureLegacyScheduleMigrated() {
-  if (await hasScheduleMigration(LEGACY_MIGRATION_KEY)) return
-  const legacyShifts = await readBlobMany<Record<string, unknown>>('shifts/')
-  let migrated = 0
-  for (const row of legacyShifts) {
-    const required = ['id', 'employeeUserId', 'employeeName', 'date', 'start', 'end', 'location', 'workArea']
-    if (required.some((field) => !String(row[field] || '').trim())) continue
-    const now = new Date().toISOString()
-    const shift: ScheduleShift = {
-      id: String(row.id),
-      employeeUserId: String(row.employeeUserId),
-      employeeName: String(row.employeeName),
-      date: String(row.date),
-      start: String(row.start),
-      end: String(row.end),
-      pauseMinutes: Math.max(0, Math.round(Number(row.pauseMinutes || 0))),
-      objectId: String(row.objectId || '').trim() || null,
-      location: String(row.location),
-      workArea: String(row.workArea),
-      note: String(row.note || ''),
-      status: row.status === 'published' ? 'published' : 'draft',
-      version: Number(row.version || 0),
-      templateId: String(row.templateId || '').trim() || null,
-      repeatGroupId: String(row.repeatGroupId || '').trim() || null,
-      createdAt: String(row.createdAt || now),
-      createdBy: String(row.createdBy || 'legacy'),
-      updatedAt: String(row.updatedAt || row.createdAt || now),
-      updatedBy: String(row.updatedBy || row.createdBy || 'legacy'),
-      publishedAt: row.publishedAt ? String(row.publishedAt) : null,
-      publishedBy: row.publishedBy ? String(row.publishedBy) : null,
-      source: 'legacy-blob',
-      sourceRef: `blob:shifts/${String(row.id)}`,
-    }
-    try {
-      await upsertScheduleShift(shift)
-      migrated += 1
-    } catch (error) {
-      const code = String((error as { code?: unknown })?.code || '')
-      if (code !== '23505') throw error
-    }
-  }
-
-  const legacyVersions = await readBlobMany<Record<string, unknown>>('versions/')
-  for (const row of legacyVersions) {
-    if (!ISO_DATE.test(String(row.week || '')) || !Number(row.version)) continue
-    await upsertScheduleVersion({
-      week: String(row.week),
-      version: Number(row.version),
-      publishedAt: String(row.publishedAt || new Date().toISOString()),
-      publishedBy: String(row.publishedBy || 'legacy'),
-      shiftIds: Array.isArray(row.shiftIds) ? row.shiftIds.map(String) : [],
-    })
-  }
-  await markScheduleMigration(LEGACY_MIGRATION_KEY, { migratedShifts: migrated, legacyShiftCount: legacyShifts.length })
-  await writeScheduleAudit({
-    actorId: 'migration',
-    actorType: 'migration',
-    action: 'legacy-blob-import-complete',
-    details: { migratedShifts: migrated, legacyShiftCount: legacyShifts.length },
-  })
-}
-
 async function getEntries(current: NonNullable<Awaited<ReturnType<typeof currentPortalActor>>>, url: URL) {
   const from = url.searchParams.get('from') || undefined
   const to = url.searchParams.get('to') || undefined
@@ -230,10 +166,32 @@ async function getEntries(current: NonNullable<Awaited<ReturnType<typeof current
 async function saveShift(current: NonNullable<Awaited<ReturnType<typeof currentPortalActor>>>, body: Record<string, unknown>) {
   const existing = body.id ? await findScheduleShift(String(body.id)) : null
   const candidate = makeShift(body, current.userId, existing || undefined)
-  if (await findExactScheduleDuplicate(candidate, candidate.id)) {
-    return json({ message: 'Dieser Dienst ist bereits exakt vorhanden.', code: 'EXACT_DUPLICATE' }, 409)
+  const activeEmployees = await listActiveScheduleEmployees()
+  const dateShifts = (await listScheduleShifts({ from: candidate.date, to: candidate.date }))
+    .filter((entry) => entry.id !== candidate.id)
+  const duplicate = classifyAssistantDuplicate(candidate, dateShifts, activeEmployees)
+
+  if (duplicate.ambiguous.length) {
+    return json({
+      message: 'Die Mitarbeiterzuordnung ist mehrdeutig. Der Dienst wurde nicht gespeichert.',
+      code: 'AMBIGUOUS_EMPLOYEE',
+      conflicts: duplicate.ambiguous.map((entry) => entry.id),
+    }, 409)
   }
-  const overlaps = await listScheduleOverlaps(candidate, candidate.id)
+  if (duplicate.exact) {
+    return json({ message: 'Dieser Dienst ist bereits exakt vorhanden.', code: 'EXACT_DUPLICATE', shiftId: duplicate.exact.id }, 409)
+  }
+  if (duplicate.time) {
+    return json({
+      message: 'Für diesen Mitarbeiter ist zur gleichen Zeit bereits ein Dienst vorhanden.',
+      code: 'TIME_DUPLICATE',
+      shiftId: duplicate.time.id,
+    }, 409)
+  }
+
+  const overlaps = duplicate.overlaps.length
+    ? duplicate.overlaps
+    : await listScheduleOverlaps(candidate, candidate.id)
   try {
     const shift = await upsertScheduleShift(candidate)
     await writeScheduleAudit({
@@ -249,7 +207,9 @@ async function saveShift(current: NonNullable<Awaited<ReturnType<typeof currentP
     }, existing ? 200 : 201)
   } catch (error) {
     if (String((error as { code?: unknown })?.code || '') === '23505') {
-      return json({ message: 'Dieser Dienst ist bereits exakt vorhanden.', code: 'EXACT_DUPLICATE' }, 409)
+      if (await findExactScheduleDuplicate(candidate, candidate.id)) {
+        return json({ message: 'Dieser Dienst ist bereits exakt vorhanden.', code: 'EXACT_DUPLICATE' }, 409)
+      }
     }
     throw error
   }
@@ -341,7 +301,7 @@ export default async function scheduleV2Neon(request: Request, _context: Context
   if (current.role === 'pending') return json({ message: 'Das Konto ist noch nicht freigeschaltet.' }, 403)
 
   try {
-    await ensureLegacyScheduleMigrated()
+    await ensureSharedLegacyScheduleMigrated()
     if (SCHEDULING.has(String(current.role))) await syncActiveEmployees()
   } catch (error) {
     console.error('Habun schedule database bootstrap', error)
