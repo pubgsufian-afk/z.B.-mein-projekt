@@ -21,6 +21,7 @@ export type ScheduleWorkerCommand = {
   status?: 'draft' | 'published'
   shiftId?: string
   changes?: Record<string, unknown>
+  responseKey?: string
 }
 
 type ParseResult =
@@ -41,6 +42,16 @@ const ACTIONS = new Set<ScheduleWorkerAction>([
 
 function text(value: unknown) {
   return String(value ?? '').trim()
+}
+
+function validResponseKey(value: unknown) {
+  const encoded = text(value)
+  if (!encoded) return true
+  try {
+    return Buffer.from(encoded, 'base64').length === 32
+  } catch {
+    return false
+  }
 }
 
 export function parseScheduleCommand(raw: unknown, now = new Date()): ParseResult {
@@ -96,6 +107,8 @@ export function parseScheduleCommand(raw: unknown, now = new Date()): ParseResul
     }
   }
 
+  if (!validResponseKey(parsed.responseKey)) return { ok: false, message: 'Antwortschlüssel ist ungültig.' }
+
   const requestedStatus = text(parsed.status)
   if (requestedStatus && !['draft', 'published'].includes(requestedStatus)) {
     return { ok: false, message: 'Dienstplanstatus ist ungültig.' }
@@ -120,9 +133,8 @@ export function parseScheduleCommand(raw: unknown, now = new Date()): ParseResul
   if (action === 'get-shift' || action === 'update-shift' || action === 'delete-shift') {
     command.shiftId = text(parsed.shiftId)
   }
-  if (action === 'update-shift') {
-    command.changes = { ...(parsed.changes as Record<string, unknown>) }
-  }
+  if (action === 'update-shift') command.changes = { ...(parsed.changes as Record<string, unknown>) }
+  if (text(parsed.responseKey)) command.responseKey = text(parsed.responseKey)
 
   return { ok: true, command }
 }
