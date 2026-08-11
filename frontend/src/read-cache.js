@@ -20,6 +20,18 @@ export function primeCachedJson(key, value, ttlMs = 15000) {
   return value
 }
 
+export async function dedupeInflightJson(key, loader) {
+  const cacheKey = `inflight:${String(key)}`
+  if (inflight.has(cacheKey)) return inflight.get(cacheKey)
+
+  const request = Promise.resolve()
+    .then(loader)
+    .finally(() => inflight.delete(cacheKey))
+
+  inflight.set(cacheKey, request)
+  return request
+}
+
 export async function refreshCachedJson(key, loader, { ttlMs = 15000 } = {}) {
   const cacheKey = String(key)
   if (inflight.has(cacheKey)) return inflight.get(cacheKey)
