@@ -122,8 +122,8 @@ async function loginAndOpenTimes(page, role, initialPauseAdjustment = null, mode
   await expect(page.getByRole('heading', { name: 'Übersicht', exact: true })).toBeVisible()
   const menu = page.getByRole('button', { name: 'Menü öffnen' })
   if (await menu.isVisible().catch(() => false)) await menu.click()
-  await page.getByRole('button', { name: 'Stundenzettel', exact: true }).click()
-  await expect(page.locator('.topbar h1')).toHaveText('Stundenzettel')
+  await page.getByRole('button', { name: 'Stempelprotokoll', exact: true }).click()
+  await expect(page.locator('.topbar h1')).toHaveText('Stempelprotokoll')
   return portal
 }
 
