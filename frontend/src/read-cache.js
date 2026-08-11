@@ -24,8 +24,7 @@ export async function dedupeInflightJson(key, loader) {
   const cacheKey = `inflight:${String(key)}`
   if (inflight.has(cacheKey)) return inflight.get(cacheKey)
 
-  const request = Promise.resolve()
-    .then(loader)
+  const request = (async () => loader())()
     .finally(() => inflight.delete(cacheKey))
 
   inflight.set(cacheKey, request)
