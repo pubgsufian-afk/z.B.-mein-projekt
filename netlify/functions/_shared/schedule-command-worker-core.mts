@@ -6,6 +6,10 @@ export type ScheduleWorkerAction =
   | 'find-duplicates'
   | 'update-shift'
   | 'delete-shift'
+  | 'list-attendance'
+  | 'find-attendance-duplicates'
+  | 'update-attendance-session'
+  | 'delete-attendance-events'
 
 export type ScheduleWorkerCommand = {
   version: 1
@@ -22,6 +26,13 @@ export type ScheduleWorkerCommand = {
   shiftId?: string
   changes?: Record<string, unknown>
   responseKey?: string
+  clockInEventId?: string
+  clockOutEventId?: string
+  eventIds?: string[]
+  clockInAt?: string
+  clockOutAt?: string
+  pauseMinutes?: number
+  reason?: string
 }
 
 type ParseResult =
@@ -38,6 +49,10 @@ const ACTIONS = new Set<ScheduleWorkerAction>([
   'find-duplicates',
   'update-shift',
   'delete-shift',
+  'list-attendance',
+  'find-attendance-duplicates',
+  'update-attendance-session',
+  'delete-attendance-events',
 ])
 
 function text(value: unknown) {
@@ -96,6 +111,40 @@ export function parseScheduleCommand(raw: unknown, now = new Date()): ParseResul
     }
   }
 
+  if (action === 'list-attendance' || action === 'find-attendance-duplicates') {
+    const from = text(parsed.from)
+    const to = text(parsed.to)
+    const fromMs = Date.parse(`${from}T00:00:00Z`)
+    const toMs = Date.parse(`${to}T00:00:00Z`)
+    const inclusiveDays = Number.isFinite(fromMs) && Number.isFinite(toMs)
+      ? Math.floor((toMs - fromMs) / 86400000) + 1
+      : 0
+    if (!ISO_DATE.test(from) || !ISO_DATE.test(to) || to < from || inclusiveDays < 1 || inclusiveDays > 62) {
+      return { ok: false, message: 'Zeiterfassungs-Zeitraum ist ungültig.' }
+    }
+  }
+
+  if (action === 'update-attendance-session') {
+    const clockInEventId = text(parsed.clockInEventId)
+    const clockOutEventId = text(parsed.clockOutEventId)
+    const clockInAt = text(parsed.clockInAt)
+    const clockOutAt = text(parsed.clockOutAt)
+    const pauseMinutes = Number(parsed.pauseMinutes)
+    const reason = text(parsed.reason)
+    if (!clockInEventId || !clockOutEventId || !Number.isFinite(Date.parse(clockInAt)) || !Number.isFinite(Date.parse(clockOutAt))
+      || !Number.isInteger(pauseMinutes) || pauseMinutes < 0 || reason.length < 2) {
+      return { ok: false, message: 'Zeiterfassungs-Korrektur ist unvollständig.' }
+    }
+  }
+
+  if (action === 'delete-attendance-events') {
+    const eventIds = Array.isArray(parsed.eventIds) ? parsed.eventIds.map(text).filter(Boolean) : []
+    const uniqueIds = new Set(eventIds)
+    if (eventIds.length < 1 || eventIds.length > 25 || uniqueIds.size !== eventIds.length || text(parsed.reason).length < 2) {
+      return { ok: false, message: 'Zeiterfassungs-Löschauftrag ist ungültig.' }
+    }
+  }
+
   if (action === 'get-shift' || action === 'update-shift' || action === 'delete-shift') {
     if (!text(parsed.shiftId)) return { ok: false, message: 'Dienst-ID fehlt.' }
   }
@@ -108,6 +157,10 @@ export function parseScheduleCommand(raw: unknown, now = new Date()): ParseResul
   }
 
   if (!validResponseKey(parsed.responseKey)) return { ok: false, message: 'Antwortschlüssel ist ungültig.' }
+  if (['list-attendance', 'find-attendance-duplicates', 'update-attendance-session', 'delete-attendance-events'].includes(action)
+    && !text(parsed.responseKey)) {
+    return { ok: false, message: 'Antwortschlüssel fehlt.' }
+  }
 
   const requestedStatus = text(parsed.status)
   if (requestedStatus && !['draft', 'published'].includes(requestedStatus)) {
@@ -134,6 +187,22 @@ export function parseScheduleCommand(raw: unknown, now = new Date()): ParseResul
     command.shiftId = text(parsed.shiftId)
   }
   if (action === 'update-shift') command.changes = { ...(parsed.changes as Record<string, unknown>) }
+  if (action === 'list-attendance' || action === 'find-attendance-duplicates') {
+    command.from = text(parsed.from)
+    command.to = text(parsed.to)
+  }
+  if (action === 'update-attendance-session') {
+    command.clockInEventId = text(parsed.clockInEventId)
+    command.clockOutEventId = text(parsed.clockOutEventId)
+    command.clockInAt = new Date(text(parsed.clockInAt)).toISOString()
+    command.clockOutAt = new Date(text(parsed.clockOutAt)).toISOString()
+    command.pauseMinutes = Number(parsed.pauseMinutes)
+    command.reason = text(parsed.reason)
+  }
+  if (action === 'delete-attendance-events') {
+    command.eventIds = (parsed.eventIds as unknown[]).map(text)
+    command.reason = text(parsed.reason)
+  }
   if (text(parsed.responseKey)) command.responseKey = text(parsed.responseKey)
 
   return { ok: true, command }
