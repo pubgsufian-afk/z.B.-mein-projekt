@@ -29,6 +29,8 @@ Beispiel August 2026:
 
 Während des laufenden Monats und der Korrekturphase werden Änderungen an veröffentlichten Dienstplan-Schichten automatisch in den zugehörigen Stundenzettel übernommen.
 
+Die Zeitgrenze selbst ist maßgeblich. Jede Synchronisierung muss anhand von `Europe/Berlin` prüfen, ob die Korrekturfrist noch offen ist. Ein verspäteter Hintergrundjob oder ein noch nicht aktualisierter Monatsstatus darf die Frist niemals über den 10. hinaus verlängern.
+
 ### 3. Verhalten nach Ablauf der Korrekturfrist
 
 - Nach dem 10. des Folgemonats führen spätere Änderungen am alten Dienstplan nicht mehr zu Änderungen am abgeschlossenen Stundenzettel.
@@ -67,6 +69,8 @@ Ein eigener Monatsstatus wird benötigt, beispielsweise:
 - `closed_at`
 - Audit-Metadaten
 
+Der gespeicherte Status dient der Darstellung und Verwaltung. Für die Frage, ob Dienstplanänderungen noch synchronisiert werden dürfen, ist zusätzlich immer die tatsächliche Korrekturfrist anhand der Berliner Zeit zu prüfen.
+
 ### Stundenzettel-Einträge
 
 Stundenzettel-Einträge werden unabhängig von `attendance_events` gespeichert. Sie enthalten mindestens:
@@ -89,16 +93,17 @@ Damit existiert bereits während der offenen Phase ein eigener Stundenzettel-Sta
 ### Veröffentlichung oder Änderung eines Dienstplans
 
 1. Eine veröffentlichte Schicht wird erstellt, geändert oder gelöscht.
-2. Das System ermittelt den betroffenen Monat.
-3. Ist der Monat noch offen oder innerhalb der Korrekturfrist, wird der entsprechende Stundenzettel-Eintrag erstellt, aktualisiert oder entfernt.
+2. Das System ermittelt den betroffenen Monat und die Korrekturfrist in `Europe/Berlin`.
+3. Ist die Korrekturfrist noch offen, wird der entsprechende Stundenzettel-Eintrag erstellt, aktualisiert oder entfernt.
 4. Ist der Eintrag manuell überschrieben, bleibt der manuelle Wert bestehen.
-5. Ist der Monat abgeschlossen, wird am Stundenzettel nichts geändert.
+5. Ist die Korrekturfrist abgelaufen, wird am Stundenzettel nichts geändert – unabhängig davon, ob ein Monatsabschluss-Job bereits gelaufen ist.
 
 ### Monatsabschluss
 
 - Der Monatsstatus wechselt nach Ablauf des 10. des Folgemonats auf `closed`.
 - Der vorhandene Stundenzettel-Stand bleibt unverändert erhalten.
 - Ein technischer Abschlusslauf darf den Status setzen, aber keine Stunden neu aus dem zu diesem Zeitpunkt eventuell schon geänderten Alt-Dienstplan rekonstruieren.
+- Falls der Abschlusslauf verspätet ist oder ausfällt, schützt die Fristprüfung trotzdem vor nachträglicher Dienstplan-Synchronisierung.
 
 ### Manuelle Korrektur eines abgeschlossenen Monats
 
@@ -147,19 +152,21 @@ Keine dieser Abweichungen führt automatisch zu einer Änderung am Stundenzettel
 - Manuelle Overrides dürfen durch Hintergrund-Synchronisation nicht verloren gehen.
 - Jede manuelle Änderung und jeder Monatsabschluss wird auditiert.
 - Bei einem fehlgeschlagenen Monatsabschluss bleibt der vorhandene Stundenzettel-Stand erhalten; es findet keine Rekonstruktion aus später veränderten Dienstplandaten statt.
+- Die Korrekturfrist muss serverseitig geprüft werden; die Benutzeroberfläche allein darf sie nicht erzwingen.
 
 ## Tests / Abnahmekriterien
 
 1. Dienstplanänderung im laufenden Monat aktualisiert den Stundenzettel.
 2. Dienstplanänderung am 10. des Folgemonats aktualisiert den Vormonat noch.
 3. Dienstplanänderung ab dem 11. verändert den Vormonats-Stundenzettel nicht mehr.
-4. Manuelle Änderung eines abgeschlossenen Stundenzettels funktioniert und ändert den Dienstplan nicht.
-5. Ein manueller Override in einer offenen Phase wird durch spätere Dienstplan-Synchronisierung nicht überschrieben.
-6. Stempelungen verändern niemals Stundenzettelwerte.
-7. Stempelvergleich zeigt Abweichungen, ohne Daten zu verändern.
-8. PDF/Excel des Stundenzettels enthält nur Stundenzetteldaten; Stempelprotokoll besitzt einen eigenen Export.
-9. Mehrere Dienste an einem Tag erzeugen keine doppelte Abrechnung durch die Stempelzeit.
-10. Wiederholte Synchronisierung desselben Dienstplans erzeugt keine Duplikate.
+4. Auch bei verspätetem oder ausgefallenem Monatsabschluss-Job verändert eine Dienstplanänderung ab dem 11. den Vormonat nicht.
+5. Manuelle Änderung eines abgeschlossenen Stundenzettels funktioniert und ändert den Dienstplan nicht.
+6. Ein manueller Override in einer offenen Phase wird durch spätere Dienstplan-Synchronisierung nicht überschrieben.
+7. Stempelungen verändern niemals Stundenzettelwerte.
+8. Stempelvergleich zeigt Abweichungen, ohne Daten zu verändern.
+9. PDF/Excel des Stundenzettels enthält nur Stundenzetteldaten; Stempelprotokoll besitzt einen eigenen Export.
+10. Mehrere Dienste an einem Tag erzeugen keine doppelte Abrechnung durch die Stempelzeit.
+11. Wiederholte Synchronisierung desselben Dienstplans erzeugt keine Duplikate.
 
 ## Nicht-Ziele
 
