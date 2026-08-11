@@ -94,14 +94,9 @@ replaceOnce(
 'schedule screenshot',
 )
 
-replaceOnce(
-"test('reports provide PDF preview, PDF download and Excel download', async ({ page }) => {",
-"test('Stundenzettel and Stempelprotokoll keep PDF and Excel downloads', async ({ page }, testInfo) => {",
-'report navigation replacement test info',
-)
-replaceOnce(
-"  await navigate(page, 'Berichte')",
-`  await page.route('**/api/timesheets**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [], months: [] }) }))
+const reportTest = `test('Stundenzettel and Stempelprotokoll keep PDF and Excel downloads', async ({ page }, testInfo) => {
+  await login(page, 'admin')
+  await page.route('**/api/timesheets**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [], months: [] }) }))
   await page.route('**/api/timesheet-reports', async (route) => {
     const format = route.request().postDataJSON().format
     if (format === 'xlsx') return route.fulfill({
@@ -132,46 +127,37 @@ replaceOnce(
       body: Buffer.from('%PDF-1.4\\n%%EOF'),
     })
   })
-  await navigate(page, 'Stundenzettel')`,
-'reports navigation replaced with Stundenzettel',
-)
-replaceOnce(
-"  await page.getByRole('button', { name: 'PDF-Vorschau' }).click()",
-"  await expect(page.getByRole('button', { name: 'Berichte', exact: true })).toHaveCount(0)",
-'reports menu removed assertion',
-)
-replaceOnce(
-"  await expect(page.getByTitle('PDF-Vorschau')).toBeVisible()",
-"  if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/04-stundenzettel-iphone.png', fullPage: true })",
-'stundenzettel screenshot',
-)
-replaceOnce(
-"  const pdfDownload = page.waitForEvent('download')",
-"  const pdfDownload = page.waitForEvent('download', { predicate: (download) => /\\.pdf$/i.test(download.suggestedFilename()) })",
-'PDF download predicate',
-)
-replaceOnce(
-"  await page.getByRole('button', { name: 'PDF herunterladen' }).click()",
-"  await page.getByRole('button', { name: 'PDF', exact: true }).click()",
-'Stundenzettel PDF control',
-)
-replaceOnce(
-"  const excelDownload = page.waitForEvent('download')",
-"  const excelDownload = page.waitForEvent('download', { predicate: (download) => /\\.xlsx$/i.test(download.suggestedFilename()) })",
-'Excel download predicate',
-)
-replaceOnce(
-"  await page.getByRole('button', { name: 'Excel herunterladen' }).click()",
-`  await page.getByRole('button', { name: 'Excel', exact: true }).click()
+
+  await navigate(page, 'Stundenzettel')
+  await expect(page.getByRole('button', { name: 'Berichte', exact: true })).toHaveCount(0)
+  if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/04-stundenzettel-iphone.png', fullPage: true })
+
+  const pdfDownload = page.waitForEvent('download', { predicate: (download) => /\\.pdf$/i.test(download.suggestedFilename()) })
+  await page.getByRole('button', { name: 'PDF', exact: true }).click()
+  expect((await pdfDownload).suggestedFilename()).toMatch(/\\.pdf$/i)
+
+  const excelDownload = page.waitForEvent('download', { predicate: (download) => /\\.xlsx$/i.test(download.suggestedFilename()) })
+  await page.getByRole('button', { name: 'Excel', exact: true }).click()
+  expect((await excelDownload).suggestedFilename()).toMatch(/\\.xlsx$/i)
+
   await navigate(page, 'Stempelprotokoll')
   const stampPdfDownload = page.waitForEvent('download', { predicate: (download) => /\\.pdf$/i.test(download.suggestedFilename()) })
   await page.getByRole('button', { name: 'Stempelprotokoll PDF' }).click()
   expect((await stampPdfDownload).suggestedFilename()).toMatch(/\\.pdf$/i)
+
   const stampExcelDownload = page.waitForEvent('download', { predicate: (download) => /\\.xlsx$/i.test(download.suggestedFilename()) })
   await page.getByRole('button', { name: 'Stempelprotokoll Excel' }).click()
-  expect((await stampExcelDownload).suggestedFilename()).toMatch(/\\.xlsx$/i)`,
-'Stundenzettel and Stempelprotokoll Excel controls',
-)
+  expect((await stampExcelDownload).suggestedFilename()).toMatch(/\\.xlsx$/i)
+})
+`
+
+const oldReportStart = source.indexOf("test('reports provide PDF preview, PDF download and Excel download'")
+const newReportStart = source.indexOf("test('Stundenzettel and Stempelprotokoll keep PDF and Excel downloads'")
+const reportStart = oldReportStart >= 0 ? oldReportStart : newReportStart
+const reportEndMarker = "\ntest('employee sees only clock and own published schedule'"
+const reportEnd = reportStart >= 0 ? source.indexOf(reportEndMarker, reportStart) : -1
+if (reportStart < 0 || reportEnd < 0) throw new Error('Report-Download-E2E-Testblock wurde nicht gefunden.')
+source = `${source.slice(0, reportStart)}${reportTest}${source.slice(reportEnd + 1)}`
 
 await writeFile(path, source)
 console.log('Unified portal browser tests prepared')
