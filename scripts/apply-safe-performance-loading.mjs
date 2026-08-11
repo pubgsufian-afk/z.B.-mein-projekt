@@ -13,6 +13,14 @@ function replaceOnce(before, after, label) {
   changed = true
 }
 
+function replaceAny(candidates, after, label) {
+  if (source.includes(after)) return
+  const matches = candidates.filter((candidate) => source.includes(candidate))
+  assert.equal(matches.length, 1, `${label}: erwartete genau einen kompatiblen Marker, gefunden ${matches.length}`)
+  source = source.replace(matches[0], after)
+  changed = true
+}
+
 function ensureAfter(anchor, addition, marker, label) {
   if (source.includes(marker)) return
   assert.ok(source.includes(anchor), `${label}: Import-/Einfügeanker fehlt`)
@@ -64,10 +72,13 @@ replaceOnce(
   'Stable employee card id',
 )
 
-replaceOnce(
-  `      const calls = [apiJson(\`/api/schedule-v2?resource=entries&from=\${from}&to=\${to}\`)]\n      if (management) calls.push(apiJson('/api/schedule-v2?resource=objects'), apiJson(session.role === 'scheduler' ? '/api/schedule-directory' : '/api/registrations'))\n      const [shiftData, objectData, employeeData] = await Promise.all(calls)`,
-  `      // Scheduler patch compatibility: if (management) calls.push(apiJson('/api/schedule-v2?resource=objects'), apiJson(session.role === 'scheduler' ? '/api/schedule-directory' : '/api/registrations'))\n      const employeeDirectoryUrl = session.role === 'scheduler' ? '/api/schedule-directory' : '/api/registrations'\n      const cachedEmployees = session.role === 'scheduler' ? undefined : peekCachedJson(REGISTRATIONS_CACHE_KEY)\n      if (cachedEmployees !== undefined) setEmployees(cachedEmployees.employees || [])\n      const calls = [apiJson(\`/api/schedule-v2?resource=entries&from=\${from}&to=\${to}\`)]\n      if (management) {\n        calls.push(\n          apiJson('/api/schedule-v2?resource=objects'),\n          session.role === 'scheduler'\n            ? apiJson(employeeDirectoryUrl)\n            : refreshCachedJson(REGISTRATIONS_CACHE_KEY, () => apiJson(employeeDirectoryUrl), { ttlMs: REGISTRATIONS_CACHE_TTL_MS }),\n        )\n      }\n      const [shiftData, objectData, employeeData] = await Promise.all(calls)`,
-  'Schedule fresh entries and cached directory',
+const scheduleOriginal = `      const calls = [apiJson(\`/api/schedule-v2?resource=entries&from=\${from}&to=\${to}\`)]\n      if (management) calls.push(apiJson('/api/schedule-v2?resource=objects'), apiJson(session.role === 'scheduler' ? '/api/schedule-directory' : '/api/registrations'))\n      const [shiftData, objectData, employeeData] = await Promise.all(calls)`
+const schedulePrevious = `      // Scheduler patch compatibility: if (management) calls.push(apiJson('/api/schedule-v2?resource=objects'), apiJson(session.role === 'scheduler' ? '/api/schedule-directory' : '/api/registrations'))\n      const employeeDirectoryUrl = session.role === 'scheduler' ? '/api/schedule-directory' : '/api/registrations'\n      const cachedEmployees = session.role === 'scheduler' ? undefined : peekCachedJson(REGISTRATIONS_CACHE_KEY)\n      if (cachedEmployees !== undefined) setEmployees(cachedEmployees.employees || [])\n      const calls = [apiJson(\`/api/schedule-v2?resource=entries&from=\${from}&to=\${to}\`)]\n      if (management) {\n        calls.push(\n          apiJson('/api/schedule-v2?resource=objects'),\n          session.role === 'scheduler'\n            ? apiJson(employeeDirectoryUrl)\n            : refreshCachedJson(REGISTRATIONS_CACHE_KEY, () => apiJson(employeeDirectoryUrl), { ttlMs: REGISTRATIONS_CACHE_TTL_MS }),\n        )\n      }\n      const [shiftData, objectData, employeeData] = await Promise.all(calls)`
+const scheduleFast = `      // Scheduler patch compatibility: if (management) calls.push(apiJson('/api/schedule-v2?resource=objects'), apiJson(session.role === 'scheduler' ? '/api/schedule-directory' : '/api/registrations'))\n      const employeeDirectoryUrl = session.role === 'scheduler' ? '/api/schedule-directory' : '/api/registrations'\n      const cachedEmployees = session.role === 'scheduler' ? undefined : peekCachedJson(REGISTRATIONS_CACHE_KEY)\n      if (cachedEmployees !== undefined) setEmployees(cachedEmployees.employees || [])\n      const shiftRequest = apiJson(\`/api/schedule-v2?resource=entries&from=\${from}&to=\${to}\`)\n      let shiftData\n      let objectData\n      let employeeData\n      if (management) {\n        const auxiliaryRequest = Promise.all([\n          apiJson('/api/schedule-v2?resource=objects'),\n          session.role === 'scheduler'\n            ? apiJson(employeeDirectoryUrl)\n            : refreshCachedJson(REGISTRATIONS_CACHE_KEY, () => apiJson(employeeDirectoryUrl), { ttlMs: REGISTRATIONS_CACHE_TTL_MS }),\n        ])\n        shiftData = await shiftRequest\n        setEntries(shiftData.entries || [])\n        ;[objectData, employeeData] = await auxiliaryRequest\n      } else {\n        shiftData = await shiftRequest\n      }`
+replaceAny(
+  [scheduleOriginal, schedulePrevious],
+  scheduleFast,
+  'Schedule entries render before auxiliary directories',
 )
 
 replaceOnce(
