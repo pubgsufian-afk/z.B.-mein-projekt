@@ -46,7 +46,6 @@ export function detectAttendanceDuplicates(
 
   const nameGroups = new Map<string, Set<string>>()
   for (const employee of employees) {
-    if (text(employee.status) && text(employee.status) !== 'active') continue
     const name = normalizeAttendanceName(employee.fullName)
     if (!name) continue
     const ids = nameGroups.get(name) || new Set<string>()
