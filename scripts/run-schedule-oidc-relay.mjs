@@ -1,7 +1,8 @@
+import { writeFile } from 'node:fs/promises'
+
 const OIDC_AUDIENCE = 'habun-schedule-assistant'
 const ENVELOPE_MARKER = '<!-- habun-schedule-envelope-v1 -->'
 const TRIGGER_URL = 'https://habun-mitarbeiterportal.netlify.app/api/schedule-oidc-trigger'
-const ENCRYPTED_RESULT_MARKER = 'HABUN_SCHEDULE_ENCRYPTED_RESULT_V1='
 
 function requiredEnv(name) {
   const value = String(process.env[name] || '').trim()
@@ -89,5 +90,10 @@ const encryptedResult = safeEncryptedResult(result?.encryptedResult)
 
 console.log(`Habun schedule OIDC relay: employees=${employeeCount} published=${publishedCount} duplicate=${duplicateCount} rejected=${rejectedCount}`)
 console.log(`Habun schedule OIDC relay: directory identity=${identityUserCount} access=${accessCount} registrations=${registrationCount} combined=${combinedAccessCount} employees=${employeeCount} requested=${requestedCount} identityOk=${identityLookupSucceeded}`)
-if (encryptedResult) console.log(`${ENCRYPTED_RESULT_MARKER}${JSON.stringify(encryptedResult)}`)
+
+if (encryptedResult) {
+  const resultPath = requiredEnv('SCHEDULE_ENCRYPTED_RESULT_PATH')
+  await writeFile(resultPath, JSON.stringify(encryptedResult), { encoding: 'utf8', mode: 0o600 })
+  console.log('Habun schedule OIDC relay: encrypted result artifact prepared')
+}
 if (rejectedCount > 0) process.exitCode = 2

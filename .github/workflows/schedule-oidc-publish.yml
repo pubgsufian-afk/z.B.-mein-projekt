@@ -27,3 +27,12 @@ jobs:
       - run: node scripts/run-schedule-oidc-relay.mjs
         env:
           SCHEDULE_ENVELOPE_COMMENT: ${{ github.event.comment.body }}
+          SCHEDULE_ENCRYPTED_RESULT_PATH: ${{ runner.temp }}/habun-schedule-result.json
+      - name: Upload encrypted schedule result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: habun-schedule-encrypted-result
+          path: ${{ runner.temp }}/habun-schedule-result.json
+          if-no-files-found: ignore
+          retention-days: 1
