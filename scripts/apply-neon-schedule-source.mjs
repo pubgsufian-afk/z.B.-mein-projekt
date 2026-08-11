@@ -46,11 +46,20 @@ await writeFile(repositoryPath, repository)
 
 const neonSchedulePath = 'netlify/functions/schedule-v2-neon.mts'
 let neonSchedule = await readFile(neonSchedulePath, 'utf8')
-const conditionalSync = `    if (SCHEDULING.has(String(current.role))) await syncActiveEmployees()`
-if (neonSchedule.includes(conditionalSync)) {
-  neonSchedule = neonSchedule.replace(conditionalSync, `    await syncActiveEmployees()`)
+for (const bootstrapName of ['ensureLegacyScheduleMigrated', 'ensureSharedLegacyScheduleMigrated']) {
+  const conditionalSync = `    await ${bootstrapName}()\n    if (SCHEDULING.has(String(current.role))) await syncActiveEmployees()`
+  const unconditionalSync = `    await ${bootstrapName}()\n    await syncActiveEmployees()`
+  if (neonSchedule.includes(conditionalSync)) {
+    neonSchedule = neonSchedule.replace(conditionalSync, `    await ${bootstrapName}()`)
+  }
+  if (neonSchedule.includes(unconditionalSync)) {
+    neonSchedule = neonSchedule.replace(unconditionalSync, `    await ${bootstrapName}()`)
+  }
 }
-assert.ok(neonSchedule.includes('    await syncActiveEmployees()'), 'Aktive Mitarbeiter werden beim Dienstplanaufruf nicht synchronisiert.')
+const handlerStart = neonSchedule.indexOf('export default async function scheduleV2Neon')
+const routeStart = neonSchedule.indexOf('\n  const url = new URL(request.url)', handlerStart)
+assert.ok(handlerStart >= 0 && routeStart > handlerStart, 'Dienstplan-Handler konnte für die Performance-Prüfung nicht eingegrenzt werden.')
+assert.ok(!neonSchedule.slice(handlerStart, routeStart).includes('syncActiveEmployees()'), 'Mitarbeitersynchronisierung darf den normalen Dienstplan-Leseweg nicht blockieren.')
 await writeFile(neonSchedulePath, neonSchedule)
 
-console.log('Neon schedule source routing and re-registration rebinding applied')
+console.log('Neon schedule source routing, re-registration rebinding and fast read path applied')
