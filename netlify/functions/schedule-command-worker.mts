@@ -8,6 +8,11 @@ import { envelopeFromRelayComment, selectScheduleRelayComment } from './_shared/
 type AssistantResult = {
   employeeCount?: unknown
   results?: unknown
+  entries?: unknown
+  duplicates?: unknown
+  deleted?: unknown
+  id?: unknown
+  shift?: { id?: unknown } | null
 }
 
 type ShiftResult = {
@@ -21,11 +26,35 @@ function number(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function assistantBodyFromCommand(command: ScheduleWorkerCommand) {
+  const body: Record<string, unknown> = {
+    action: command.action,
+    requestId: command.commandId,
+  }
+  if (command.action === 'publish-shifts') body.shifts = command.shifts
+  if (command.action === 'list-shifts' || command.action === 'find-duplicates') {
+    body.from = command.from
+    body.to = command.to
+    if (command.employeeName) body.employeeName = command.employeeName
+    if (command.employeeUserId) body.employeeUserId = command.employeeUserId
+    if (command.location) body.location = command.location
+    if (command.status) body.status = command.status
+  }
+  if (command.action === 'get-shift' || command.action === 'update-shift' || command.action === 'delete-shift') {
+    body.shiftId = command.shiftId
+  }
+  if (command.action === 'update-shift') body.changes = command.changes
+  return body
+}
+
 function summarize(commandId: string, action: string, data: AssistantResult) {
   const results = Array.isArray(data.results) ? data.results as ShiftResult[] : []
   const publishedCount = results.filter((entry) => entry?.status === 'published').length
   const duplicateCount = results.filter((entry) => entry?.status === 'duplicate').length
   const rejectedCount = results.filter((entry) => !['published', 'duplicate'].includes(String(entry?.status || ''))).length
+  const entries = Array.isArray(data.entries) ? data.entries : []
+  const duplicates = Array.isArray(data.duplicates) ? data.duplicates : []
+  const shiftId = String(data.shift?.id || data.id || '').trim()
   return {
     commandId,
     action,
@@ -34,6 +63,10 @@ function summarize(commandId: string, action: string, data: AssistantResult) {
     publishedCount,
     duplicateCount,
     rejectedCount,
+    entryCount: entries.length,
+    duplicateScanCount: duplicates.length,
+    deleted: data.deleted === true,
+    shiftId,
   }
 }
 
@@ -115,10 +148,7 @@ export default async function scheduleCommandWorker(_request: Request, context: 
     return
   }
 
-  const body = command.action === 'publish-shifts'
-    ? { action: command.action, shifts: command.shifts, requestId: command.commandId }
-    : { action: command.action, requestId: command.commandId }
-
+  const body = assistantBodyFromCommand(command)
   const response = await scheduleAssistant(new Request('https://internal.invalid/api/schedule-assistant', {
     method: 'POST',
     headers: {
@@ -142,7 +172,9 @@ export default async function scheduleCommandWorker(_request: Request, context: 
       console.warn('schedule-command-worker could not persist processed marker; duplicate protection remains active in schedule service', error)
     }
   }
-  console.log(`schedule-command-worker processed ${command.commandId} published=${result.publishedCount} duplicate=${result.duplicateCount} rejected=${result.rejectedCount}`)
+  console.log(
+    `schedule-command-worker processed ${command.commandId} action=${command.action} published=${result.publishedCount} duplicate=${result.duplicateCount} rejected=${result.rejectedCount} entries=${result.entryCount}`,
+  )
 }
 
 export const config: Config = {
