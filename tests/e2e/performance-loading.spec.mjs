@@ -113,3 +113,38 @@ test('Dienstplan entries remain fresh and isolated for each week', async ({ page
   expect(secondWeek).not.toBe(firstWeek)
   await expect(page.getByText('Adel Abdal').first()).toBeVisible()
 })
+
+test('Dienstplan entries render while editor directories are still loading', async ({ page }) => {
+  let releaseDirectories
+  const directoryGate = new Promise((resolve) => { releaseDirectories = resolve })
+
+  await loginOwner(page, async () => {
+    await page.route('**/api/registrations', async (route) => {
+      await directoryGate
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ requests: [], employees: [{ userId: 'employee-adel', fullName: 'Adel Abdal', location: 'Abbott', role: 'employee', status: 'active' }], archived: [] }),
+      })
+    })
+    await page.route('**/api/attendance**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ phase: 'idle', events: [], entries: [] }) }))
+    await page.route('**/api/schedule-v2**', async (route) => {
+      const url = new URL(route.request().url())
+      if (url.searchParams.get('resource') === 'entries') {
+        const from = url.searchParams.get('from')
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ entries: [{ id: 'shift-fast-render', employeeUserId: 'employee-adel', employeeName: 'Adel Abdal', date: from, start: '07:00', end: '17:00', pauseMinutes: 30, location: 'Abbott', workArea: 'ZuKo', status: 'published' }] }),
+        })
+      }
+      await directoryGate
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ objects: [] }) })
+    })
+  })
+
+  await navigate(page, 'Dienstplan')
+  await expect(page.getByText('Adel Abdal').first()).toBeVisible({ timeout: 1500 })
+  releaseDirectories()
+  await expect(page.getByText('Abbott').first()).toBeVisible()
+})
