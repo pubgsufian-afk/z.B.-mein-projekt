@@ -1,39 +1,43 @@
 import assert from 'node:assert/strict'
 import { parseScheduleCommand } from '../netlify/functions/_shared/schedule-command-worker-core.mts'
 
-const now = new Date('2026-08-07T20:00:00.000Z')
+const now = new Date('2026-08-11T16:00:00.000Z')
+const base = { version: 1, createdAt: '2026-08-11T15:50:00.000Z' }
 
-const sync = parseScheduleCommand(JSON.stringify({
-  version: 1,
-  commandId: 'sync-1',
-  createdAt: '2026-08-07T19:45:00.000Z',
-  action: 'sync-directory',
-}), now)
-assert.equal(sync.ok, true)
-assert.equal(sync.command?.action, 'sync-directory')
+const valid = [
+  { ...base, commandId: 'sync-1', action: 'sync-directory' },
+  { ...base, commandId: 'publish-1', action: 'publish-shifts', shifts: [{ employeeName: 'Aras', date: '2026-08-11', start: '06:00', end: '14:00', workArea: 'ZuKo' }] },
+  { ...base, commandId: 'list-1', action: 'list-shifts', from: '2026-08-01', to: '2026-08-11', employeeName: 'Aras' },
+  { ...base, commandId: 'get-1', action: 'get-shift', shiftId: 'shift-1' },
+  { ...base, commandId: 'dup-1', action: 'find-duplicates', from: '2026-08-01', to: '2026-08-11' },
+  { ...base, commandId: 'update-1', action: 'update-shift', shiftId: 'shift-1', changes: { start: '07:00' } },
+  { ...base, commandId: 'delete-1', action: 'delete-shift', shiftId: 'shift-1' },
+]
+for (const input of valid) {
+  const result = parseScheduleCommand(JSON.stringify(input), now)
+  assert.equal(result.ok, true, `Expected valid action ${input.action}`)
+  assert.equal(result.command?.action, input.action)
+}
+assert.equal(parseScheduleCommand(JSON.stringify(valid[1]), now).command?.shifts?.length, 1)
+assert.equal(parseScheduleCommand(JSON.stringify(valid[2]), now).command?.from, '2026-08-01')
+assert.equal(parseScheduleCommand(JSON.stringify(valid[3]), now).command?.shiftId, 'shift-1')
+assert.deepEqual(parseScheduleCommand(JSON.stringify(valid[5]), now).command?.changes, { start: '07:00' })
 
-const publish = parseScheduleCommand(JSON.stringify({
-  version: 1,
-  commandId: 'publish-1',
-  createdAt: '2026-08-07T19:50:00.000Z',
-  action: 'publish-shifts',
-  shifts: [{ employeeName: 'Mitarbeiter', date: '2026-08-08', start: '06:00', end: '17:00', workArea: 'ZuKo' }],
-}), now)
-assert.equal(publish.ok, true)
-assert.equal(publish.command?.action, 'publish-shifts')
-assert.equal(publish.command?.shifts?.length, 1)
-
-for (const raw of [
+const invalid = [
   '',
   'not-json',
-  JSON.stringify({ version: 2, commandId: 'x', createdAt: now.toISOString(), action: 'sync-directory' }),
-  JSON.stringify({ version: 1, commandId: '', createdAt: now.toISOString(), action: 'sync-directory' }),
-  JSON.stringify({ version: 1, commandId: 'x', createdAt: 'bad-date', action: 'sync-directory' }),
-  JSON.stringify({ version: 1, commandId: 'x', createdAt: '2026-08-07T18:00:00.000Z', action: 'sync-directory' }),
-  JSON.stringify({ version: 1, commandId: 'x', createdAt: now.toISOString(), action: 'delete-users' }),
-  JSON.stringify({ version: 1, commandId: 'x', createdAt: now.toISOString(), action: 'publish-shifts' }),
-]) {
-  assert.equal(parseScheduleCommand(raw, now).ok, false)
-}
+  JSON.stringify({ ...base, version: 2, commandId: 'x', action: 'sync-directory' }),
+  JSON.stringify({ ...base, commandId: '', action: 'sync-directory' }),
+  JSON.stringify({ ...base, commandId: 'x', createdAt: 'bad-date', action: 'sync-directory' }),
+  JSON.stringify({ ...base, commandId: 'x', createdAt: '2026-08-11T14:00:00.000Z', action: 'sync-directory' }),
+  JSON.stringify({ ...base, commandId: 'x', action: 'delete-users' }),
+  JSON.stringify({ ...base, commandId: 'x', action: 'publish-shifts' }),
+  JSON.stringify({ ...base, commandId: 'x', action: 'get-shift' }),
+  JSON.stringify({ ...base, commandId: 'x', action: 'update-shift', shiftId: 'shift-1' }),
+  JSON.stringify({ ...base, commandId: 'x', action: 'delete-shift' }),
+  JSON.stringify({ ...base, commandId: 'x', action: 'list-shifts', from: '11.08.2026', to: '2026-08-11' }),
+  JSON.stringify({ ...base, commandId: 'x', action: 'find-duplicates', from: '2026-08-12', to: '2026-08-11' }),
+]
+for (const raw of invalid) assert.equal(parseScheduleCommand(raw, now).ok, false)
 
 console.log('Schedule command worker core tests passed')

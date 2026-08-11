@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import {
+  assistantPersonMatch,
+  classifyAssistantDuplicate,
   DEFAULT_ASSISTANT_WORKSITE_NAME,
   defaultAssistantLocation,
   findAssistantTimeDuplicate,
@@ -93,6 +95,62 @@ assert.equal(timeDuplicate?.id, 'same-time')
 assert.equal(findAssistantTimeDuplicate({ start: '07:00', end: '17:00' }, [
   { id: 'other-time', start: '08:00', end: '17:00' },
 ]), null)
+
+const uniqueDirectory = [
+  { userId: 'new-aras', fullName: 'Aras Khalaf', role: 'employee', status: 'active', location: 'Abbott' },
+]
+assert.equal(assistantPersonMatch(
+  { employeeUserId: 'old-aras', employeeName: 'Aras Khalaf' },
+  { employeeUserId: 'new-aras', employeeName: 'Aras Khalaf' },
+  uniqueDirectory,
+).status, 'same')
+
+const duplicateNames = [
+  { userId: 'a1', fullName: 'Amin Ali', role: 'employee', status: 'active' },
+  { userId: 'a2', fullName: 'Amin Ali', role: 'employee', status: 'active' },
+]
+assert.equal(assistantPersonMatch(
+  { employeeUserId: 'old', employeeName: 'Amin Ali' },
+  { employeeUserId: 'a1', employeeName: 'Amin Ali' },
+  duplicateNames,
+).status, 'ambiguous')
+
+const duplicateResult = classifyAssistantDuplicate(
+  { employeeUserId: 'new-aras', employeeName: 'Aras Khalaf', date: '2026-08-10', start: '06:00', end: '14:00', location: 'Abbott', workArea: 'ZuKo' },
+  [
+    { id: 'old-id', employeeUserId: 'old-aras', employeeName: 'Aras Khalaf', date: '2026-08-10', start: '06:00', end: '14:00', location: 'Abbott', workArea: 'ZuKo' },
+  ],
+  uniqueDirectory,
+)
+assert.equal(duplicateResult.exact?.id, 'old-id')
+
+const timeResult = classifyAssistantDuplicate(
+  { employeeUserId: 'new-aras', employeeName: 'Aras Khalaf', date: '2026-08-10', start: '06:00', end: '14:00', location: 'Abbott', workArea: 'ZuKo' },
+  [
+    { id: 'same-time', employeeUserId: 'old-aras', employeeName: 'Aras Khalaf', date: '2026-08-10', start: '06:00', end: '14:00', location: 'Abbott', workArea: 'Brandwache' },
+  ],
+  uniqueDirectory,
+)
+assert.equal(timeResult.time?.id, 'same-time')
+
+const overlapResult = classifyAssistantDuplicate(
+  { employeeUserId: 'new-aras', employeeName: 'Aras Khalaf', date: '2026-08-10', start: '06:00', end: '14:00', location: 'Abbott', workArea: 'ZuKo' },
+  [
+    { id: 'overlap', employeeUserId: 'old-aras', employeeName: 'Aras Khalaf', date: '2026-08-10', start: '13:00', end: '15:00', location: 'Abbott', workArea: 'Brandwache' },
+  ],
+  uniqueDirectory,
+)
+assert.equal(overlapResult.overlaps[0]?.id, 'overlap')
+
+const ambiguousResult = classifyAssistantDuplicate(
+  { employeeUserId: 'old', employeeName: 'Amin Ali', date: '2026-08-10', start: '06:00', end: '14:00', location: 'Abbott', workArea: 'ZuKo' },
+  [
+    { id: 'amb', employeeUserId: 'a1', employeeName: 'Amin Ali', date: '2026-08-10', start: '06:00', end: '14:00', location: 'Abbott', workArea: 'ZuKo' },
+  ],
+  duplicateNames,
+)
+assert.equal(ambiguousResult.ambiguous.length, 1)
+assert.equal(ambiguousResult.exact, null)
 
 assert.deepEqual(validateAssistantShiftInput({
   employeeName: 'Aras', date: '2026-08-08', start: '06:00', end: '17:00', workArea: 'ZuKo', pauseMinutes: 0,

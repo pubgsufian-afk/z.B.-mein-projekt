@@ -30,6 +30,17 @@ export type AssistantTimeShift = {
   end?: unknown
 }
 
+export type AssistantPersonShift = {
+  id?: unknown
+  employeeUserId?: unknown
+  employeeName?: unknown
+  date?: unknown
+  start?: unknown
+  end?: unknown
+  location?: unknown
+  workArea?: unknown
+}
+
 export const DEFAULT_ASSISTANT_WORKSITE_NAME = 'Abbott Laboratories GmbH'
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
@@ -51,6 +62,84 @@ export function normalizeAssistantName(value: unknown) {
     .toLocaleLowerCase('de')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+export function assistantPersonMatch(
+  left: AssistantPersonShift,
+  right: AssistantPersonShift,
+  activeEmployees: AssistantDirectoryEmployee[],
+) {
+  const leftId = text(left.employeeUserId)
+  const rightId = text(right.employeeUserId)
+  if (leftId && rightId && leftId === rightId) return { status: 'same' as const }
+
+  const leftName = normalizeAssistantName(left.employeeName)
+  const rightName = normalizeAssistantName(right.employeeName)
+  if (!leftName || leftName !== rightName) return { status: 'different' as const }
+
+  const activeSameName = activeEmployees.filter(
+    (employee) => employee.status !== 'inactive' && normalizeAssistantName(employee.fullName) === leftName,
+  )
+  if (activeSameName.length === 1) return { status: 'same' as const }
+  if (activeSameName.length > 1) return { status: 'ambiguous' as const }
+  return { status: 'different' as const }
+}
+
+export function classifyAssistantDuplicate<T extends AssistantPersonShift>(
+  candidate: AssistantPersonShift,
+  shifts: T[],
+  activeEmployees: AssistantDirectoryEmployee[],
+) {
+  const result: {
+    exact: T | null
+    time: T | null
+    overlaps: T[]
+    ambiguous: T[]
+  } = {
+    exact: null,
+    time: null,
+    overlaps: [],
+    ambiguous: [],
+  }
+
+  const candidateDate = text(candidate.date)
+  const candidateStart = text(candidate.start)
+  const candidateEnd = text(candidate.end)
+  const candidateLocation = normalizeAssistantName(candidate.location)
+  const candidateWorkArea = normalizeAssistantName(candidate.workArea)
+  const candidateStartMinutes = timeMinutes(candidateStart)
+  const candidateEndMinutes = timeMinutes(candidateEnd)
+
+  for (const shift of shifts) {
+    if (text(shift.date) !== candidateDate) continue
+    const person = assistantPersonMatch(candidate, shift, activeEmployees)
+    if (person.status === 'different') continue
+    if (person.status === 'ambiguous') {
+      result.ambiguous.push(shift)
+      continue
+    }
+
+    const shiftStart = text(shift.start)
+    const shiftEnd = text(shift.end)
+    if (shiftStart === candidateStart && shiftEnd === candidateEnd) {
+      const sameLocation = normalizeAssistantName(shift.location) === candidateLocation
+      const sameWorkArea = normalizeAssistantName(shift.workArea) === candidateWorkArea
+      if (sameLocation && sameWorkArea) {
+        result.exact ||= shift
+      } else {
+        result.time ||= shift
+      }
+      continue
+    }
+
+    const shiftStartMinutes = timeMinutes(shiftStart)
+    const shiftEndMinutes = timeMinutes(shiftEnd)
+    if (candidateStartMinutes < shiftEndMinutes && shiftStartMinutes < candidateEndMinutes) {
+      result.overlaps.push(shift)
+    }
+  }
+
+  return result
 }
 
 export function resolveAssistantEmployee(name: unknown, employees: AssistantDirectoryEmployee[]) {
