@@ -28,12 +28,50 @@ if (!app.includes(stampRoute)) app = app.replace(timesheetRoute, `${timesheetRou
 
 await writeFile(appPath, app)
 
-const pagePath = 'frontend/src/TimesheetMonthlyPage.jsx'
-let page = await readFile(pagePath, 'utf8')
-if (page.includes("'/api/timesheet-reports'")) {
-  page = page.replace("'/api/timesheet-reports'", "'/api/timesheet-monthly-reports'")
-  await writeFile(pagePath, page)
+// The real Stundenzettel uses the standard timesheet report endpoint.
+const monthlyPagePath = 'frontend/src/TimesheetMonthlyPage.jsx'
+let monthlyPage = await readFile(monthlyPagePath, 'utf8')
+if (monthlyPage.includes("'/api/timesheet-monthly-reports'")) {
+  monthlyPage = monthlyPage.replace("'/api/timesheet-monthly-reports'", "'/api/timesheet-reports'")
+  await writeFile(monthlyPagePath, monthlyPage)
 }
-assert.ok(page.includes("'/api/timesheet-monthly-reports'"), 'Unabhängiger Stundenzettel-Export fehlt.')
+assert.ok(monthlyPage.includes("'/api/timesheet-reports'"), 'Unabhängiger Stundenzettel-Export fehlt.')
 
-console.log('Independent monthly timesheet UI and stamp-log compatibility routed')
+// The former mixed Stundenzettel is now only the separate stamp log/comparison tool.
+const stampPagePath = 'frontend/src/TimesheetPage.jsx'
+let stampPage = await readFile(stampPagePath, 'utf8')
+if (stampPage.includes("'/api/timesheet-reports'")) {
+  stampPage = stampPage.replace("'/api/timesheet-reports'", "'/api/stamp-comparison-reports'")
+}
+stampPage = stampPage
+  .replaceAll('Stundenzettel PDF', 'Stempelprotokoll PDF')
+  .replaceAll('Stundenzettel Excel', 'Stempelprotokoll Excel')
+  .replaceAll('Stundenzettel wurde erstellt.', 'Stempelprotokoll wurde erstellt.')
+await writeFile(stampPagePath, stampPage)
+
+const legacyReportPath = 'netlify/functions/timesheet-reports.mts'
+let legacyReport = await readFile(legacyReportPath, 'utf8')
+legacyReport = legacyReport
+  .replace("path: '/api/timesheet-reports'", "path: '/api/stamp-comparison-reports'")
+  .replaceAll('Habun-Stundenzettel', 'Habun-Stempelprotokoll')
+await writeFile(legacyReportPath, legacyReport)
+assert.ok(legacyReport.includes("path: '/api/stamp-comparison-reports'"), 'Stempelprotokoll-Reportpfad fehlt.')
+
+// The repository reruns verify during build in the same checkout. Keep the legacy source contracts
+// aligned with the compatibility route after this finalizer has run once.
+const pageTestPath = 'scripts/timesheet-page-source-test.mjs'
+let pageTest = await readFile(pageTestPath, 'utf8')
+pageTest = pageTest
+  .replace(/\\\/api\\\/timesheet-reports/g, '\\/api\\/stamp-comparison-reports')
+  .replaceAll('Stundenzettel PDF', 'Stempelprotokoll PDF')
+  .replaceAll('Stundenzettel Excel', 'Stempelprotokoll Excel')
+await writeFile(pageTestPath, pageTest)
+
+const reportTestPath = 'scripts/timesheet-report-source-test.mjs'
+let reportTest = await readFile(reportTestPath, 'utf8')
+reportTest = reportTest
+  .replace(/\\\/api\\\/timesheet-reports/g, '\\/api\\/stamp-comparison-reports')
+  .replaceAll('Habun-Stundenzettel', 'Habun-Stempelprotokoll')
+await writeFile(reportTestPath, reportTest)
+
+console.log('Independent monthly timesheet and stamp-report separation routed')
