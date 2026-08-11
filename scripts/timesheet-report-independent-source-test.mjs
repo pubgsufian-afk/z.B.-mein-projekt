@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 const source = await readFile('netlify/functions/timesheet-monthly-reports.mts', 'utf8')
 assert.match(source, /listTimesheetEntries/)
 assert.match(source, /syncPublishedScheduleRange/)
+assert.match(source, /path: '\/api\/timesheet-reports'/)
 assert.doesNotMatch(source, /attendance_events|\/api\/attendance|schedule-v2|loadSchedules/)
 assert.match(source, /application\/pdf/)
 assert.match(source, /spreadsheetml\.sheet/)
