@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import './apply-full-portal-berlin-date-fix.mjs'
 
 const [app, timesheet, cache] = await Promise.all([
   readFile('frontend/src/App.jsx', 'utf8'),
@@ -18,7 +19,12 @@ assert.doesNotMatch(attendanceBlock, /const \[now, setNow\]/)
 assert.doesNotMatch(attendanceBlock, /setInterval\(/)
 assert.match(app, /behavior: 'auto'/)
 
-// Overview must only request today's schedule rows.
+// Overview must only request today's Berlin-local schedule rows.
+const overviewStart = app.indexOf('function OverviewPage({ session, navigate }) {')
+const overviewEnd = app.indexOf('\nfunction DigitalClock', overviewStart)
+const overviewBlock = app.slice(overviewStart, overviewEnd)
+assert.match(overviewBlock, /const today = berlinDateKey\(\)/)
+assert.doesNotMatch(overviewBlock, /new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/)
 assert.match(app, /const schedulePath = `\/api\/schedule-v2\?resource=entries&from=\$\{today\}&to=\$\{today\}`/)
 assert.match(app, /dedupeInflightJson\(schedulePath, \(\) => apiJson\(schedulePath\)\)/)
 assert.doesNotMatch(app, /const calls = \[apiJson\('\/api\/schedule-v2\?resource=entries'\)/)
