@@ -3,7 +3,7 @@ import { detectAttendanceDuplicates, validateAttendanceSessionEdit } from '../ne
 
 const employees = [
   { userId: 'u1', fullName: 'Max Mustermann', status: 'active' },
-  { userId: 'u2', fullName: '  MAX   MUSTERMANN ', status: 'active' },
+  { userId: 'u2', fullName: '  MAX   MUSTERMANN ', status: 'inactive' },
   { userId: 'u3', fullName: 'Andere Person', status: 'active' },
 ]
 const events = [
