@@ -7,6 +7,13 @@ let app = await readFile(appPath, 'utf8')
 let timesheet = await readFile(timesheetPath, 'utf8')
 let appChanged = false
 
+function section(source, startMarker, endMarker, label) {
+  const start = source.indexOf(startMarker)
+  const end = source.indexOf(endMarker, start)
+  assert.ok(start >= 0 && end > start, `${label} wurde nicht gefunden.`)
+  return { start, end, block: source.slice(start, end) }
+}
+
 const appPerformanceActive =
   app.includes('function DigitalClock() {') &&
   app.includes("dedupeInflightJson('/api/attendance?resource=state'") &&
@@ -30,6 +37,43 @@ if (appPerformanceActive) {
     appChanged = true
   }
 
+  {
+    const { start, end, block: original } = section(app, 'function ReportsPage() {', '\nfunction SettingsPage', 'ReportsPage')
+    let block = original
+    if (!block.includes('peekCachedJson(REGISTRATIONS_CACHE_KEY)')) {
+      const oldEffect = "  useEffect(() => { apiJson('/api/registrations').then((data) => setEmployees(data.employees || [])).catch((error) => setNotice({ tone: 'error', text: error.message })) }, [])"
+      const newEffect = "  useEffect(() => {\n    let active = true\n    const cached = peekCachedJson(REGISTRATIONS_CACHE_KEY)\n    if (cached !== undefined) setEmployees(cached.employees || [])\n    refreshCachedJson(REGISTRATIONS_CACHE_KEY, () => apiJson('/api/registrations'), { ttlMs: REGISTRATIONS_CACHE_TTL_MS })\n      .then((data) => { if (active) setEmployees(data.employees || []) })\n      .catch((error) => { if (active) setNotice({ tone: 'error', text: error.message }) })\n    return () => { active = false }\n  }, [])"
+      assert.ok(block.includes(oldEffect), 'Berichte-Mitarbeiterladung fehlt beim Wiederherstellen der Performance-Schicht.')
+      block = block.replace(oldEffect, newEffect)
+      app = app.slice(0, start) + block + app.slice(end)
+      appChanged = true
+    }
+  }
+
+  {
+    const { start, end, block: original } = section(app, 'function SettingsPage({ session }) {', '\n\nfunction UnifiedPortal', 'SettingsPage')
+    let block = original
+    if (!block.includes('peekCachedJson(COMPANY_SETTINGS_CACHE_KEY)')) {
+      const oldLoad = `  const load = useCallback(async () => {\n    try {\n      const data = await apiJson('/api/company-settings')\n      setForm((current) => ({ ...current, ...(data.settings || {}) }))\n    } catch (error) {\n      setNotice({ tone: 'error', text: error.message })\n    }\n  }, [])`
+      const newLoad = `  const load = useCallback(async () => {\n    try {\n      const cached = peekCachedJson(COMPANY_SETTINGS_CACHE_KEY)\n      if (cached !== undefined) setForm((current) => ({ ...current, ...(cached.settings || {}) }))\n      const data = await refreshCachedJson(COMPANY_SETTINGS_CACHE_KEY, () => apiJson('/api/company-settings'), { ttlMs: COMPANY_SETTINGS_CACHE_TTL_MS })\n      setForm((current) => ({ ...current, ...(data.settings || {}) }))\n    } catch (error) {\n      setNotice({ tone: 'error', text: error.message })\n    }\n  }, [])`
+      assert.ok(block.includes(oldLoad), 'Einstellungen-Ladung fehlt beim Wiederherstellen der Performance-Schicht.')
+      block = block.replace(oldLoad, newLoad)
+    }
+
+    const setFormLine = "      setForm((current) => ({ ...current, ...data.settings }))"
+    const invalidateAndSet = "      invalidateCachedJson(COMPANY_SETTINGS_CACHE_KEY)\n      setForm((current) => ({ ...current, ...data.settings }))"
+    if (!block.includes('invalidateCachedJson(COMPANY_SETTINGS_CACHE_KEY)')) {
+      const count = block.split(setFormLine).length - 1
+      assert.ok(count >= 1, 'Einstellungen-Schreibpfad fehlt beim Wiederherstellen der Cache-Invalidierung.')
+      block = block.split(setFormLine).join(invalidateAndSet)
+    }
+
+    if (block !== original) {
+      app = app.slice(0, start) + block + app.slice(end)
+      appChanged = true
+    }
+  }
+
   if (appChanged) await writeFile(appPath, app)
 
   const legacyHistory = "      const data = await requestJson(`/api/attendance?${params}`)"
@@ -42,7 +86,7 @@ if (appPerformanceActive) {
     await writeFile(timesheetPath, timesheet)
   }
 
-  console.log(appChanged || !timesheet.includes(legacyHistory) ? 'Full portal performance layer retained and final cache rules restored' : 'Full portal performance layer already applied')
+  console.log('Full portal performance layer retained and final cache rules restored')
 } else {
   await import('./apply-full-portal-performance.mjs')
 }
