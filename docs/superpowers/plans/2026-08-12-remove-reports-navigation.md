@@ -4,7 +4,7 @@
 
 **Goal:** Remove the visible **„Berichte“** item from the management sidebar while keeping all PDF/Excel and stamp-comparison functionality available from Stundenzettel and Stempelprotokoll.
 
-**Architecture:** Change only the navigation definition in `frontend/src/App.jsx`. Keep the existing reports page/function code and API endpoints untouched. Add a source contract test that runs after the portal patch pipeline so any future patch script that reintroduces the navigation item fails verification immediately.
+**Architecture:** Change only the navigation definition in `frontend/src/App.jsx`. Keep the existing reports page/function code and API endpoints untouched. Strengthen the existing `scripts/unified-portal-test.mjs`, which already runs after the portal patch pipeline, so any future patch that reintroduces the navigation item fails verification immediately.
 
 **Tech Stack:** React 19, Node.js ESM verification scripts, Playwright, GitHub Actions, Netlify build pipeline.
 
@@ -15,75 +15,83 @@
 - Keep Stempelprotokoll export/comparison unchanged.
 - Do not delete report endpoints or database data.
 - No database migration is required.
-- Do not publish until the full `npm run verify`, `npm run build`, and `npm run test:e2e` checks are green.
-- Use the existing feature branch so no intermediate change is pushed directly to production.
+- Do not publish until `npm run verify`, `npm run build`, and `npm run test:e2e` are all green.
+- Use the existing feature branch so intermediate work does not go directly to production.
 
 ---
 
 ## File Structure
 
-- Create `scripts/reports-navigation-hidden-test.mjs`: source-level regression contract that verifies the management navigation no longer contains `reports`/`Berichte` and verifies the two remaining report routes are still referenced by their owning pages.
+- Modify `scripts/unified-portal-test.mjs`: assert that `reports`/`Berichte` is absent specifically from `NAVIGATION`, while Stundenzettel and Stempelprotokoll export routes remain present in their owning pages.
 - Modify `frontend/src/App.jsx`: remove only `{ key: 'reports', label: 'Berichte', ... }` from `NAVIGATION`.
-- Modify `package.json`: append the new regression test to `verify:unified` after all patch scripts so a later patch cannot silently restore the menu item.
-- No Netlify Function or database files are modified.
+- No `package.json`, Netlify Function, or database changes are required.
 
 ---
 
-### Task 1: Add the navigation regression contract
+### Task 1: Turn the existing portal test into the regression contract
 
 **Files:**
-- Create: `scripts/reports-navigation-hidden-test.mjs`
-- Modify: `package.json`
+- Modify: `scripts/unified-portal-test.mjs`
 
 **Interfaces:**
 - Consumes: `frontend/src/App.jsx`, `frontend/src/TimesheetMonthlyPage.jsx`, `frontend/src/TimesheetPage.jsx`
-- Produces: a zero-exit-status contract when `Berichte` is absent from `NAVIGATION` and both remaining report routes are still present.
+- Produces: a failing verification while `Berichte` remains in `NAVIGATION`, and a passing verification after only that navigation item is removed.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing expectations**
 
-Create `scripts/reports-navigation-hidden-test.mjs` with:
+Extend the existing `Promise.all` so the test also reads the two report-owning pages:
 
 ```js
-import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
-
-const [app, timesheet, stampLog] = await Promise.all([
+const [index, app, styles, packageJson, registrations, timesheet, stampLog] = await Promise.all([
+  readFile('public/index.html', 'utf8'),
   readFile('frontend/src/App.jsx', 'utf8'),
+  readFile('frontend/src/styles.css', 'utf8'),
+  readFile('package.json', 'utf8'),
+  readFile('netlify/functions/registrations.mts', 'utf8'),
   readFile('frontend/src/TimesheetMonthlyPage.jsx', 'utf8'),
   readFile('frontend/src/TimesheetPage.jsx', 'utf8'),
 ])
+```
+
+Change the visible-label loop from:
+
+```js
+for (const label of ['Übersicht', 'Zeiterfassung', 'Mitarbeiter', 'Dienstplan', 'Stundenzettel', 'Einsatzorte', 'Berichte', 'Einstellungen']) {
+  assert.match(app, new RegExp(label))
+}
+```
+
+to:
+
+```js
+for (const label of ['Übersicht', 'Zeiterfassung', 'Mitarbeiter', 'Dienstplan', 'Stundenzettel', 'Stempelprotokoll', 'Einsatzorte', 'Einstellungen']) {
+  assert.match(app, new RegExp(label))
+}
 
 const navigation = app.match(/const NAVIGATION = \[(.*?)\]\n/s)?.[1] || ''
 assert.ok(navigation, 'NAVIGATION block must exist')
 assert.doesNotMatch(navigation, /key:\s*['"]reports['"]/, 'reports must not be in main navigation')
 assert.doesNotMatch(navigation, /label:\s*['"]Berichte['"]/, 'Berichte must not be in main navigation')
-
-assert.match(timesheet, /\/api\/timesheet-reports/, 'Stundenzettel PDF\/Excel route must stay available')
-assert.match(stampLog, /\/api\/stamp-comparison-reports/, 'Stempelprotokoll export\/comparison route must stay available')
-
-console.log('reports navigation hidden contract passed')
+assert.match(timesheet, /\/api\/timesheet-reports/, 'Stundenzettel PDF\/Excel must stay available')
+assert.match(stampLog, /\/api\/stamp-comparison-reports/, 'Stempelprotokoll export\/comparison must stay available')
 ```
 
-Append the test to the end of the `verify:unified` command in `package.json`:
+This deliberately checks only the navigation block, so existing internal report code may still contain the word `Berichte` without failing the test.
 
-```json
-"verify:unified": "... && node scripts/verify-timesheet-monthly-freeze.mjs && node scripts/reports-navigation-hidden-test.mjs"
-```
-
-- [ ] **Step 2: Run the new test to verify RED**
+- [ ] **Step 2: Run the focused test to verify RED**
 
 Run:
 
 ```bash
-node scripts/reports-navigation-hidden-test.mjs
+node scripts/unified-portal-test.mjs
 ```
 
-Expected: FAIL on the `reports must not be in main navigation` assertion because the current `NAVIGATION` still contains the reports item.
+Expected: FAIL with `reports must not be in main navigation` because the current `NAVIGATION` still contains `{ key: 'reports', label: 'Berichte', ... }`.
 
-- [ ] **Step 3: Commit the RED contract**
+- [ ] **Step 3: Commit the RED test**
 
 ```bash
-git add scripts/reports-navigation-hidden-test.mjs package.json
+git add scripts/unified-portal-test.mjs
 git commit -m "test: require reports navigation to stay hidden"
 ```
 
@@ -96,11 +104,11 @@ git commit -m "test: require reports navigation to stay hidden"
 
 **Interfaces:**
 - Consumes: the existing `NAVIGATION` array.
-- Produces: the same navigation order and role behavior minus the `reports` item.
+- Produces: the same sidebar and role behavior minus the `reports` item.
 
 - [ ] **Step 1: Remove the single navigation object**
 
-Change this section:
+Change:
 
 ```jsx
   { key: 'worksites', label: 'Einsatzorte', roles: ['owner', 'admin'] },
@@ -115,19 +123,19 @@ to:
   { key: 'settings', label: 'Einstellungen', roles: ['owner', 'admin'] },
 ```
 
-Do not delete the reports page component, report APIs, route handlers, or download buttons.
+Do not remove the reports page component, report endpoints, export handlers, PDF/Excel buttons, or comparison functions.
 
-- [ ] **Step 2: Run the focused contract to verify GREEN**
+- [ ] **Step 2: Run the focused test to verify GREEN**
 
 Run:
 
 ```bash
-node scripts/reports-navigation-hidden-test.mjs
+node scripts/unified-portal-test.mjs
 ```
 
-Expected: PASS with `reports navigation hidden contract passed`.
+Expected: PASS with `Unified portal source tests passed`.
 
-- [ ] **Step 3: Run unified verification to ensure patch scripts do not reinsert it**
+- [ ] **Step 3: Run unified verification to prove patch scripts do not restore it**
 
 Run:
 
@@ -135,7 +143,7 @@ Run:
 npm run verify:unified
 ```
 
-Expected: PASS. Because the new contract is last in `verify:unified`, any earlier build/patch script that reintroduces `Berichte` will make this step fail.
+Expected: PASS. `scripts/unified-portal-test.mjs` runs after the portal mutation/patch scripts in the existing `verify:unified` command, so this catches any patch that would silently restore the menu item.
 
 - [ ] **Step 4: Commit the implementation**
 
@@ -149,11 +157,11 @@ git commit -m "ui: remove reports from sidebar navigation"
 ### Task 3: Full regression and release readiness
 
 **Files:**
-- No new source files unless a failing existing test requires an expectation update that reflects the approved design.
+- Verify only; no additional source changes are part of this task.
 
 **Interfaces:**
-- Consumes: final feature branch state.
-- Produces: a branch safe to review/merge with no report-download regression.
+- Consumes: final feature-branch state.
+- Produces: a reviewed branch ready for a PR against `main`.
 
 - [ ] **Step 1: Run the full repository verification**
 
@@ -169,9 +177,9 @@ Expected: PASS.
 npm run build
 ```
 
-Expected: PASS and build artifacts generated normally.
+Expected: PASS.
 
-- [ ] **Step 3: Run all browser regression tests**
+- [ ] **Step 3: Run all configured browser regression tests**
 
 ```bash
 npm run test:e2e
@@ -179,17 +187,21 @@ npm run test:e2e
 
 Expected: PASS on all configured browser/device scenarios.
 
-- [ ] **Step 4: Review the final diff**
+- [ ] **Step 4: Review the final functional diff**
 
-Confirm the functional diff contains only:
+Expected functional files:
 
 ```text
-frontend/src/App.jsx                         navigation item removed
-scripts/reports-navigation-hidden-test.mjs  regression contract added
-package.json                                 contract added to verify:unified
+frontend/src/App.jsx                 remove one NAVIGATION entry
+scripts/unified-portal-test.mjs     add regression expectations
 ```
 
-The spec/plan docs may also be present. Confirm there are no changes under `netlify/functions/` or `netlify/database/`.
+Confirm there are no changes under:
+
+```text
+netlify/functions/
+netlify/database/
+```
 
 - [ ] **Step 5: Open a PR against `main`**
 
@@ -199,7 +211,7 @@ Use title:
 Remove reports from sidebar navigation
 ```
 
-PR body must state:
+Use body:
 
 ```text
 Removes only the visible “Berichte” sidebar item. Stundenzettel PDF/Excel and Stempelprotokoll export/comparison remain unchanged. No database or report-endpoint changes.
