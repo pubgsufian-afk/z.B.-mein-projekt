@@ -8,7 +8,7 @@ const employees = [
 ]
 const events = [
   { id: 'e1', userId: 'u1', action: 'clock-in', clientOccurredAt: '2026-08-10T06:00:00.000Z', eventDate: '2026-08-10', scheduleId: 's1' },
-  { id: 'e2', userId: 'u1', action: 'clock-in', clientOccurredAt: '2026-08-10T06:00:00.000Z', eventDate: '2026-08-10', scheduleId: 's1' },
+  { id: 'e2', userId: 'u1', action: 'clock-in', clientOccurredAt: '2026-08-10T06:00:00.000Z', eventDate: '2026-08-10', scheduleId: 'different-schedule' },
   { id: 'e3', userId: 'u3', action: 'clock-in', clientOccurredAt: '2026-08-10T06:00:00.000Z', eventDate: '2026-08-10', scheduleId: 's3' },
   { id: 'e4', userId: 'u1', action: 'clock-in', clientOccurredAt: '2026-08-11T06:00:00.000Z', eventDate: '2026-08-11', scheduleId: 's4' },
   { id: 'e5', userId: 'u1', action: 'clock-out', clientOccurredAt: '2026-08-11T14:00:00.000Z', eventDate: '2026-08-11', scheduleId: 's4' },
