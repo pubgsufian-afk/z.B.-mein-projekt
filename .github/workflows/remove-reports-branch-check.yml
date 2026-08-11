@@ -1,0 +1,32 @@
+name: Remove reports navigation branch check
+
+on:
+  push:
+    branches:
+      - feat/remove-reports-navigation-20260812
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Prepare monthly timesheet finalizers
+        run: node scripts/verify-timesheet-monthly-freeze.mjs
+      - name: Focused reports navigation contract
+        run: node scripts/unified-portal-test.mjs
+      - name: Full repository verification
+        run: npm run verify
+      - name: Production build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Browser regression tests
+        run: npm run test:e2e
