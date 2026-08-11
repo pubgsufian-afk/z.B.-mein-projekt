@@ -39,7 +39,9 @@ assert.match(repository, /writeScheduleAudit/)
 assert.match(schedule, /path: '\/api\/schedule-v2'/)
 assert.match(schedule, /publishedOnly: true/)
 assert.match(schedule, /employeeUserId: current\.userId/)
-assert.match(schedule, /ensureLegacyScheduleMigrated/)
+assert.match(schedule, /ensureSharedLegacyScheduleMigrated/)
+assert.match(schedule, /classifyAssistantDuplicate/)
+assert.match(schedule, /TIME_DUPLICATE/)
 assert.match(schedule, /await syncActiveEmployees\(\)/)
 assert.doesNotMatch(schedule, /if \(SCHEDULING\.has\(String\(current\.role\)\)\) await syncActiveEmployees\(\)/)
 assert.match(schedule, /action === 'object-delete'/)
@@ -49,6 +51,10 @@ assert.match(assist, /loadSharedSchedule\(request\)/)
 assert.match(directory, /syncScheduleEmployees/)
 assert.match(registrations, /upsertScheduleEmployee/)
 assert.match(pdf, /new URL\('\/api\/schedule-v2'/)
+
+const classifyIndex = schedule.indexOf('classifyAssistantDuplicate(candidate, dateShifts, activeEmployees)')
+const insertIndex = schedule.indexOf('await upsertScheduleShift(candidate)')
+assert.ok(classifyIndex >= 0 && insertIndex > classifyIndex)
 
 const mapped = mapScheduleShiftRow({
   id: 'shift-1', employee_user_id: 'employee-1', employee_name: 'Test Mitarbeiter',
