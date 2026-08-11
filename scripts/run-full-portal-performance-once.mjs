@@ -21,20 +21,34 @@ const appPerformanceActive =
   app.includes("const OBJECTS_CACHE_KEY = '/api/schedule-v2?resource=objects'")
 
 if (appPerformanceActive) {
-  const worksiteSaveNotice = "      setNotice({ tone: 'success', text: 'Einsatzort und Standortprüfung wurden gespeichert.' })"
-  const worksiteSaveWithInvalidation = "      invalidateCachedJson(OBJECTS_CACHE_KEY)\n      setNotice({ tone: 'success', text: 'Einsatzort und Standortprüfung wurden gespeichert.' })"
-  if (!app.includes(worksiteSaveWithInvalidation)) {
-    assert.ok(app.includes(worksiteSaveNotice), 'Einsatzort-Speicherpfad fehlt beim Wiederherstellen der Cache-Invalidierung.')
-    app = app.replace(worksiteSaveNotice, worksiteSaveWithInvalidation)
-    appChanged = true
-  }
+  {
+    const { start, end, block: original } = section(app, 'function WorksitesPage() {', '\nfunction CorrectionsPage', 'WorksitesPage')
+    let block = original
+    if (!block.includes('const cached = peekCachedJson(OBJECTS_CACHE_KEY)')) {
+      const oldLoad = "  const load = useCallback(async () => { try { const data = await apiJson('/api/schedule-v2?resource=objects'); setObjects(data.objects || []) } catch (error) { setNotice({ tone: 'error', text: error.message }) } }, [])"
+      const newLoad = "  const load = useCallback(async () => {\n    try {\n      const cached = peekCachedJson(OBJECTS_CACHE_KEY)\n      if (cached !== undefined) setObjects(cached.objects || [])\n      const data = await refreshCachedJson(OBJECTS_CACHE_KEY, () => apiJson(OBJECTS_CACHE_KEY), { ttlMs: OBJECTS_CACHE_TTL_MS })\n      setObjects(data.objects || [])\n    } catch (error) { setNotice({ tone: 'error', text: error.message }) }\n  }, [])"
+      assert.ok(block.includes(oldLoad), 'Einsatzort-Ladung fehlt beim Wiederherstellen der cached-then-fresh-Logik.')
+      block = block.replace(oldLoad, newLoad)
+    }
 
-  const worksiteDeleteReset = "      if (form.id === object.id) resetForm()"
-  const worksiteDeleteWithInvalidation = "      invalidateCachedJson(OBJECTS_CACHE_KEY)\n      if (form.id === object.id) resetForm()"
-  if (!app.includes(worksiteDeleteWithInvalidation)) {
-    assert.ok(app.includes(worksiteDeleteReset), 'Einsatzort-Löschpfad fehlt beim Wiederherstellen der Cache-Invalidierung.')
-    app = app.replace(worksiteDeleteReset, worksiteDeleteWithInvalidation)
-    appChanged = true
+    const worksiteSaveNotice = "      setNotice({ tone: 'success', text: 'Einsatzort und Standortprüfung wurden gespeichert.' })"
+    const worksiteSaveWithInvalidation = "      invalidateCachedJson(OBJECTS_CACHE_KEY)\n      setNotice({ tone: 'success', text: 'Einsatzort und Standortprüfung wurden gespeichert.' })"
+    if (!block.includes(worksiteSaveWithInvalidation)) {
+      assert.ok(block.includes(worksiteSaveNotice), 'Einsatzort-Speicherpfad fehlt beim Wiederherstellen der Cache-Invalidierung.')
+      block = block.replace(worksiteSaveNotice, worksiteSaveWithInvalidation)
+    }
+
+    const worksiteDeleteReset = "      if (form.id === object.id) resetForm()"
+    const worksiteDeleteWithInvalidation = "      invalidateCachedJson(OBJECTS_CACHE_KEY)\n      if (form.id === object.id) resetForm()"
+    if (!block.includes(worksiteDeleteWithInvalidation)) {
+      assert.ok(block.includes(worksiteDeleteReset), 'Einsatzort-Löschpfad fehlt beim Wiederherstellen der Cache-Invalidierung.')
+      block = block.replace(worksiteDeleteReset, worksiteDeleteWithInvalidation)
+    }
+
+    if (block !== original) {
+      app = app.slice(0, start) + block + app.slice(end)
+      appChanged = true
+    }
   }
 
   {
