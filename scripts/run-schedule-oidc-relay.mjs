@@ -43,6 +43,16 @@ function safeEncryptedResult(value) {
   }
 }
 
+function safeRelayError(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { message: '' }
+  const message = String(value.message || '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180)
+  return { message }
+}
+
 const envelope = envelopeFromComment(requiredEnv('SCHEDULE_ENVELOPE_COMMENT'))
 const requestUrl = new URL(requiredEnv('ACTIONS_ID_TOKEN_REQUEST_URL'))
 requestUrl.searchParams.set('audience', OIDC_AUDIENCE)
@@ -70,7 +80,11 @@ const relayResponse = await fetch(TRIGGER_URL, {
   body: JSON.stringify({ oidcToken, envelope }),
   signal: AbortSignal.timeout(25_000),
 })
-if (!relayResponse.ok) throw new Error(`Habun schedule relay failed (${relayResponse.status})`)
+if (!relayResponse.ok) {
+  const relayError = safeRelayError(await relayResponse.json().catch(() => null))
+  const detail = relayError.message ? `: ${relayError.message}` : ''
+  throw new Error(`Habun schedule relay failed (${relayResponse.status})${detail}`)
+}
 
 const result = await relayResponse.json()
 const employeeCount = count(result?.employeeCount ?? 0)
