@@ -1,8 +1,8 @@
 import type { Config, Context } from '@netlify/functions'
-import { createHash } from 'node:crypto'
+import { createCipheriv, createHash, randomBytes } from 'node:crypto'
 import { verifyScheduleGithubOidc } from './_shared/schedule-github-oidc.mts'
 import { decryptScheduleCommandEnvelopeRuntime } from './_shared/schedule-command-envelope-runtime.mts'
-import { parseScheduleCommand } from './_shared/schedule-command-worker-core.mts'
+import { parseScheduleCommand, type ScheduleWorkerCommand } from './_shared/schedule-command-worker-core.mts'
 import scheduleAssistant from './schedule-assistant.mts'
 
 type AssistantEntry = {
@@ -14,6 +14,7 @@ type AssistantResponse = {
   employeeCount?: unknown
   directoryDiagnostics?: unknown
   results?: unknown
+  [key: string]: unknown
 }
 
 function json(data: unknown, status = 200) {
@@ -52,6 +53,45 @@ function safeDirectoryDiagnostics(value: unknown) {
   }
 }
 
+function assistantRequestBody(command: ScheduleWorkerCommand) {
+  const body: Record<string, unknown> = {
+    action: command.action,
+    requestId: command.commandId,
+  }
+  if (command.action === 'publish-shifts') body.shifts = command.shifts
+  if (command.action === 'list-shifts' || command.action === 'find-duplicates') {
+    body.from = command.from
+    body.to = command.to
+    if (command.employeeName) body.employeeName = command.employeeName
+    if (command.employeeUserId) body.employeeUserId = command.employeeUserId
+    if (command.location) body.location = command.location
+    if (command.status) body.status = command.status
+  }
+  if (command.action === 'get-shift' || command.action === 'update-shift' || command.action === 'delete-shift') {
+    body.shiftId = command.shiftId
+  }
+  if (command.action === 'update-shift') body.changes = command.changes
+  return body
+}
+
+function encryptAssistantResult(data: AssistantResponse, encodedKey: string) {
+  const key = Buffer.from(encodedKey, 'base64')
+  if (key.length !== 32) throw new Error('Ungültiger Antwortschlüssel')
+  const plaintext = Buffer.from(JSON.stringify(data), 'utf8')
+  if (plaintext.length > 400_000) throw new Error('Dienstplan-Antwort ist zu groß')
+  const iv = randomBytes(12)
+  const cipher = createCipheriv('aes-256-gcm', key, iv)
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()])
+  const tag = cipher.getAuthTag()
+  return {
+    version: 1,
+    algorithm: 'A256GCM',
+    iv: iv.toString('base64'),
+    ciphertext: ciphertext.toString('base64'),
+    tag: tag.toString('base64'),
+  }
+}
+
 export default async function scheduleOidcTrigger(request: Request, context: Context) {
   if (request.method !== 'POST') return json({ message: 'Methode nicht erlaubt.' }, 405)
 
@@ -81,17 +121,7 @@ export default async function scheduleOidcTrigger(request: Request, context: Con
   const assistantToken = String(Netlify.env.get('SCHEDULE_ASSISTANT_TOKEN') || '').trim()
   if (!assistantToken) return json({ message: 'Dienstplan-Verbindung ist nicht konfiguriert.' }, 500)
 
-  const requestBody = parsed.command.action === 'publish-shifts'
-    ? {
-        action: 'publish-shifts',
-        requestId: parsed.command.commandId,
-        shifts: Array.isArray(parsed.command.shifts) ? parsed.command.shifts.slice(0, 100) : [],
-      }
-    : {
-        action: 'sync-directory',
-        requestId: parsed.command.commandId,
-      }
-
+  const requestBody = assistantRequestBody(parsed.command)
   const response = await scheduleAssistant(new Request('https://internal.invalid/api/schedule-assistant', {
     method: 'POST',
     headers: {
@@ -115,6 +145,15 @@ export default async function scheduleOidcTrigger(request: Request, context: Con
   const directoryDiagnostics = safeDirectoryDiagnostics(data.directoryDiagnostics)
   const commandHash = createHash('sha256').update(parsed.command.commandId).digest('hex').slice(0, 12)
 
+  let encryptedResult: ReturnType<typeof encryptAssistantResult> | undefined
+  if (parsed.command.responseKey) {
+    try {
+      encryptedResult = encryptAssistantResult(data, parsed.command.responseKey)
+    } catch {
+      return json({ message: 'Verschlüsselte Dienstplan-Antwort konnte nicht erzeugt werden.' }, 500)
+    }
+  }
+
   return json({
     commandHash,
     action: parsed.command.action,
@@ -123,10 +162,8 @@ export default async function scheduleOidcTrigger(request: Request, context: Con
     publishedCount,
     duplicateCount,
     rejectedCount,
-    results: results.map((entry, index) => ({
-      index: Number.isFinite(Number(entry?.index)) ? Number(entry.index) : index,
-      status: safeStatus(entry?.status),
-    })),
+    results: publicResults,
+    ...(encryptedResult ? { encryptedResult } : {}),
   })
 }
 
