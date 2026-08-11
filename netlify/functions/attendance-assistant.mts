@@ -1,6 +1,8 @@
 import type { Config, Context } from '@netlify/functions'
+import { getDatabase } from '@netlify/database'
 import { databaseConnectionString } from './_shared/database-connection.mts'
 import { eventDateInBerlin } from './_shared/daily-attendance-service.mts'
+import { listScheduleShifts } from './_shared/schedule-neon-repository.mts'
 import {
   detectAttendanceDuplicates,
   validateAttendanceSessionEdit,
@@ -11,6 +13,7 @@ import {
 const ASSISTANT_ACTOR_ID = 'attendance-assistant'
 const ASSISTANT_ACTOR_EMAIL = 'attendance-assistant@internal.invalid'
 const ASSISTANT_ACTOR_ROLE = 'admin'
+const MAX_ATTENDANCE_RANGE_DAYS = 62
 
 function json(data: unknown, status = 200) {
   return Response.json(data, {
@@ -38,6 +41,15 @@ async function connection() {
   if (!url) throw Object.assign(new Error('Die Zeiterfassungsdatenbank ist noch nicht verbunden.'), { status: 503 })
   const { neon } = await import('@neondatabase/serverless')
   return neon(url)
+}
+
+function validAttendanceRange(from: string, to: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || to < from) return false
+  const fromMs = Date.parse(`${from}T00:00:00Z`)
+  const toMs = Date.parse(`${to}T00:00:00Z`)
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) return false
+  const inclusiveDays = Math.floor((toMs - fromMs) / 86400000) + 1
+  return inclusiveDays >= 1 && inclusiveDays <= MAX_ATTENDANCE_RANGE_DAYS
 }
 
 function eventSnapshot(row: Record<string, unknown>) {
@@ -68,23 +80,6 @@ function adjustmentSnapshot(row: Record<string, unknown>) {
   }
 }
 
-function shiftSnapshot(row: Record<string, unknown>) {
-  return {
-    id: text(row.id),
-    employeeUserId: text(row.employee_user_id),
-    employeeName: text(row.employee_name),
-    date: String(row.shift_date).slice(0, 10),
-    start: text(row.start_time).slice(0, 5),
-    end: text(row.end_time).slice(0, 5),
-    pauseMinutes: Number(row.pause_minutes || 0),
-    objectId: text(row.object_id),
-    location: text(row.location),
-    workArea: text(row.work_area),
-    status: text(row.status),
-    source: text(row.source),
-  }
-}
-
 function employeeSnapshot(row: Record<string, unknown>) {
   return {
     userId: text(row.user_id),
@@ -97,7 +92,8 @@ function employeeSnapshot(row: Record<string, unknown>) {
 }
 
 async function listAttendanceData(sql: Awaited<ReturnType<typeof connection>>, from: string, to: string) {
-  const [eventRows, adjustmentRows, shiftRows, employeeRows] = await Promise.all([
+  const scheduleDatabase = getDatabase()
+  const [eventRows, adjustmentRows, shifts, employeeResult] = await Promise.all([
     sql.query(
       `SELECT id, user_id, client_event_id, action, server_occurred_at, client_occurred_at,
               event_date, schedule_id, object_id, location_status, offline_captured
@@ -114,15 +110,8 @@ async function listAttendanceData(sql: Awaited<ReturnType<typeof connection>>, f
         ORDER BY event_id, occurred_at DESC, id DESC`,
       [from, to],
     ),
-    sql.query(
-      `SELECT id, employee_user_id, employee_name, shift_date, start_time, end_time,
-              pause_minutes, object_id, location, work_area, status, source
-         FROM schedule_shifts
-        WHERE shift_date BETWEEN $1::date AND $2::date
-        ORDER BY shift_date, start_time, employee_name, id`,
-      [from, to],
-    ),
-    sql.query(
+    listScheduleShifts({ from, to }),
+    scheduleDatabase.pool.query(
       `SELECT user_id, full_name, role, status, location, synced_at
          FROM schedule_employees
         ORDER BY lower(full_name), user_id`,
@@ -131,8 +120,7 @@ async function listAttendanceData(sql: Awaited<ReturnType<typeof connection>>, f
 
   const events = eventRows.map((row) => eventSnapshot(row as Record<string, unknown>))
   const adjustments = adjustmentRows.map((row) => adjustmentSnapshot(row as Record<string, unknown>))
-  const shifts = shiftRows.map((row) => shiftSnapshot(row as Record<string, unknown>))
-  const employees = employeeRows.map((row) => employeeSnapshot(row as Record<string, unknown>))
+  const employees = employeeResult.rows.map((row) => employeeSnapshot(row as Record<string, unknown>))
   return {
     from,
     to,
@@ -192,6 +180,14 @@ async function updateAttendanceSession(sql: Awaited<ReturnType<typeof connection
   if (clockInEvent.action !== 'clock-in' || clockOutEvent.action !== 'clock-out' || clockInEvent.user_id !== clockOutEvent.user_id) {
     return json({ message: 'Beginn und Ende gehören nicht zum selben gültigen Arbeitszeiteintrag.' }, 409)
   }
+
+  const holds = await sql.query(
+    `SELECT entity_id FROM attendance_legal_holds
+      WHERE entity_type = 'attendance_event' AND held = true AND entity_id = ANY($1::text[])`,
+    [[clockInEventId, clockOutEventId]],
+  )
+  if (holds.length) return json({ message: 'Mindestens eine Buchung steht unter Aufbewahrungsschutz.' }, 409)
+
   const originalClockInAt = new Date(clockInEvent.client_occurred_at)
   const originalClockOutAt = new Date(clockOutEvent.client_occurred_at)
   if (originalClockInAt.getTime() > originalClockOutAt.getTime()) return json({ message: 'Der gespeicherte Arbeitsbeginn liegt nach dem Arbeitsende.' }, 409)
@@ -370,9 +366,7 @@ export default async function attendanceAssistant(request: Request, _context: Co
     if (action === 'list-attendance' || action === 'find-attendance-duplicates') {
       const from = text(body.from)
       const to = text(body.to)
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || to < from) {
-        return json({ message: 'Zeiterfassungs-Zeitraum ist ungültig.' }, 400)
-      }
+      if (!validAttendanceRange(from, to)) return json({ message: 'Zeiterfassungs-Zeitraum ist ungültig.' }, 400)
       const data = await listAttendanceData(sql, from, to)
       if (action === 'list-attendance') return json({ action, ...data })
       const diagnostics = detectAttendanceDuplicates(
