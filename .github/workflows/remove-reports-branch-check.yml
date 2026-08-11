@@ -18,10 +18,10 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
-      - name: Prepare monthly timesheet finalizers
-        run: node scripts/verify-timesheet-monthly-freeze.mjs
-      - name: Focused reports navigation contract
-        run: node scripts/unified-portal-test.mjs
+      - name: Run full unified mutation/finalizer pipeline
+        run: npm run verify:unified
+      - name: Focused final reports navigation contract
+        run: node scripts/reports-navigation-hidden-test.mjs
       - name: Full repository verification
         run: npm run verify
       - name: Production build
