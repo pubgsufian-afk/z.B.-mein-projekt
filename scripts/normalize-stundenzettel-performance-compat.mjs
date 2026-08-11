@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 
+// Keeps the legacy timesheet patch repeatable after the performance layer has optimized its request.
 const path = 'frontend/src/TimesheetPage.jsx'
 let source = await readFile(path, 'utf8')
 
