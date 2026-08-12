@@ -82,6 +82,7 @@ export default function TimesheetMonthlyPage() {
   const [employees, setEmployees] = useState([])
   const [userId, setUserId] = useState('')
   const [rows, setRows] = useState([])
+  const [suppressedRows, setSuppressedRows] = useState([])
   const [months, setMonths] = useState([])
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState(null)
@@ -106,9 +107,11 @@ export default function TimesheetMonthlyPage() {
       if (userId) params.set('userId', userId)
       const data = await requestJson(`/api/timesheets?${params}`)
       setRows(data.entries || [])
+      setSuppressedRows(data.suppressedEntries || [])
       setMonths(data.months || [])
     } catch (error) {
       setRows([])
+      setSuppressedRows([])
       setNotice({ tone: 'error', text: error.message })
     } finally { setBusy('') }
   }, [from, to, userId])
@@ -161,6 +164,18 @@ export default function TimesheetMonthlyPage() {
         body: JSON.stringify({ action: 'manual-delete', id: editor.id, reason: editor.reason || 'Stundenzettel-Eintrag gelöscht' }),
       })
       setEditor(null); setNotice({ tone: 'success', text: 'Stundenzettel-Eintrag wurde gelöscht.' }); await loadTimesheet()
+    } catch (error) { setNotice({ tone: 'error', text: error.message }) } finally { setBusy('') }
+  }
+
+  async function restoreScheduleRow(row) {
+    setBusy(`restore-${row.id}`); setNotice(null)
+    try {
+      await requestJson('/api/timesheets', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'restore-schedule', id: row.id, reason: 'Dienstplan im Stundenzettel wieder übernommen' }),
+      })
+      setNotice({ tone: 'success', text: 'Dienstplan-Eintrag wurde wieder in den Stundenzettel übernommen.' })
+      await loadTimesheet()
     } catch (error) { setNotice({ tone: 'error', text: error.message }) } finally { setBusy('') }
   }
 
@@ -240,5 +255,21 @@ export default function TimesheetMonthlyPage() {
         </tr>)}
       </tbody></table></div>
     </section>
+
+    {suppressedRows.length > 0 && <section className="panel timesheet-suppressed-section">
+      <div className="page-heading"><div><h2>Gelöschte Dienstplan-Einträge</h2><p>Diese Einträge wurden nur aus dem Stundenzettel entfernt. Der Dienstplan selbst blieb unverändert.</p></div></div>
+      <div className="timesheet-card-grid">
+        {suppressedRows.map((row) => <article className="timesheet-card" key={`suppressed-${row.id}`}>
+          <header><div><strong>{row.employeeName}</strong><span>{formatDate(row.workDate)} · {row.start}–{row.end}</span></div></header>
+          <div className="timesheet-values">
+            <div><span>Pause</span><strong>{row.pauseMinutes} Min.</strong></div>
+            <div><span>Dauer</span><strong>{formatDuration(row.netMinutes)}</strong></div>
+            <div className="timesheet-wide-value"><span>Bereich</span><strong>{row.workArea || '–'}</strong></div>
+            <div className="timesheet-wide-value"><span>Einsatzort</span><strong>{row.location || '–'}</strong></div>
+          </div>
+          <footer><span>Gelöscht aus Stundenzettel</span><button className="secondary-button" type="button" disabled={Boolean(busy)} onClick={() => restoreScheduleRow(row)}>Dienstplan übernehmen</button></footer>
+        </article>)}
+      </div>
+    </section>}
   </div>
 }
