@@ -1,5 +1,5 @@
 import type { Config, Context } from '@netlify/functions'
-import { createCipheriv, createHash, randomBytes } from 'node:crypto'
+import { createCipheriv, createHash, createPrivateKey, createPublicKey, randomBytes } from 'node:crypto'
 import { verifyScheduleGithubOidc } from './_shared/schedule-github-oidc.mts'
 import { decryptScheduleCommandEnvelopeRuntime } from './_shared/schedule-command-envelope-runtime.mts'
 import { parseScheduleCommand, type ScheduleWorkerCommand } from './_shared/schedule-command-worker-core.mts'
@@ -120,6 +120,19 @@ function encryptAssistantResult(data: AssistantResponse, encodedKey: string) {
   }
 }
 
+function publicKeyRequest(envelope: unknown) {
+  if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) return null
+  const value = envelope as Record<string, unknown>
+  if (value.version !== 1 || value.state !== 'public-key-request') return null
+  return String(value.responseKey || '').trim()
+}
+
+function deriveRuntimePublicKey(privateKeyDerB64: string) {
+  const privateKeyDer = Buffer.from(privateKeyDerB64, 'base64')
+  const privateKey = createPrivateKey({ key: privateKeyDer, format: 'der', type: 'pkcs8' })
+  return createPublicKey(privateKey).export({ format: 'pem', type: 'spki' }).toString()
+}
+
 export default async function scheduleOidcTrigger(request: Request, context: Context) {
   if (request.method !== 'POST') return json({ message: 'Methode nicht erlaubt.' }, 405)
 
@@ -134,6 +147,25 @@ export default async function scheduleOidcTrigger(request: Request, context: Con
 
   const privateKeyDerB64 = String(Netlify.env.get('SCHEDULE_COMMAND_PRIVATE_KEY_DER_B64') || '').trim()
   if (!privateKeyDerB64) return json({ message: 'Dienstplan-Verbindung ist nicht konfiguriert.' }, 500)
+
+  const keyRequestResponseKey = publicKeyRequest(body.envelope)
+  if (keyRequestResponseKey) {
+    try {
+      const encryptedResult = encryptAssistantResult({
+        publicKey: deriveRuntimePublicKey(privateKeyDerB64),
+      }, keyRequestResponseKey)
+      return json({
+        employeeCount: 0,
+        publishedCount: 0,
+        duplicateCount: 0,
+        rejectedCount: 0,
+        results: [],
+        encryptedResult,
+      })
+    } catch {
+      return json({ message: 'Öffentlicher Relay-Schlüssel konnte nicht bereitgestellt werden.' }, 500)
+    }
+  }
 
   let command: Record<string, unknown>
   try {
