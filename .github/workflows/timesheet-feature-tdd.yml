@@ -18,3 +18,4 @@ jobs:
         with:
           node-version: 22
       - run: node scripts/timesheet-suppression-schema-test.mjs
+      - run: node scripts/timesheet-suppression-repository-source-test.mjs
