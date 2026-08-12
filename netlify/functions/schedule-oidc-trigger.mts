@@ -3,12 +3,15 @@ import { createCipheriv, createHash, createPrivateKey, createPublicKey, randomBy
 import { verifyScheduleGithubOidc } from './_shared/schedule-github-oidc.mts'
 import { decryptScheduleCommandEnvelopeRuntime } from './_shared/schedule-command-envelope-runtime.mts'
 import { parseScheduleCommand, type ScheduleWorkerCommand } from './_shared/schedule-command-worker-core.mts'
+import { findScheduleShift } from './_shared/schedule-neon-repository.mts'
+import { syncPublishedScheduleShift } from './_shared/timesheet-schedule-sync.mts'
 import scheduleAssistant from './schedule-assistant.mts'
 import attendanceAssistant from './attendance-assistant.mts'
 
 type AssistantEntry = {
   index?: unknown
   status?: unknown
+  shiftId?: unknown
 }
 
 type AssistantResponse = {
@@ -133,6 +136,26 @@ function deriveRuntimePublicKey(privateKeyDerB64: string) {
   return createPublicKey(privateKey).export({ format: 'pem', type: 'spki' }).toString()
 }
 
+async function syncPublishedRelayResults(data: AssistantResponse) {
+  const results = Array.isArray(data.results) ? data.results as AssistantEntry[] : []
+  const synced: Array<{ index: number; action: string }> = []
+  for (let fallbackIndex = 0; fallbackIndex < results.length; fallbackIndex += 1) {
+    const entry = results[fallbackIndex]
+    const status = safeStatus(entry?.status)
+    if (!['published', 'duplicate'].includes(status)) continue
+    const shiftId = String(entry?.shiftId ?? '').trim()
+    if (!shiftId) continue
+    const shift = await findScheduleShift(shiftId)
+    if (!shift) continue
+    const result = await syncPublishedScheduleShift(shift, 'dienstplan-assistent', new Date())
+    synced.push({
+      index: Number.isFinite(Number(entry?.index)) ? Number(entry.index) : fallbackIndex,
+      action: result.action,
+    })
+  }
+  return synced
+}
+
 export default async function scheduleOidcTrigger(request: Request, context: Context) {
   if (request.method !== 'POST') return json({ message: 'Methode nicht erlaubt.' }, 405)
 
@@ -197,6 +220,10 @@ export default async function scheduleOidcTrigger(request: Request, context: Con
   const data = await response.json().catch(() => ({})) as AssistantResponse
   if (!response.ok) {
     return json({ message: attendanceAction ? 'Zeiterfassungs-Auftrag konnte nicht verarbeitet werden.' : 'Dienstplan-Auftrag konnte nicht verarbeitet werden.' }, response.status)
+  }
+
+  if (parsed.command.action === 'publish-shifts') {
+    data.timesheetSync = await syncPublishedRelayResults(data)
   }
 
   const results = Array.isArray(data.results) ? data.results as AssistantEntry[] : []
