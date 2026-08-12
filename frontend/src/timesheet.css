@@ -17,6 +17,7 @@
 .timesheet-editor { scroll-margin-top: 20px; }
 .danger-button { border-color: rgba(220, 80, 80, .65); }
 .timesheet-empty { color: var(--muted, #aeb4bb); padding: 8px 0; }
+.timesheet-compact-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
 @media (min-width: 721px) {
   .timesheet-mobile-list { display: none; }
@@ -37,6 +38,8 @@
   .timesheet-mobile-card footer > button { width: 100%; }
   .timesheet-editor .button-row { display: grid; grid-template-columns: 1fr; }
   .timesheet-editor .button-row > button { width: 100%; }
+  .timesheet-compact-actions { width: 100%; display: grid; grid-template-columns: 1fr; }
+  .timesheet-compact-actions > button { width: 100%; }
 }
 
 @media (max-width: 430px) {
