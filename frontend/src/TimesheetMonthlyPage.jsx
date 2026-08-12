@@ -244,14 +244,20 @@ export default function TimesheetMonthlyPage() {
             <div className="timesheet-wide-value"><span>Bereich</span><strong>{row.workArea || '–'}</strong></div>
             <div className="timesheet-wide-value"><span>Einsatzort</span><strong>{row.location || '–'}</strong></div>
           </div>
-          <footer><span>{row.source === 'manual' || row.manualOverride ? 'Manuell' : 'Dienstplan'}</span><button className="secondary-button compact" type="button" onClick={() => openExisting(row)}>Bearbeiten</button></footer>
+          <footer>
+            <span>{row.source === 'manual' || row.manualOverride ? 'Manuell' : 'Dienstplan'}</span>
+            <div className="timesheet-compact-actions">
+              <button className="secondary-button compact" type="button" onClick={() => openExisting(row)}>Bearbeiten</button>
+              {row.scheduleShiftId && (row.manualOverride || row.source === 'manual') && <button className="secondary-button compact" type="button" disabled={Boolean(busy)} onClick={() => restoreScheduleRow(row)}>Dienstplan übernehmen</button>}
+            </div>
+          </footer>
         </article>)}
       </div>
 
       <div className="table-scroll timesheet-desktop-table"><table><thead><tr><th>Mitarbeiter</th><th>Datum</th><th>Beginn</th><th>Ende</th><th>Pause</th><th>Dauer</th><th>Bereich / Einsatzort</th><th></th></tr></thead><tbody>
         {rows.length === 0 && <tr><td colSpan="8">Für den ausgewählten Zeitraum sind keine Stundenzettel-Einträge vorhanden.</td></tr>}
         {rows.map((row) => <tr key={row.id}>
-          <td>{row.employeeName}</td><td>{formatDate(row.workDate)}</td><td>{row.start}</td><td>{row.end}</td><td>{row.pauseMinutes} Min.</td><td>{formatDuration(row.netMinutes)}</td><td>{row.workArea || '–'} · {row.location || '–'}</td><td><button className="secondary-button compact" type="button" onClick={() => openExisting(row)}>Bearbeiten</button></td>
+          <td>{row.employeeName}</td><td>{formatDate(row.workDate)}</td><td>{row.start}</td><td>{row.end}</td><td>{row.pauseMinutes} Min.</td><td>{formatDuration(row.netMinutes)}</td><td>{row.workArea || '–'} · {row.location || '–'}</td><td><div className="timesheet-compact-actions"><button className="secondary-button compact" type="button" onClick={() => openExisting(row)}>Bearbeiten</button>{row.scheduleShiftId && (row.manualOverride || row.source === 'manual') && <button className="secondary-button compact" type="button" disabled={Boolean(busy)} onClick={() => restoreScheduleRow(row)}>Dienstplan übernehmen</button>}</div></td>
         </tr>)}
       </tbody></table></div>
     </section>
