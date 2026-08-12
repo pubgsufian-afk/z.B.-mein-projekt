@@ -20,3 +20,4 @@ jobs:
       - run: node scripts/timesheet-suppression-schema-test.mjs
       - run: node scripts/timesheet-suppression-repository-source-test.mjs
       - run: node scripts/timesheet-delete-restore-api-source-test.mjs
+      - run: node scripts/timesheet-monthly-pdf-layout-source-test.mjs
