@@ -102,6 +102,25 @@ export async function listTimesheetEntries(filters: { from: string; to: string; 
   return result.rows.map((row) => mapTimesheetEntryRow(row))
 }
 
+export async function listSuppressedTimesheetEntries(filters: { from: string; to: string; employeeUserId?: string }) {
+  const params: unknown[] = [filters.from, filters.to]
+  let employeeClause = ''
+  if (filters.employeeUserId) {
+    params.push(filters.employeeUserId)
+    employeeClause = ` AND employee_user_id = $${params.length}`
+  }
+  const database = getDatabase()
+  const result = await database.pool.query(
+    `SELECT * FROM timesheet_entries
+      WHERE work_date BETWEEN $1::date AND $2::date
+        AND suppressed = true
+        AND schedule_shift_id IS NOT NULL${employeeClause}
+      ORDER BY work_date, start_time, employee_name, id`,
+    params,
+  )
+  return result.rows.map((row) => mapTimesheetEntryRow(row))
+}
+
 export async function listScheduleLinkedTimesheetEntries(filters: { from: string; to: string }) {
   const database = getDatabase()
   const result = await database.pool.query(
