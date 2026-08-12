@@ -38,6 +38,12 @@ async function loginAndOpenTimesheet(page, user) {
   await navigate(page, 'Stundenzettel')
 }
 
+function visibleTimesheetRow(page) {
+  const mobile = page.locator('.timesheet-mobile-card').first()
+  const desktop = page.locator('.timesheet-desktop-table')
+  return { mobile, desktop }
+}
+
 test('Stundenzettel reads persisted rows and never mixes attendance history', async ({ page }) => {
   const user = ownerUser(); await mockIdentity(page, user)
   let attendanceHistoryReads = 0
@@ -61,10 +67,13 @@ test('Stundenzettel reads persisted rows and never mixes attendance history', as
   })
 
   await loginAndOpenTimesheet(page, user)
-  await expect(page.getByText('Anna Beispiel').last()).toBeVisible(); await expect(page.getByText('6:00 Std.', { exact: true })).toBeVisible()
+  const { mobile, desktop } = visibleTimesheetRow(page)
+  const visibleRow = await mobile.isVisible() ? mobile : desktop
+  await expect(visibleRow.getByText('Anna Beispiel', { exact: true })).toBeVisible()
+  await expect(visibleRow.getByText('6:00 Std.', { exact: true })).toBeVisible()
   await expect.poll(() => attendanceHistoryReads).toBe(0)
 
-  await page.getByRole('button', { name: 'Bearbeiten' }).click()
+  await visibleRow.getByRole('button', { name: 'Bearbeiten' }).click()
   await page.getByLabel('Beginn').fill('09:00')
   await page.getByRole('button', { name: 'Speichern' }).click()
   await expect.poll(() => updatedBody?.action).toBe('manual-update')
