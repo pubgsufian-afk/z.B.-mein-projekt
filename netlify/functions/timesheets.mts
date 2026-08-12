@@ -1,7 +1,7 @@
 import type { Config } from '@netlify/functions'
 import { verifyRequestOrigin } from '@netlify/identity'
 import { requirePortalRole } from './_shared/portal-role.mts'
-import { listTimesheetEntries, writeTimesheetAudit } from './_shared/timesheet-repository.mts'
+import { listSuppressedTimesheetEntries, listTimesheetEntries, writeTimesheetAudit } from './_shared/timesheet-repository.mts'
 import {
   createManualTimesheetEntry,
   deleteManualTimesheetEntry,
@@ -115,13 +115,17 @@ export default async function timesheets(request: Request) {
       const now = new Date()
       await syncPublishedScheduleRange(from, to, current.userId, now)
       const userId = text(url.searchParams.get('userId'), 120)
-      const entries = await listTimesheetEntries({ from, to, ...(userId ? { employeeUserId: userId } : {}) })
+      const filters = { from, to, ...(userId ? { employeeUserId: userId } : {}) }
+      const [entries, suppressedEntries] = await Promise.all([
+        listTimesheetEntries(filters),
+        listSuppressedTimesheetEntries(filters),
+      ])
       const months = monthKeys(from, to).map((month) => ({
         month,
         correctionDeadline: correctionDeadlineForMonth(month),
         scheduleSyncOpen: isTimesheetScheduleSyncOpen(month, now),
       }))
-      return json({ entries, months })
+      return json({ entries, suppressedEntries, months })
     }
 
     if (!['POST', 'PATCH', 'DELETE'].includes(request.method)) return json({ message: 'Methode nicht erlaubt.' }, 405)
