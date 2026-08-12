@@ -11,7 +11,7 @@ permissions:
 jobs:
   targeted-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,4 +23,7 @@ jobs:
       - run: node scripts/timesheet-monthly-pdf-layout-source-test.mjs
       - run: node scripts/timesheet-mobile-edit-source-test.mjs
       - run: node scripts/timesheet-restore-ui-source-test.mjs
-      - run: node scripts/verify-timesheet-monthly-freeze.mjs
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
