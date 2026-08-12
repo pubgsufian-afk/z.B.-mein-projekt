@@ -1,11 +1,13 @@
 import type { Config } from '@netlify/functions'
 import { verifyRequestOrigin } from '@netlify/identity'
 import { requirePortalRole } from './_shared/portal-role.mts'
-import { listTimesheetEntries, writeTimesheetAudit } from './_shared/timesheet-repository.mts'
+import { listSuppressedTimesheetEntries, listTimesheetEntries, writeTimesheetAudit } from './_shared/timesheet-repository.mts'
 import {
   createManualTimesheetEntry,
   deleteManualTimesheetEntry,
   findTimesheetEntry,
+  restoreScheduleTimesheetEntry,
+  suppressTimesheetEntry,
   updateManualTimesheetEntry,
 } from './_shared/timesheet-manual-repository.mts'
 import { syncPublishedScheduleRange, plannedNetMinutes } from './_shared/timesheet-schedule-sync.mts'
@@ -113,13 +115,17 @@ export default async function timesheets(request: Request) {
       const now = new Date()
       await syncPublishedScheduleRange(from, to, current.userId, now)
       const userId = text(url.searchParams.get('userId'), 120)
-      const entries = await listTimesheetEntries({ from, to, ...(userId ? { employeeUserId: userId } : {}) })
+      const filters = { from, to, ...(userId ? { employeeUserId: userId } : {}) }
+      const [entries, suppressedEntries] = await Promise.all([
+        listTimesheetEntries(filters),
+        listSuppressedTimesheetEntries(filters),
+      ])
       const months = monthKeys(from, to).map((month) => ({
         month,
         correctionDeadline: correctionDeadlineForMonth(month),
         scheduleSyncOpen: isTimesheetScheduleSyncOpen(month, now),
       }))
-      return json({ entries, months })
+      return json({ entries, suppressedEntries, months })
     }
 
     if (!['POST', 'PATCH', 'DELETE'].includes(request.method)) return json({ message: 'Methode nicht erlaubt.' }, 405)
@@ -137,6 +143,34 @@ export default async function timesheets(request: Request) {
         monthKey: monthKeyForDate(saved.workDate), reason, beforeData: null, afterData: saved,
       })
       return json({ entry: saved }, 201)
+    }
+
+    if (request.method === 'POST' && action === 'restore-schedule') {
+      const id = text(body.id, 120)
+      const reason = requireReason(body.reason)
+      const existing = id ? await findTimesheetEntry(id) : null
+      if (!existing || !existing.scheduleShiftId) {
+        return json({ message: 'Dienstplan-Stundenzettel wurde nicht gefunden.' }, 404)
+      }
+      const now = new Date()
+      if (!isTimesheetScheduleSyncOpen(monthKeyForDate(existing.workDate), now)) {
+        return json({ message: 'Der abgeschlossene Monat kann nicht mehr automatisch aus dem Dienstplan übernommen werden.' }, 409)
+      }
+      const restored = await restoreScheduleTimesheetEntry(id, current.userId)
+      if (!restored) return json({ message: 'Dienstplan-Stundenzettel konnte nicht wiederhergestellt werden.' }, 409)
+      await syncPublishedScheduleRange(existing.workDate, existing.workDate, current.userId, now)
+      const refreshed = await findTimesheetEntry(id)
+      await writeTimesheetAudit({
+        actorId: current.userId,
+        actorRole: current.role,
+        action: 'schedule-restore',
+        entryId: id,
+        monthKey: monthKeyForDate(existing.workDate),
+        reason,
+        beforeData: existing,
+        afterData: refreshed || restored,
+      })
+      return json({ entry: refreshed || restored })
     }
 
     if (request.method === 'PATCH' && action === 'manual-update') {
@@ -159,16 +193,21 @@ export default async function timesheets(request: Request) {
       const reason = requireReason(body.reason)
       const existing = id ? await findTimesheetEntry(id) : null
       if (!existing) return json({ message: 'Stundenzettel-Eintrag wurde nicht gefunden.' }, 404)
-      if (existing.scheduleShiftId || existing.source !== 'manual') {
-        return json({ message: 'Dienstplan-Einträge können korrigiert, aber nicht als manueller Eintrag gelöscht werden.' }, 409)
-      }
-      const removed = await deleteManualTimesheetEntry(id)
+      const removed = existing.scheduleShiftId
+        ? await suppressTimesheetEntry(id, current.userId)
+        : await deleteManualTimesheetEntry(id)
       if (!removed) return json({ message: 'Stundenzettel-Eintrag konnte nicht gelöscht werden.' }, 409)
       await writeTimesheetAudit({
-        actorId: current.userId, actorRole: current.role, action: 'manual-delete', entryId: removed.id,
-        monthKey: monthKeyForDate(removed.workDate), reason, beforeData: removed, afterData: null,
+        actorId: current.userId,
+        actorRole: current.role,
+        action: 'manual-delete',
+        entryId: removed.id,
+        monthKey: monthKeyForDate(removed.workDate),
+        reason,
+        beforeData: existing,
+        afterData: existing.scheduleShiftId ? removed : null,
       })
-      return json({ deleted: true, id })
+      return json({ deleted: true, id, suppressed: Boolean(existing.scheduleShiftId) })
     }
 
     return json({ message: 'Unbekannte Aktion.' }, 400)

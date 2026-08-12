@@ -14,13 +14,19 @@ export type TimesheetEntry = {
   workArea: string
   source: 'schedule' | 'manual'
   manualOverride: boolean
+  suppressed: boolean
+  suppressedAt: string
+  suppressedBy: string
   createdAt: string
   createdBy: string
   updatedAt: string
   updatedBy: string
 }
 
-export type ScheduleTimesheetInput = Omit<TimesheetEntry, 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'> & {
+export type ScheduleTimesheetInput = Omit<
+  TimesheetEntry,
+  'id' | 'suppressed' | 'suppressedAt' | 'suppressedBy' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'
+> & {
   scheduleShiftId: string
 }
 
@@ -54,6 +60,9 @@ export function mapTimesheetEntryRow(row: Record<string, unknown>): TimesheetEnt
     workArea: String(row.work_area || ''),
     source: row.source === 'manual' ? 'manual' : 'schedule',
     manualOverride: Boolean(row.manual_override),
+    suppressed: Boolean(row.suppressed),
+    suppressedAt: iso(row.suppressed_at),
+    suppressedBy: String(row.suppressed_by || ''),
     createdAt: iso(row.created_at),
     createdBy: String(row.created_by || ''),
     updatedAt: iso(row.updated_at),
@@ -85,7 +94,27 @@ export async function listTimesheetEntries(filters: { from: string; to: string; 
   const database = getDatabase()
   const result = await database.pool.query(
     `SELECT * FROM timesheet_entries
-      WHERE work_date BETWEEN $1::date AND $2::date${employeeClause}
+      WHERE work_date BETWEEN $1::date AND $2::date
+        AND suppressed = false${employeeClause}
+      ORDER BY work_date, start_time, employee_name, id`,
+    params,
+  )
+  return result.rows.map((row) => mapTimesheetEntryRow(row))
+}
+
+export async function listSuppressedTimesheetEntries(filters: { from: string; to: string; employeeUserId?: string }) {
+  const params: unknown[] = [filters.from, filters.to]
+  let employeeClause = ''
+  if (filters.employeeUserId) {
+    params.push(filters.employeeUserId)
+    employeeClause = ` AND employee_user_id = $${params.length}`
+  }
+  const database = getDatabase()
+  const result = await database.pool.query(
+    `SELECT * FROM timesheet_entries
+      WHERE work_date BETWEEN $1::date AND $2::date
+        AND suppressed = true
+        AND schedule_shift_id IS NOT NULL${employeeClause}
       ORDER BY work_date, start_time, employee_name, id`,
     params,
   )
@@ -138,6 +167,7 @@ export async function upsertScheduleTimesheetEntry(entry: ScheduleTimesheetInput
        updated_at = now(),
        updated_by = EXCLUDED.updated_by
      WHERE timesheet_entries.manual_override = false
+       AND timesheet_entries.suppressed = false
      RETURNING *`,
     [
       crypto.randomUUID(), entry.scheduleShiftId, entry.employeeUserId, entry.employeeName,

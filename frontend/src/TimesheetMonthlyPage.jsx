@@ -25,11 +25,8 @@ async function requestJson(path, options = {}) {
 
 async function requestBlob(path, payload, expectedType) {
   const response = await fetch(path, {
-    method: 'POST',
-    credentials: 'same-origin',
-    cache: 'no-store',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    method: 'POST', credentials: 'same-origin', cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   })
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
@@ -68,15 +65,11 @@ function formatDuration(minutes) {
   const total = Math.max(0, Math.round(Number(minutes) || 0))
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')} Std.`
 }
-
 function formatDate(value) {
   if (!value) return '–'
   const date = new Date(`${value}T12:00:00`)
-  return Number.isFinite(date.getTime())
-    ? new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date)
-    : value
+  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date) : value
 }
-
 function InlineNotice({ tone = 'info', children }) {
   if (!children) return null
   return <div className={`notice notice-${tone}`} role="status">{children}</div>
@@ -89,6 +82,7 @@ export default function TimesheetMonthlyPage() {
   const [employees, setEmployees] = useState([])
   const [userId, setUserId] = useState('')
   const [rows, setRows] = useState([])
+  const [suppressedRows, setSuppressedRows] = useState([])
   const [months, setMonths] = useState([])
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState(null)
@@ -101,15 +95,9 @@ export default function TimesheetMonthlyPage() {
     try {
       const cached = peekCachedJson(REGISTRATIONS_CACHE_KEY)
       if (cached !== undefined) setEmployees(cached.employees || [])
-      const data = await refreshCachedJson(
-        REGISTRATIONS_CACHE_KEY,
-        () => requestJson('/api/registrations'),
-        { ttlMs: REGISTRATIONS_CACHE_TTL_MS },
-      )
+      const data = await refreshCachedJson(REGISTRATIONS_CACHE_KEY, () => requestJson('/api/registrations'), { ttlMs: REGISTRATIONS_CACHE_TTL_MS })
       setEmployees(data.employees || [])
-    } catch (error) {
-      setNotice({ tone: 'error', text: error.message })
-    }
+    } catch (error) { setNotice({ tone: 'error', text: error.message }) }
   }, [])
 
   const loadTimesheet = useCallback(async () => {
@@ -119,13 +107,13 @@ export default function TimesheetMonthlyPage() {
       if (userId) params.set('userId', userId)
       const data = await requestJson(`/api/timesheets?${params}`)
       setRows(data.entries || [])
+      setSuppressedRows(data.suppressedEntries || [])
       setMonths(data.months || [])
     } catch (error) {
       setRows([])
+      setSuppressedRows([])
       setNotice({ tone: 'error', text: error.message })
-    } finally {
-      setBusy('')
-    }
+    } finally { setBusy('') }
   }, [from, to, userId])
 
   useEffect(() => { loadDirectory() }, [loadDirectory])
@@ -138,12 +126,8 @@ export default function TimesheetMonthlyPage() {
       location: row.location || '', workArea: row.workArea || '', reason: 'Korrektur im Stundenzettel',
     })
   }
-
   function openNew() {
-    if (!selectedEmployee) {
-      setNotice({ tone: 'warning', text: 'Bitte zuerst einen Mitarbeiter auswählen.' })
-      return
-    }
+    if (!selectedEmployee) return setNotice({ tone: 'warning', text: 'Bitte zuerst einen Mitarbeiter auswählen.' })
     setEditor({
       mode: 'new', employeeUserId: String(selectedEmployee.userId || selectedEmployee.id || ''),
       employeeName: selectedEmployee.fullName || 'Mitarbeiter', date: to, start: '07:00', end: '17:00',
@@ -155,55 +139,53 @@ export default function TimesheetMonthlyPage() {
     event.preventDefault()
     if (!editor) return
     const pauseMinutes = Number(editor.pauseMinutes)
-    if (!Number.isInteger(pauseMinutes) || pauseMinutes < 0) {
-      setNotice({ tone: 'error', text: 'Die Pause muss eine ganze Minute ab 0 sein.' })
-      return
-    }
-    setBusy('save')
-    setNotice(null)
+    if (!Number.isInteger(pauseMinutes) || pauseMinutes < 0) return setNotice({ tone: 'error', text: 'Die Pause muss eine ganze Minute ab 0 sein.' })
+    setBusy('save'); setNotice(null)
     try {
       const payload = {
         action: editor.mode === 'edit' ? 'manual-update' : 'manual-create',
         ...(editor.id ? { id: editor.id } : {}),
-        employeeUserId: editor.employeeUserId,
-        employeeName: editor.employeeName,
-        date: editor.date,
-        start: editor.start,
-        end: editor.end,
-        pauseMinutes,
-        location: editor.location,
-        workArea: editor.workArea,
-        reason: editor.reason,
+        employeeUserId: editor.employeeUserId, employeeName: editor.employeeName,
+        date: editor.date, start: editor.start, end: editor.end, pauseMinutes,
+        location: editor.location, workArea: editor.workArea, reason: editor.reason,
       }
+      await requestJson('/api/timesheets', { method: editor.mode === 'edit' ? 'PATCH' : 'POST', body: JSON.stringify(payload) })
+      setEditor(null); setNotice({ tone: 'success', text: 'Stundenzettel wurde gespeichert.' }); await loadTimesheet()
+    } catch (error) { setNotice({ tone: 'error', text: error.message }) } finally { setBusy('') }
+  }
+
+  async function deleteEditor() {
+    if (!editor?.id) return
+    if (!window.confirm('Diesen Stundenzettel-Eintrag wirklich löschen? Der Dienstplan bleibt unverändert.')) return
+    setBusy('delete'); setNotice(null)
+    try {
       await requestJson('/api/timesheets', {
-        method: editor.mode === 'edit' ? 'PATCH' : 'POST',
-        body: JSON.stringify(payload),
+        method: 'DELETE',
+        body: JSON.stringify({ action: 'manual-delete', id: editor.id, reason: editor.reason || 'Stundenzettel-Eintrag gelöscht' }),
       })
-      setEditor(null)
-      setNotice({ tone: 'success', text: 'Stundenzettel wurde gespeichert.' })
+      setEditor(null); setNotice({ tone: 'success', text: 'Stundenzettel-Eintrag wurde gelöscht.' }); await loadTimesheet()
+    } catch (error) { setNotice({ tone: 'error', text: error.message }) } finally { setBusy('') }
+  }
+
+  async function restoreScheduleRow(row) {
+    setBusy(`restore-${row.id}`); setNotice(null)
+    try {
+      await requestJson('/api/timesheets', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'restore-schedule', id: row.id, reason: 'Dienstplan im Stundenzettel wieder übernommen' }),
+      })
+      setNotice({ tone: 'success', text: 'Dienstplan-Eintrag wurde wieder in den Stundenzettel übernommen.' })
       await loadTimesheet()
-    } catch (error) {
-      setNotice({ tone: 'error', text: error.message })
-    } finally {
-      setBusy('')
-    }
+    } catch (error) { setNotice({ tone: 'error', text: error.message }) } finally { setBusy('') }
   }
 
   async function exportTimesheet(format) {
-    setBusy(`export-${format}`)
-    setNotice(null)
+    setBusy(`export-${format}`); setNotice(null)
     try {
       const expected = format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf'
-      const { blob, filename } = await requestBlob('/api/timesheet-reports', {
-        from, to, userIds: userId ? [userId] : [], format, scope: 'unified',
-      }, expected)
-      downloadBlob(blob, filename)
-      setNotice({ tone: 'success', text: 'Stundenzettel wurde erstellt.' })
-    } catch (error) {
-      setNotice({ tone: 'error', text: error.message })
-    } finally {
-      setBusy('')
-    }
+      const { blob, filename } = await requestBlob('/api/timesheet-reports', { from, to, userIds: userId ? [userId] : [], format, scope: 'unified' }, expected)
+      downloadBlob(blob, filename); setNotice({ tone: 'success', text: 'Stundenzettel wurde erstellt.' })
+    } catch (error) { setNotice({ tone: 'error', text: error.message }) } finally { setBusy('') }
   }
 
   const closedMonths = months.filter((month) => !month.scheduleSyncOpen)
@@ -239,18 +221,61 @@ export default function TimesheetMonthlyPage() {
           <label>Bereich<input required value={editor.workArea} onChange={(event) => setEditor((current) => ({ ...current, workArea: event.target.value }))} /></label>
         </div>
         <label>Begründung<input required value={editor.reason} onChange={(event) => setEditor((current) => ({ ...current, reason: event.target.value }))} /></label>
-        <div className="button-row"><button className="primary-button" disabled={busy === 'save'}>{busy === 'save' ? 'Wird gespeichert …' : 'Speichern'}</button></div>
+        <div className="button-row">
+          <button className="primary-button" disabled={busy === 'save' || busy === 'delete'}>{busy === 'save' ? 'Wird gespeichert …' : 'Speichern'}</button>
+          {editor.mode === 'edit' && <button type="button" className="secondary-button danger-button" disabled={busy === 'save' || busy === 'delete'} onClick={deleteEditor}>{busy === 'delete' ? 'Wird gelöscht …' : 'Löschen'}</button>}
+          <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => setEditor(null)}>Schließen</button>
+        </div>
       </form>
     </section>}
 
     <section className="panel">
       <div className="page-heading"><div><h2>Arbeitszeiten</h2><p>{rows.length} Einträge · Gesamt {formatDuration(totalMinutes)}</p></div></div>
-      <div className="table-scroll"><table><thead><tr><th>Mitarbeiter</th><th>Datum</th><th>Beginn</th><th>Ende</th><th>Pause</th><th>Dauer</th><th>Bereich / Einsatzort</th><th></th></tr></thead><tbody>
+
+      <div className="timesheet-mobile-list">
+        {rows.length === 0 && <div className="timesheet-empty">Für den ausgewählten Zeitraum sind keine Stundenzettel-Einträge vorhanden.</div>}
+        {rows.map((row) => <article className="timesheet-mobile-card" key={`mobile-${row.id}`}>
+          <header><strong>{row.employeeName}</strong><span>{formatDate(row.workDate)}</span></header>
+          <div className="timesheet-values">
+            <div><span>Beginn</span><strong>{row.start}</strong></div>
+            <div><span>Ende</span><strong>{row.end}</strong></div>
+            <div><span>Pause</span><strong>{row.pauseMinutes} Min.</strong></div>
+            <div><span>Dauer</span><strong>{formatDuration(row.netMinutes)}</strong></div>
+            <div className="timesheet-wide-value"><span>Bereich</span><strong>{row.workArea || '–'}</strong></div>
+            <div className="timesheet-wide-value"><span>Einsatzort</span><strong>{row.location || '–'}</strong></div>
+          </div>
+          <footer>
+            <span>{row.source === 'manual' || row.manualOverride ? 'Manuell' : 'Dienstplan'}</span>
+            <div className="timesheet-compact-actions">
+              <button className="secondary-button compact" type="button" onClick={() => openExisting(row)}>Bearbeiten</button>
+              {row.scheduleShiftId && (row.manualOverride || row.source === 'manual') && <button className="secondary-button compact" type="button" disabled={Boolean(busy)} onClick={() => restoreScheduleRow(row)}>Dienstplan übernehmen</button>}
+            </div>
+          </footer>
+        </article>)}
+      </div>
+
+      <div className="table-scroll timesheet-desktop-table"><table><thead><tr><th>Mitarbeiter</th><th>Datum</th><th>Beginn</th><th>Ende</th><th>Pause</th><th>Dauer</th><th>Bereich / Einsatzort</th><th></th></tr></thead><tbody>
         {rows.length === 0 && <tr><td colSpan="8">Für den ausgewählten Zeitraum sind keine Stundenzettel-Einträge vorhanden.</td></tr>}
         {rows.map((row) => <tr key={row.id}>
-          <td>{row.employeeName}</td><td>{formatDate(row.workDate)}</td><td>{row.start}</td><td>{row.end}</td><td>{row.pauseMinutes} Min.</td><td>{formatDuration(row.netMinutes)}</td><td>{row.workArea || '–'} · {row.location || '–'}</td><td><button className="secondary-button compact" type="button" onClick={() => openExisting(row)}>Bearbeiten</button></td>
+          <td>{row.employeeName}</td><td>{formatDate(row.workDate)}</td><td>{row.start}</td><td>{row.end}</td><td>{row.pauseMinutes} Min.</td><td>{formatDuration(row.netMinutes)}</td><td>{row.workArea || '–'} · {row.location || '–'}</td><td><div className="timesheet-compact-actions"><button className="secondary-button compact" type="button" onClick={() => openExisting(row)}>Bearbeiten</button>{row.scheduleShiftId && (row.manualOverride || row.source === 'manual') && <button className="secondary-button compact" type="button" disabled={Boolean(busy)} onClick={() => restoreScheduleRow(row)}>Dienstplan übernehmen</button>}</div></td>
         </tr>)}
       </tbody></table></div>
     </section>
+
+    {suppressedRows.length > 0 && <section className="panel timesheet-suppressed-section">
+      <div className="page-heading"><div><h2>Gelöschte Dienstplan-Einträge</h2><p>Diese Einträge wurden nur aus dem Stundenzettel entfernt. Der Dienstplan selbst blieb unverändert.</p></div></div>
+      <div className="timesheet-card-grid">
+        {suppressedRows.map((row) => <article className="timesheet-card" key={`suppressed-${row.id}`}>
+          <header><div><strong>{row.employeeName}</strong><span>{formatDate(row.workDate)} · {row.start}–{row.end}</span></div></header>
+          <div className="timesheet-values">
+            <div><span>Pause</span><strong>{row.pauseMinutes} Min.</strong></div>
+            <div><span>Dauer</span><strong>{formatDuration(row.netMinutes)}</strong></div>
+            <div className="timesheet-wide-value"><span>Bereich</span><strong>{row.workArea || '–'}</strong></div>
+            <div className="timesheet-wide-value"><span>Einsatzort</span><strong>{row.location || '–'}</strong></div>
+          </div>
+          <footer><span>Gelöscht aus Stundenzettel</span><button className="secondary-button" type="button" disabled={Boolean(busy)} onClick={() => restoreScheduleRow(row)}>Dienstplan übernehmen</button></footer>
+        </article>)}
+      </div>
+    </section>}
   </div>
 }

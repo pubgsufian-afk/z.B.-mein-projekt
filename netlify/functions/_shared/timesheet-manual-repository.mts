@@ -78,3 +78,39 @@ export async function deleteManualTimesheetEntry(id: string) {
   )
   return result.rows[0] ? mapTimesheetEntryRow(result.rows[0]) : null
 }
+
+export async function suppressTimesheetEntry(id: string, actorId: string) {
+  const database = getDatabase()
+  const result = await database.pool.query(
+    `UPDATE timesheet_entries SET
+       suppressed = true,
+       suppressed_at = now(),
+       suppressed_by = $2,
+       manual_override = true,
+       updated_at = now(),
+       updated_by = $2
+     WHERE id = $1
+     RETURNING *`,
+    [id, actorId],
+  )
+  return result.rows[0] ? mapTimesheetEntryRow(result.rows[0]) : null
+}
+
+export async function restoreScheduleTimesheetEntry(id: string, actorId: string) {
+  const database = getDatabase()
+  const result = await database.pool.query(
+    `UPDATE timesheet_entries SET
+       suppressed = false,
+       suppressed_at = NULL,
+       suppressed_by = NULL,
+       source = 'schedule',
+       manual_override = false,
+       updated_at = now(),
+       updated_by = $2
+     WHERE id = $1
+       AND schedule_shift_id IS NOT NULL
+     RETURNING *`,
+    [id, actorId],
+  )
+  return result.rows[0] ? mapTimesheetEntryRow(result.rows[0]) : null
+}

@@ -7,6 +7,7 @@ import { monthKeyForDate } from './_shared/timesheet-month-policy.mts'
 
 const MANAGEMENT = ['owner', 'admin', 'manager'] as const
 type Format = 'pdf' | 'xlsx'
+type DisplayRow = TimesheetEntry | null
 
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' } })
@@ -28,6 +29,19 @@ function germanDate(value: string) {
   const date = new Date(`${value}T12:00:00`)
   return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date) : value
 }
+function shortGermanDate(value: string) {
+  const date = new Date(`${value}T12:00:00`)
+  return Number.isFinite(date.getTime())
+    ? new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }).format(date)
+    : value
+}
+function monthLabel(from: string, to: string) {
+  if (from.slice(0, 7) === to.slice(0, 7)) {
+    const date = new Date(`${from.slice(0, 7)}-15T12:00:00`)
+    return new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' }).format(date)
+  }
+  return `${germanDate(from)} - ${germanDate(to)}`
+}
 function durationText(minutes: number) {
   const total = Math.max(0, Math.round(Number(minutes) || 0))
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
@@ -40,6 +54,39 @@ function groupRows(rows: TimesheetEntry[]) {
     groups.get(key)?.push(row)
   }
   return [...groups.values()].sort((a, b) => (a[0]?.employeeName || '').localeCompare(b[0]?.employeeName || '', 'de'))
+}
+function dateRange(from: string, to: string) {
+  const dates: string[] = []
+  let cursor = new Date(`${from}T12:00:00Z`)
+  const end = new Date(`${to}T12:00:00Z`)
+  while (cursor <= end) {
+    dates.push(cursor.toISOString().slice(0, 10))
+    cursor = new Date(cursor.getTime() + 86400000)
+  }
+  return dates
+}
+function rowsWithBlankDates(rows: TimesheetEntry[], from: string, to: string): Array<{ date: string; row: DisplayRow }> {
+  const byDate = new Map<string, TimesheetEntry[]>()
+  for (const row of rows) {
+    if (!byDate.has(row.workDate)) byDate.set(row.workDate, [])
+    byDate.get(row.workDate)?.push(row)
+  }
+  const result: Array<{ date: string; row: DisplayRow }> = []
+  for (const date of dateRange(from, to)) {
+    const dayRows = (byDate.get(date) || []).sort((a, b) => `${a.start}-${a.id}`.localeCompare(`${b.start}-${b.id}`))
+    if (dayRows.length === 0) result.push({ date, row: null })
+    else dayRows.forEach((row) => result.push({ date, row }))
+  }
+  return result
+}
+function statusText(row: TimesheetEntry | null) {
+  if (!row) return ''
+  return row.source === 'manual' || row.manualOverride ? 'Manuell' : 'Dienstplan'
+}
+function activityLocation(row: TimesheetEntry | null) {
+  if (!row) return ''
+  const parts = [text(row.workArea, 42), text(row.location, 62)].filter(Boolean)
+  return parts.join(' · ')
 }
 async function embedLogo(pdf: any, request: Request, logoUrl: string) {
   try {
@@ -57,42 +104,87 @@ async function buildPdf(request: Request, rows: TimesheetEntry[], from: string, 
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
   const logo = await embedLogo(pdf, request, settings.logoUrl)
   const groups = groupRows(rows)
-  const width = 595, height = 842, margin = 34
-  const dark = rgb(0.08, 0.08, 0.08), line = rgb(0.72, 0.72, 0.72), pale = rgb(0.96, 0.96, 0.96)
-  const drawHeader = (page: any, employeeName: string, pageNo: number) => {
-    if (logo) {
-      const scale = Math.min(80 / logo.width, 48 / logo.height)
-      page.drawImage(logo, { x: margin, y: height - 72, width: logo.width * scale, height: logo.height * scale })
-    }
-    page.drawText(safePdfText(settings.companyName, 70), { x: 130, y: height - 48, size: 12, font: bold, color: dark })
-    page.drawText('Stundenzettel', { x: 130, y: height - 66, size: 16, font: bold, color: dark })
-    page.drawText(`Mitarbeiter: ${safePdfText(employeeName, 60)}`, { x: margin, y: height - 98, size: 10, font: bold, color: dark })
-    page.drawText(`Zeitraum: ${germanDate(from)} - ${germanDate(to)}`, { x: margin, y: height - 113, size: 9, font: regular, color: dark })
-    page.drawText(`Seite ${pageNo}`, { x: width - 80, y: height - 113, size: 8, font: regular, color: dark })
-    return height - 138
-  }
-  const columns = [34, 101, 146, 191, 238, 289, 355, 561]
-  const headers = ['Datum', 'Start', 'Ende', 'Pause', 'Dauer', 'Bereich', 'Einsatzort']
+  const width = 595, height = 842, margin = 12
+  const dark = rgb(0.08, 0.08, 0.08)
+  const line = rgb(0.32, 0.32, 0.32)
+  const pale = rgb(0.96, 0.96, 0.96)
+  const gold = rgb(0.86, 0.65, 0.17)
+  const tableWidth = width - margin * 2
+  const columns = [12, 88, 142, 196, 247, 307, 372, 583]
+  const headers = ['Datum', 'Startzeit', 'Endzeit', 'Pause', 'Dauer', 'Status', 'Tätigkeit / Einsatzort']
+
   for (const employeeRows of groups.length ? groups : [[] as TimesheetEntry[]]) {
     const employeeName = employeeRows[0]?.employeeName || 'Keine Einträge'
-    let page = pdf.addPage([width, height]), pageNo = 1, y = drawHeader(page, employeeName, pageNo)
-    const drawColumns = () => {
-      page.drawRectangle({ x: margin, y: y - 20, width: width - margin * 2, height: 22, color: pale, borderColor: line, borderWidth: 0.5 })
-      headers.forEach((header, index) => page.drawText(header, { x: columns[index] + 3, y: y - 13, size: 7.5, font: bold, color: dark }))
+    const displayRows = rowsWithBlankDates(employeeRows, from, to)
+    let page: any
+    let y = 0
+    let pageNo = 0
+
+    const drawWatermark = () => {
+      if (!logo) return
+      const scale = Math.min(205 / logo.width, 170 / logo.height)
+      const logoWidth = logo.width * scale
+      const logoHeight = logo.height * scale
+      page.drawImage(logo, {
+        x: (width - logoWidth) / 2,
+        y: 285,
+        width: logoWidth,
+        height: logoHeight,
+        opacity: 0.06,
+      })
+    }
+
+    const drawFooter = () => {
+      const companyLine = [settings.companyName, settings.address, settings.phone, settings.email].filter(Boolean).join(' · ')
+      page.drawText(safePdfText(companyLine, 150), { x: margin, y: 22, size: 6.5, font: regular, color: rgb(0.35, 0.35, 0.35) })
+    }
+
+    const drawHeader = () => {
+      page = pdf.addPage([width, height])
+      pageNo += 1
+      drawWatermark()
+      page.drawRectangle({ x: margin, y: height - 82, width: tableWidth, height: 68, borderColor: line, borderWidth: 1 })
+      page.drawText('Stundenzettel', { x: 225, y: height - 38, size: 15, font: bold, color: dark })
+      const period = monthLabel(from, to)
+      page.drawText(safePdfText(period, 70), { x: Math.max(margin + 10, (width - regular.widthOfTextAtSize(safePdfText(period), 10)) / 2), y: height - 56, size: 10, font: bold, color: dark })
+      page.drawText(`Arbeitnehmer: ${safePdfText(employeeName, 70)}`, { x: margin + 8, y: height - 72, size: 9.5, font: bold, color: dark })
+      if (pageNo > 1) page.drawText(`Seite ${pageNo}`, { x: width - 62, y: height - 72, size: 7, font: regular, color: dark })
+      y = height - 112
+      page.drawRectangle({ x: margin, y: y - 20, width: tableWidth, height: 22, color: gold, borderColor: line, borderWidth: 0.7 })
+      headers.forEach((header, index) => page.drawText(header, { x: columns[index] + 3, y: y - 13, size: 6.8, font: bold, color: dark }))
       y -= 20
+      drawFooter()
     }
-    drawColumns()
-    for (const row of employeeRows) {
-      if (y < 90) { page = pdf.addPage([width, height]); pageNo += 1; y = drawHeader(page, employeeName, pageNo); drawColumns() }
-      const values = [germanDate(row.workDate), row.start, row.end, `${row.pauseMinutes} Min.`, durationText(row.netMinutes), safePdfText(row.workArea, 22), safePdfText(row.location, 34)]
-      page.drawRectangle({ x: margin, y: y - 17, width: width - margin * 2, height: 18, borderColor: line, borderWidth: 0.35 })
-      values.forEach((value, index) => page.drawText(String(value), { x: columns[index] + 3, y: y - 11, size: index >= 5 ? 6.6 : 7.2, font: regular, color: dark }))
-      y -= 17
+
+    drawHeader()
+    for (const item of displayRows) {
+      if (y < 150) drawHeader()
+      const rowHeight = 17
+      const row = item.row
+      const values = [
+        shortGermanDate(item.date),
+        row?.start || '',
+        row?.end || '',
+        row ? `${row.pauseMinutes} Min.` : '',
+        row ? durationText(row.netMinutes) : '',
+        statusText(row),
+        safePdfText(activityLocation(row), 62),
+      ]
+      page.drawRectangle({ x: margin, y: y - rowHeight, width: tableWidth, height: rowHeight, color: pale, borderColor: line, borderWidth: 0.35, opacity: 0.35 })
+      values.forEach((value, index) => page.drawText(String(value), { x: columns[index] + 3, y: y - 11, size: index === 6 ? 6.1 : 6.6, font: regular, color: dark }))
+      y -= rowHeight
     }
-    const total = employeeRows.reduce((sum, row) => sum + row.netMinutes, 0)
-    y -= 8
-    page.drawText(`Gesamt: ${durationText(total)} Std.`, { x: margin, y, size: 10, font: bold, color: dark })
-    page.drawText(safePdfText(`${settings.address} · ${settings.phone} · ${settings.email}`, 100), { x: margin, y: 32, size: 7, font: regular, color: dark })
+
+    const total = employeeRows.reduce((sum, row) => sum + Math.max(0, Number(row.netMinutes) || 0), 0)
+    if (y < 128) drawHeader()
+    y -= 12
+    page.drawRectangle({ x: margin, y: y - 24, width: 470, height: 24, color: gold, borderColor: line, borderWidth: 0.8 })
+    page.drawText('Gesamtdauer', { x: margin + 7, y: y - 16, size: 9, font: bold, color: dark })
+    page.drawRectangle({ x: 376, y: y - 24, width: 106, height: 24, borderColor: line, borderWidth: 0.8 })
+    page.drawText(`${durationText(total)} Std.`, { x: 386, y: y - 16, size: 9, font: bold, color: dark })
+    y -= 45
+    page.drawRectangle({ x: margin, y: y - 66, width: tableWidth, height: 66, borderColor: line, borderWidth: 0.8 })
+    page.drawText('Anmerkungen', { x: margin + 7, y: y - 13, size: 8, font: regular, color: dark })
   }
   return new Uint8Array(await pdf.save())
 }
@@ -114,11 +206,11 @@ async function buildXlsx(rows: TimesheetEntry[], from: string, to: string) {
     const employeeName = employeeRows[0]?.employeeName || 'Stundenzettel'
     const sheet = workbook.addWorksheet(safeSheetName(employeeName, used))
     sheet.addRow([settings.companyName]); sheet.addRow(['Stundenzettel', employeeName]); sheet.addRow(['Zeitraum', `${germanDate(from)} - ${germanDate(to)}`]); sheet.addRow([])
-    sheet.addRow(['Datum', 'Beginn', 'Ende', 'Pause (Min.)', 'Dauer', 'Bereich', 'Einsatzort'])
-    for (const row of employeeRows) sheet.addRow([germanDate(row.workDate), row.start, row.end, row.pauseMinutes, durationText(row.netMinutes), row.workArea, row.location])
+    sheet.addRow(['Datum', 'Beginn', 'Ende', 'Pause (Min.)', 'Dauer', 'Status', 'Bereich', 'Einsatzort'])
+    for (const row of employeeRows) sheet.addRow([germanDate(row.workDate), row.start, row.end, row.pauseMinutes, durationText(row.netMinutes), statusText(row), row.workArea, row.location])
     const total = employeeRows.reduce((sum, row) => sum + row.netMinutes, 0)
     sheet.addRow([]); sheet.addRow(['Gesamt', '', '', '', durationText(total)])
-    sheet.columns = [{ width: 14 }, { width: 10 }, { width: 10 }, { width: 13 }, { width: 12 }, { width: 24 }, { width: 32 }]
+    sheet.columns = [{ width: 14 }, { width: 10 }, { width: 10 }, { width: 13 }, { width: 12 }, { width: 14 }, { width: 24 }, { width: 32 }]
     sheet.getRow(5).font = { bold: true }; sheet.getRow(2).font = { bold: true, size: 14 }
   }
   return new Uint8Array(await workbook.xlsx.writeBuffer())
