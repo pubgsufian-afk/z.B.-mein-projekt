@@ -78,8 +78,9 @@ assert.match(timesheet, /buildPlannedRows\(entries, employeeNamesRef\.current\)/
 assert.match(timesheet, /setActual\(\(current\) => rebindEmployeeNames\(current, employeeNames\)\)/)
 assert.match(timesheet, /setPlanned\(\(current\) => rebindEmployeeNames\(current, employeeNames\)\)/)
 
-// Fingerprinted frontend assets are immutable browser-cacheable resources.
-assert.match(netlify, /for = "\/assets\/\*"[\s\S]*Cache-Control = "public, max-age=31536000, immutable"/)
+// The fixed-name frontend bundle may be cached locally, but every reuse must revalidate so new deploys are visible immediately.
+assert.match(netlify, /for = "\/assets\/\*"[\s\S]*Cache-Control = "public, max-age=0, must-revalidate"/)
+assert.doesNotMatch(netlify, /for = "\/assets\/\*"[\s\S]*Cache-Control = "[^"]*immutable/)
 
 // No forbidden browser persistence was introduced.
 assert.doesNotMatch(app, /localStorage|sessionStorage|indexedDB|IndexedDB/)
