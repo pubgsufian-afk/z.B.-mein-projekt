@@ -63,7 +63,7 @@ assert.doesNotMatch(scheduleBlock, /visibleEntries\.filter\(\(entry\) => entry\.
 assert.match(scheduleBlock, /dedupeInflightJson\(shiftPath/)
 assert.match(scheduleBlock, /refreshCachedJson\(OBJECTS_CACHE_KEY/)
 
-// Timesheet uses the same safe performance primitives and one coordinated initial read.
+// Timesheet uses safe performance primitives without refetching all data when the employee directory arrives.
 assert.match(timesheet, /from '\.\/read-cache\.js'/)
 assert.match(timesheet, /const DATE_FORMATTERS = new Map\(\)/)
 assert.match(timesheet, /BERLIN_TIME_INPUT_FORMATTER/)
@@ -71,10 +71,14 @@ assert.match(timesheet, /peekCachedJson\(REGISTRATIONS_CACHE_KEY\)/)
 assert.match(timesheet, /refreshCachedJson\(REGISTRATIONS_CACHE_KEY/)
 assert.match(timesheet, /dedupeInflightJson\(historyPath/)
 assert.match(timesheet, /dedupeInflightJson\(schedulePath/)
-assert.match(timesheet, /Promise\.all\(\[directoryPromise, historyPromise, schedulePromise\]\)/)
-assert.doesNotMatch(timesheet, /useEffect\(\(\) => \{ loadDirectory\(\) \}, \[loadDirectory\]\)/)
+assert.match(timesheet, /const employeeNamesRef = useRef\(employeeNames\)/)
+assert.match(timesheet, /employeeNamesRef\.current = employeeNames/)
+assert.match(timesheet, /buildActualSessions\(data\.entries \|\| \[\], employeeNamesRef\.current\)/)
+assert.match(timesheet, /buildPlannedRows\(entries, employeeNamesRef\.current\)/)
+assert.match(timesheet, /setActual\(\(current\) => rebindEmployeeNames\(current, employeeNames\)\)/)
+assert.match(timesheet, /setPlanned\(\(current\) => rebindEmployeeNames\(current, employeeNames\)\)/)
 
-// Fingerprinted frontend assets must be browser-cacheable; index.html remains separately refreshable.
+// Fingerprinted frontend assets are immutable browser-cacheable resources.
 assert.match(netlify, /for = "\/assets\/\*"[\s\S]*Cache-Control = "public, max-age=31536000, immutable"/)
 
 // No forbidden browser persistence was introduced.
