@@ -43,3 +43,5 @@ assert.match(schedule, /TIME_DUPLICATE/)
 
 await writeFile(schedulePath, schedule)
 console.log('Schedule assistant full-control portal patch applied')
+
+await import('./ensure-settings-performance-input.mjs')
