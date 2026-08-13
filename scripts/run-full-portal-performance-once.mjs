@@ -105,4 +105,5 @@ if (appPerformanceActive) {
   await import('./apply-full-portal-performance.mjs')
 }
 
+await import('./apply-timesheet-excel-esm-fix.mjs')
 await import('./apply-timesheet-no-duplicate-reload.mjs')
