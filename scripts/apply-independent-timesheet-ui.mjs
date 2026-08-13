@@ -84,4 +84,7 @@ reportTest = reportTest
   .replaceAll('Habun-Stundenzettel', 'Habun-Stempelprotokoll')
 await writeFile(reportTestPath, reportTest)
 
+await import('./apply-professional-timesheet-excel.mjs')
+await import('./timesheet-monthly-excel-style-source-test.mjs')
+
 console.log('Independent monthly timesheet and stamp-report separation routed')
