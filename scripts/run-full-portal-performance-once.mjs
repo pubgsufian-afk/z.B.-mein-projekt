@@ -104,3 +104,5 @@ if (appPerformanceActive) {
 } else {
   await import('./apply-full-portal-performance.mjs')
 }
+
+await import('./apply-timesheet-no-duplicate-reload.mjs')
