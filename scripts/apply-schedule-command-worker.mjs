@@ -29,3 +29,4 @@ if (changed) {
 }
 
 await import('./restore-timesheet-performance-input.mjs')
+await import('./ensure-settings-performance-input.mjs')
