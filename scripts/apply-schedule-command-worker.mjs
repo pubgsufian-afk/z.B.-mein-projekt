@@ -27,3 +27,6 @@ if (changed) {
 } else {
   console.log('Schedule command worker patch already applied')
 }
+
+await import('./restore-timesheet-performance-input.mjs')
+await import('./ensure-settings-performance-input.mjs')
