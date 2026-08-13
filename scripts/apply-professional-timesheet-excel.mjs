@@ -85,7 +85,7 @@ const professionalBuildXlsx = `async function buildXlsx(rows: TimesheetEntry[], 
     sheet.mergeCells('B3:H3')
     sheet.mergeCells('B4:H4')
     sheet.getCell('B3').value = employeeName
-    sheet.getCell('B4').value = \`${germanDate(from)} - ${germanDate(to)}\`
+    sheet.getCell('B4').value = \`\${germanDate(from)} - \${germanDate(to)}\`
     for (const valueCell of ['B3', 'B4']) {
       sheet.getCell(valueCell).font = { name: 'Aptos', size: 11, color: { argb: colors.dark } }
       sheet.getCell(valueCell).border = thinBorder
@@ -108,7 +108,7 @@ const professionalBuildXlsx = `async function buildXlsx(rows: TimesheetEntry[], 
     const firstDataRow = 7
     for (const row of employeeRows) {
       const excelRow = sheet.addRow([
-        new Date(\`${row.workDate}T12:00:00\`),
+        new Date(\`\${row.workDate}T12:00:00\`),
         row.start,
         row.end,
         Math.max(0, Number(row.pauseMinutes) || 0),
@@ -134,22 +134,23 @@ const professionalBuildXlsx = `async function buildXlsx(rows: TimesheetEntry[], 
       excelRow.getCell(5).numFmt = '[h]:mm "Std."'
     }
 
-    const lastDataRow = Math.max(firstDataRow, sheet.rowCount)
-    sheet.autoFilter = { from: 'A6', to: \`H${lastDataRow}\` }
+    const dataEndRow = sheet.rowCount
+    const filterEndRow = Math.max(firstDataRow, dataEndRow)
+    sheet.autoFilter = { from: 'A6', to: \`H\${filterEndRow}\` }
 
-    const totalRowNumber = sheet.rowCount + 2
-    sheet.mergeCells(\`A${totalRowNumber}:D${totalRowNumber}\`)
-    sheet.mergeCells(\`E${totalRowNumber}:H${totalRowNumber}\`)
-    const totalLabel = sheet.getCell(\`A${totalRowNumber}\`)
+    const totalRowNumber = dataEndRow + 2
+    sheet.mergeCells(\`A\${totalRowNumber}:D\${totalRowNumber}\`)
+    sheet.mergeCells(\`E\${totalRowNumber}:H\${totalRowNumber}\`)
+    const totalLabel = sheet.getCell(\`A\${totalRowNumber}\`)
     totalLabel.value = 'Gesamtstunden'
     totalLabel.font = { name: 'Aptos', size: 11, bold: true, color: { argb: colors.dark } }
     totalLabel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.gold } }
     totalLabel.border = thinBorder
     totalLabel.alignment = { horizontal: 'left', vertical: 'middle' }
 
-    const totalCell = sheet.getCell(\`E${totalRowNumber}\`)
+    const totalCell = sheet.getCell(\`E\${totalRowNumber}\`)
     totalCell.value = employeeRows.length
-      ? { formula: \`SUM(E${firstDataRow}:E${sheet.rowCount - 1})\` }
+      ? { formula: \`SUM(E\${firstDataRow}:E\${dataEndRow})\` }
       : 0
     totalCell.numFmt = '[h]:mm "Std."'
     totalCell.font = { name: 'Aptos', size: 12, bold: true, color: { argb: colors.dark } }
@@ -158,12 +159,10 @@ const professionalBuildXlsx = `async function buildXlsx(rows: TimesheetEntry[], 
     totalCell.alignment = { horizontal: 'right', vertical: 'middle' }
     sheet.getRow(totalRowNumber).height = 27
 
-    sheet.pageSetup.printArea = \`A1:H${totalRowNumber}\`
+    sheet.pageSetup.printArea = \`A1:H\${totalRowNumber}\`
     sheet.pageSetup.printTitlesRow = '1:6'
-    sheet.headerFooter.oddFooter = \`&L${text(settings.companyName, 60)}&CStundenzettel&RSeite &P von &N\`
+    sheet.headerFooter.oddFooter = \`&L\${text(settings.companyName, 60)}&CStundenzettel&RSeite &P von &N\`
     sheet.headerFooter.evenFooter = sheet.headerFooter.oddFooter
-
-    sheet.getRange?.('A1:H1')
   }
   return new Uint8Array(await workbook.xlsx.writeBuffer())
 }`
