@@ -1,0 +1,1 @@
+Focused local TDD verification completed before remote implementation: the new PDF/Excel parity contract failed against the old export source, then passed after applying the export patch twice (idempotence check). Full repository verification is delegated to the GitHub Actions pull-request workflow.

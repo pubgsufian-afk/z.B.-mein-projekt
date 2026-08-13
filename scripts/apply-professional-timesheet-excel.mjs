@@ -4,11 +4,82 @@ import { readFile, writeFile } from 'node:fs/promises'
 const path = 'netlify/functions/timesheet-monthly-reports.mts'
 let source = await readFile(path, 'utf8')
 
-const professionalBuildXlsx = `async function buildXlsx(rows: TimesheetEntry[], from: string, to: string) {
+const oldLogoHelper = `async function embedLogo(pdf: any, request: Request, logoUrl: string) {
+  try {
+    const response = await fetch(new URL(logoUrl || '/habun-logo.png', request.url), { cache: 'no-store' })
+    if (!response.ok) return null
+    const bytes = await response.arrayBuffer()
+    return response.headers.get('content-type')?.includes('jpeg') ? await pdf.embedJpg(bytes) : await pdf.embedPng(bytes)
+  } catch { return null }
+}`
+
+const exportLogoHelper = `function exportLogoUrl(logoUrl: string) {
+  const resolved = text(logoUrl, 300) || '/habun-logo-pdf.png'
+  return resolved === '/habun-logo.png' ? '/habun-logo-pdf.png' : resolved
+}
+async function loadExportLogo(request: Request, logoUrl: string) {
+  try {
+    const response = await fetch(new URL(exportLogoUrl(logoUrl), request.url), { cache: 'no-store' })
+    if (!response.ok) return null
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    const extension = response.headers.get('content-type')?.includes('jpeg') ? 'jpeg' : 'png'
+    return { bytes, extension } as const
+  } catch { return null }
+}
+async function embedLogo(pdf: any, request: Request, logoUrl: string) {
+  const asset = await loadExportLogo(request, logoUrl)
+  if (!asset) return null
+  return asset.extension === 'jpeg' ? await pdf.embedJpg(asset.bytes) : await pdf.embedPng(asset.bytes)
+}`
+
+if (!source.includes('function exportLogoUrl(logoUrl: string)')) {
+  assert.ok(source.includes(oldLogoHelper), 'Logo-Helfer im Stundenzettel-Export wurde nicht gefunden.')
+  source = source.replace(oldLogoHelper, exportLogoHelper)
+}
+
+const oldWatermark = `    const drawWatermark = () => {
+      if (!logo) return
+      const scale = Math.min(205 / logo.width, 170 / logo.height)
+      const logoWidth = logo.width * scale
+      const logoHeight = logo.height * scale
+      page.drawImage(logo, {
+        x: (width - logoWidth) / 2,
+        y: 285,
+        width: logoWidth,
+        height: logoHeight,
+        opacity: 0.06,
+      })
+    }`
+
+const cleanLogoBlock = `    const drawWatermark = () => {
+      if (!logo) return
+      const scale = Math.min(88 / logo.width, 88 / logo.height)
+      const logoWidth = logo.width * scale
+      const logoHeight = logo.height * scale
+      page.drawImage(logo, {
+        x: (width - logoWidth) / 2,
+        y: 285,
+        width: logoWidth,
+        height: logoHeight,
+        opacity: 1,
+      })
+    }`
+
+if (!source.includes('const scale = Math.min(88 / logo.width, 88 / logo.height)')) {
+  assert.ok(source.includes(oldWatermark), 'PDF-Logo-Block wurde nicht gefunden.')
+  source = source.replace(oldWatermark, cleanLogoBlock)
+}
+
+const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: TimesheetEntry[], from: string, to: string) {
   const ExcelJSModule = await import('exceljs')
   const ExcelJS = ExcelJSModule.default ?? ExcelJSModule
   const workbook = new ExcelJS.Workbook()
   const settings = await readCompanySettings()
+  const logoAsset = await loadExportLogo(request, settings.logoUrl)
+  const logoImageId = logoAsset
+    ? workbook.addImage({ buffer: Buffer.from(logoAsset.bytes), extension: logoAsset.extension })
+    : null
+
   workbook.creator = settings.companyName
   workbook.company = settings.companyName
   workbook.subject = 'Stundenzettel'
@@ -21,10 +92,10 @@ const professionalBuildXlsx = `async function buildXlsx(rows: TimesheetEntry[], 
   const colors = {
     dark: 'FF151515',
     gold: 'FFDBA62B',
-    white: 'FFFFFFFF',
-    pale: 'FFF7F7F7',
-    line: 'FFD0D0D0',
+    pale: 'FFF6F6F6',
+    line: 'FF777777',
     muted: 'FF666666',
+    white: 'FFFFFFFF',
   }
   const thinBorder = {
     top: { style: 'thin', color: { argb: colors.line } },
@@ -32,144 +103,141 @@ const professionalBuildXlsx = `async function buildXlsx(rows: TimesheetEntry[], 
     bottom: { style: 'thin', color: { argb: colors.line } },
     right: { style: 'thin', color: { argb: colors.line } },
   }
+  const headers = ['Datum', 'Startzeit', 'Endzeit', 'Pause', 'Dauer', 'Status', 'Tätigkeit / Einsatzort']
 
   for (const employeeRows of groups.length ? groups : [[] as TimesheetEntry[]]) {
-    const employeeName = employeeRows[0]?.employeeName || 'Stundenzettel'
+    const employeeName = employeeRows[0]?.employeeName || 'Keine Einträge'
+    const displayRows = rowsWithBlankDates(employeeRows, from, to)
     const sheet = workbook.addWorksheet(safeSheetName(employeeName, used), {
-      properties: { defaultRowHeight: 20, tabColor: { argb: colors.gold } },
-      views: [{ state: 'frozen', ySplit: 6, topLeftCell: 'A7', activeCell: 'A7' }],
+      properties: { defaultRowHeight: 15, tabColor: { argb: colors.gold } },
+      views: [{ state: 'frozen', ySplit: 6, topLeftCell: 'A7', activeCell: 'A7', showGridLines: false }],
       pageSetup: {
         paperSize: 9,
-        orientation: 'landscape',
+        orientation: 'portrait',
         fitToPage: true,
         fitToWidth: 1,
-        fitToHeight: 0,
+        fitToHeight: 1,
         horizontalCentered: true,
-        margins: { left: 0.3, right: 0.3, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
+        verticalCentered: false,
+        margins: { left: 0.25, right: 0.25, top: 0.25, bottom: 0.35, header: 0.1, footer: 0.2 },
       },
     })
 
     sheet.columns = [
       { key: 'date', width: 15 },
-      { key: 'start', width: 11 },
-      { key: 'end', width: 11 },
-      { key: 'pause', width: 14 },
-      { key: 'duration', width: 15 },
-      { key: 'status', width: 15 },
-      { key: 'area', width: 25 },
-      { key: 'location', width: 34 },
+      { key: 'start', width: 10 },
+      { key: 'end', width: 10 },
+      { key: 'pause', width: 11 },
+      { key: 'duration', width: 11 },
+      { key: 'status', width: 13 },
+      { key: 'activity', width: 39 },
     ]
 
-    sheet.mergeCells('A1:H1')
-    sheet.getCell('A1').value = settings.companyName || 'Habun Security'
-    sheet.getCell('A1').font = { name: 'Aptos Display', size: 18, bold: true, color: { argb: colors.gold } }
-    sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.dark } }
+    sheet.mergeCells('A1:G1')
+    sheet.getCell('A1').value = 'Stundenzettel'
+    sheet.getCell('A1').font = { name: 'Aptos', size: 15, bold: true, color: { argb: colors.dark } }
     sheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' }
-    sheet.getRow(1).height = 32
+    sheet.getCell('A1').border = thinBorder
+    sheet.getRow(1).height = 28
 
-    sheet.mergeCells('A2:H2')
-    sheet.getCell('A2').value = 'STUNDENZETTEL'
-    sheet.getCell('A2').font = { name: 'Aptos Display', size: 15, bold: true, color: { argb: colors.dark } }
-    sheet.getCell('A2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.gold } }
+    sheet.mergeCells('A2:G2')
+    sheet.getCell('A2').value = monthLabel(from, to)
+    sheet.getCell('A2').font = { name: 'Aptos', size: 10, bold: true, color: { argb: colors.dark } }
     sheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' }
-    sheet.getRow(2).height = 26
+    sheet.getCell('A2').border = { left: thinBorder.left, right: thinBorder.right }
+    sheet.getRow(2).height = 18
 
-    sheet.getCell('A3').value = 'Mitarbeiter'
-    sheet.getCell('A4').value = 'Zeitraum'
-    for (const labelCell of ['A3', 'A4']) {
-      sheet.getCell(labelCell).font = { name: 'Aptos', bold: true, color: { argb: colors.dark } }
-      sheet.getCell(labelCell).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1E2B7' } }
-      sheet.getCell(labelCell).border = thinBorder
-      sheet.getCell(labelCell).alignment = { vertical: 'middle' }
-    }
-    sheet.mergeCells('B3:H3')
-    sheet.mergeCells('B4:H4')
-    sheet.getCell('B3').value = employeeName
-    sheet.getCell('B4').value = \`\${germanDate(from)} - \${germanDate(to)}\`
-    for (const valueCell of ['B3', 'B4']) {
-      sheet.getCell(valueCell).font = { name: 'Aptos', size: 11, color: { argb: colors.dark } }
-      sheet.getCell(valueCell).border = thinBorder
-      sheet.getCell(valueCell).alignment = { vertical: 'middle' }
-    }
-    sheet.getRow(3).height = 23
-    sheet.getRow(4).height = 23
-    sheet.getRow(5).height = 9
+    sheet.mergeCells('A3:G3')
+    sheet.getCell('A3').value = \`Arbeitnehmer: \${employeeName}\`
+    sheet.getCell('A3').font = { name: 'Aptos', size: 9.5, bold: true, color: { argb: colors.dark } }
+    sheet.getCell('A3').alignment = { horizontal: 'left', vertical: 'middle' }
+    sheet.getCell('A3').border = { left: thinBorder.left, right: thinBorder.right, bottom: thinBorder.bottom }
+    sheet.getRow(3).height = 20
+
+    sheet.getRow(4).height = 12
+    sheet.getRow(5).height = 8
 
     const headerRow = sheet.getRow(6)
-    headerRow.values = ['Datum', 'Beginn', 'Ende', 'Pause', 'Dauer', 'Status', 'Bereich', 'Einsatzort']
-    headerRow.height = 25
+    headerRow.values = headers
+    headerRow.height = 20
     headerRow.eachCell((cell: any) => {
-      cell.font = { name: 'Aptos', size: 10, bold: true, color: { argb: colors.dark } }
+      cell.font = { name: 'Aptos', size: 7.5, bold: true, color: { argb: colors.dark } }
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.gold } }
       cell.border = thinBorder
       cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
     })
 
-    const firstDataRow = 7
-    for (const row of employeeRows) {
+    for (const item of displayRows) {
+      const row = item.row
       const excelRow = sheet.addRow([
-        new Date(\`\${row.workDate}T12:00:00\`),
-        row.start,
-        row.end,
-        Math.max(0, Number(row.pauseMinutes) || 0),
-        Math.max(0, Number(row.netMinutes) || 0) / 1440,
+        shortGermanDate(item.date),
+        row?.start || '',
+        row?.end || '',
+        row ? \`\${row.pauseMinutes} Min.\` : '',
+        row ? durationText(row.netMinutes) : '',
         statusText(row),
-        text(row.workArea, 80),
-        text(row.location, 120),
+        safePdfText(activityLocation(row), 62),
       ])
-      excelRow.height = 21
-      const isAlternate = (excelRow.number - firstDataRow) % 2 === 1
+      excelRow.height = 16
       excelRow.eachCell((cell: any, columnNumber: number) => {
-        cell.font = { name: 'Aptos', size: 10, color: { argb: colors.dark } }
+        cell.font = { name: 'Aptos', size: columnNumber === 7 ? 7 : 7.5, color: { argb: colors.dark } }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.pale } }
         cell.border = thinBorder
-        cell.alignment = {
-          horizontal: columnNumber <= 6 ? 'center' : 'left',
-          vertical: 'middle',
-          wrapText: columnNumber >= 7,
-        }
-        if (isAlternate) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.pale } }
+        cell.alignment = { horizontal: columnNumber === 7 ? 'left' : 'center', vertical: 'middle', wrapText: columnNumber === 7 }
       })
-      excelRow.getCell(1).numFmt = 'dd.mm.yyyy'
-      excelRow.getCell(4).numFmt = '0 "Min."'
-      excelRow.getCell(5).numFmt = '[h]:mm "Std."'
     }
 
-    const dataEndRow = sheet.rowCount
-    const filterEndRow = Math.max(firstDataRow, dataEndRow)
-    sheet.autoFilter = { from: 'A6', to: \`H\${filterEndRow}\` }
-
-    const totalRowNumber = dataEndRow + 2
-    sheet.mergeCells(\`A\${totalRowNumber}:D\${totalRowNumber}\`)
-    sheet.mergeCells(\`E\${totalRowNumber}:H\${totalRowNumber}\`)
+    const total = employeeRows.reduce((sum, row) => sum + Math.max(0, Number(row.netMinutes) || 0), 0)
+    const totalRowNumber = sheet.rowCount + 2
+    sheet.mergeCells(\`A\${totalRowNumber}:E\${totalRowNumber}\`)
+    sheet.mergeCells(\`F\${totalRowNumber}:G\${totalRowNumber}\`)
     const totalLabel = sheet.getCell(\`A\${totalRowNumber}\`)
-    totalLabel.value = 'Gesamtstunden'
-    totalLabel.font = { name: 'Aptos', size: 11, bold: true, color: { argb: colors.dark } }
+    totalLabel.value = 'Gesamtdauer'
+    totalLabel.font = { name: 'Aptos', size: 9, bold: true, color: { argb: colors.dark } }
     totalLabel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.gold } }
     totalLabel.border = thinBorder
     totalLabel.alignment = { horizontal: 'left', vertical: 'middle' }
+    const totalValue = sheet.getCell(\`F\${totalRowNumber}\`)
+    totalValue.value = \`\${durationText(total)} Std.\`
+    totalValue.font = { name: 'Aptos', size: 9, bold: true, color: { argb: colors.dark } }
+    totalValue.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.gold } }
+    totalValue.border = thinBorder
+    totalValue.alignment = { horizontal: 'left', vertical: 'middle' }
+    sheet.getRow(totalRowNumber).height = 23
 
-    const totalCell = sheet.getCell(\`E\${totalRowNumber}\`)
-    totalCell.value = employeeRows.length
-      ? { formula: \`SUM(E\${firstDataRow}:E\${dataEndRow})\` }
-      : 0
-    totalCell.numFmt = '[h]:mm "Std."'
-    totalCell.font = { name: 'Aptos', size: 12, bold: true, color: { argb: colors.dark } }
-    totalCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1E2B7' } }
-    totalCell.border = thinBorder
-    totalCell.alignment = { horizontal: 'right', vertical: 'middle' }
-    sheet.getRow(totalRowNumber).height = 27
+    const notesStart = totalRowNumber + 2
+    const notesEnd = notesStart + 4
+    sheet.mergeCells(\`A\${notesStart}:G\${notesEnd}\`)
+    const notes = sheet.getCell(\`A\${notesStart}\`)
+    notes.value = 'Anmerkungen'
+    notes.font = { name: 'Aptos', size: 8, color: { argb: colors.dark } }
+    notes.alignment = { horizontal: 'left', vertical: 'top', wrapText: true }
+    notes.border = thinBorder
+    for (let rowNumber = notesStart; rowNumber <= notesEnd; rowNumber += 1) sheet.getRow(rowNumber).height = 16
 
-    sheet.pageSetup.printArea = \`A1:H\${totalRowNumber}\`
-    sheet.pageSetup.printTitlesRow = '1:6'
-    sheet.headerFooter.oddFooter = \`&L\${text(settings.companyName, 60)}&CStundenzettel&RSeite &P von &N\`
+    if (logoImageId !== null) {
+      sheet.addImage(logoImageId, {
+        tl: { col: 3.05, row: notesEnd + 1.1 },
+        ext: { width: 82, height: 82 },
+        editAs: 'oneCell',
+      })
+    }
+
+    const footerText = [settings.companyName, settings.address, settings.phone, settings.email].filter(Boolean).join(' · ')
+    sheet.headerFooter.oddFooter = \`&L&8\${text(footerText, 150)}&R&8Seite &P von &N\`
     sheet.headerFooter.evenFooter = sheet.headerFooter.oddFooter
+    const printEnd = notesEnd + 8
+    sheet.pageSetup.printArea = \`A1:G\${printEnd}\`
+    sheet.pageSetup.printTitlesRow = '1:6'
   }
+
   return new Uint8Array(await workbook.xlsx.writeBuffer())
 }`
 
-const buildXlsxPattern = /async function buildXlsx\(rows: TimesheetEntry\[\], from: string, to: string\) \{[\s\S]*?\n\}\n(?=export default async function timesheetMonthlyReports)/
+const buildXlsxPattern = /async function buildXlsx\((?:request: Request, )?rows: TimesheetEntry\[\], from: string, to: string\) \{[\s\S]*?\n\}\n(?=export default async function timesheetMonthlyReports)/
 assert.match(source, buildXlsxPattern, 'Excel-Exportfunktion wurde nicht gefunden.')
-source = source.replace(buildXlsxPattern, `${professionalBuildXlsx}\n`)
-await writeFile(path, source)
+source = source.replace(buildXlsxPattern, `${pdfLikeBuildXlsx}\n`)
+source = source.replace("const bytes = format === 'pdf' ? await buildPdf(request, rows, from, to) : await buildXlsx(rows, from, to)", "const bytes = format === 'pdf' ? await buildPdf(request, rows, from, to) : await buildXlsx(request, rows, from, to)")
 
-console.log('Professionelles Stundenzettel-Excel-Layout angewendet; PDF unverändert')
+await writeFile(path, source)
+console.log('PDF-Logo bereinigt und Excel an das PDF-Stundenzettel-Layout angeglichen')
