@@ -15,6 +15,7 @@ assert.match(report, /source:\s*'actual'/)
 assert.match(report, /Habun-Stundenzettel/)
 assert.match(report, /application\/pdf/)
 assert.match(report, /spreadsheetml\.sheet/)
+assert.match(report, /ExcelJSModule\.default/)
 assert.equal(fs.existsSync('netlify/functions/timesheet-export.mts'), false)
 
 console.log('unified timesheet export source contract passed')
