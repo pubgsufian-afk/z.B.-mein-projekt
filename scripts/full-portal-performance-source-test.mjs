@@ -2,10 +2,11 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import './apply-full-portal-berlin-date-fix.mjs'
 
-const [app, timesheet, cache] = await Promise.all([
+const [app, timesheet, cache, netlify] = await Promise.all([
   readFile('frontend/src/App.jsx', 'utf8'),
   readFile('frontend/src/TimesheetPage.jsx', 'utf8'),
   readFile('frontend/src/read-cache.js', 'utf8'),
+  readFile('netlify.toml', 'utf8'),
 ])
 
 // Global render efficiency.
@@ -62,7 +63,7 @@ assert.doesNotMatch(scheduleBlock, /visibleEntries\.filter\(\(entry\) => entry\.
 assert.match(scheduleBlock, /dedupeInflightJson\(shiftPath/)
 assert.match(scheduleBlock, /refreshCachedJson\(OBJECTS_CACHE_KEY/)
 
-// Timesheet uses the same safe performance primitives.
+// Timesheet uses the same safe performance primitives and one coordinated initial read.
 assert.match(timesheet, /from '\.\/read-cache\.js'/)
 assert.match(timesheet, /const DATE_FORMATTERS = new Map\(\)/)
 assert.match(timesheet, /BERLIN_TIME_INPUT_FORMATTER/)
@@ -70,6 +71,11 @@ assert.match(timesheet, /peekCachedJson\(REGISTRATIONS_CACHE_KEY\)/)
 assert.match(timesheet, /refreshCachedJson\(REGISTRATIONS_CACHE_KEY/)
 assert.match(timesheet, /dedupeInflightJson\(historyPath/)
 assert.match(timesheet, /dedupeInflightJson\(schedulePath/)
+assert.match(timesheet, /Promise\.all\(\[directoryPromise, historyPromise, schedulePromise\]\)/)
+assert.doesNotMatch(timesheet, /useEffect\(\(\) => \{ loadDirectory\(\) \}, \[loadDirectory\]\)/)
+
+// Fingerprinted frontend assets must be browser-cacheable; index.html remains separately refreshable.
+assert.match(netlify, /for = "\/assets\/\*"[\s\S]*Cache-Control = "public, max-age=31536000, immutable"/)
 
 // No forbidden browser persistence was introduced.
 assert.doesNotMatch(app, /localStorage|sessionStorage|indexedDB|IndexedDB/)
