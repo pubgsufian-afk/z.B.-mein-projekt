@@ -27,6 +27,26 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      - name: Prepare temporary Netlify deployment bundle
+        run: |
+          npm install --prefix .netlify-mcp-runtime @netlify/mcp@latest --no-audit --no-fund
+          mkdir -p deploy-bundle/repo deploy-bundle/runtime
+          rsync -a \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='.netlify-mcp-runtime' \
+            --exclude='deploy-bundle' \
+            --exclude='artifacts' \
+            --exclude='test-results' \
+            ./ deploy-bundle/repo/
+          cp -a .netlify-mcp-runtime/. deploy-bundle/runtime/
+      - name: Upload temporary Netlify deployment bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: netlify-deploy-bundle
+          path: deploy-bundle
+          if-no-files-found: error
+          retention-days: 1
       - name: Upload unified portal preview
         if: always()
         uses: actions/upload-artifact@v4
