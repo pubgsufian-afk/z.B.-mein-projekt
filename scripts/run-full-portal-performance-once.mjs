@@ -68,10 +68,12 @@ if (appPerformanceActive) {
     const { start, end, block: original } = section(app, 'function SettingsPage({ session }) {', '\n\nfunction UnifiedPortal', 'SettingsPage')
     let block = original
     if (!block.includes('peekCachedJson(COMPANY_SETTINGS_CACHE_KEY)')) {
-      const oldLoad = `  const load = useCallback(async () => {\n    try {\n      const data = await apiJson('/api/company-settings')\n      setForm((current) => ({ ...current, ...(data.settings || {}) }))\n    } catch (error) {\n      setNotice({ tone: 'error', text: error.message })\n    }\n  }, [])`
-      const newLoad = `  const load = useCallback(async () => {\n    try {\n      const cached = peekCachedJson(COMPANY_SETTINGS_CACHE_KEY)\n      if (cached !== undefined) setForm((current) => ({ ...current, ...(cached.settings || {}) }))\n      const data = await refreshCachedJson(COMPANY_SETTINGS_CACHE_KEY, () => apiJson('/api/company-settings'), { ttlMs: COMPANY_SETTINGS_CACHE_TTL_MS })\n      setForm((current) => ({ ...current, ...(data.settings || {}) }))\n    } catch (error) {\n      setNotice({ tone: 'error', text: error.message })\n    }\n  }, [])`
-      assert.ok(block.includes(oldLoad), 'Einstellungen-Ladung fehlt beim Wiederherstellen der Performance-Schicht.')
-      block = block.replace(oldLoad, newLoad)
+      const oldLoad = `  const load = useCallback(async () => {\n    try {\n      const cached = peekCachedJson(COMPANY_SETTINGS_CACHE_KEY)\n      if (cached !== undefined) setForm((current) => ({ ...current, ...(cached.settings || {}) }))\n      const data = await refreshCachedJson(COMPANY_SETTINGS_CACHE_KEY, () => apiJson('/api/company-settings'), { ttlMs: COMPANY_SETTINGS_CACHE_TTL_MS })\n      setForm((current) => ({ ...current, ...(data.settings || {}) }))\n    } catch (error) {\n      setNotice({ tone: 'error', text: error.message })\n    }\n  }, [])`
+      const currentLoad = `  const load = useCallback(async () => {\n    try {\n      const cached = peekCachedJson(COMPANY_SETTINGS_CACHE_KEY)\n      if (cached !== undefined) setForm((current) => ({ ...current, ...(cached.settings || {}) }))\n      const data = await refreshCachedJson(COMPANY_SETTINGS_CACHE_KEY, () => apiJson('/api/company-settings'), { ttlMs: COMPANY_SETTINGS_CACHE_TTL_MS })\n      setForm((current) => ({ ...current, ...(data.settings || {}) }))\n    } catch (error) {\n      setNotice({ tone: 'error', text: error.message })\n    }\n  }, [])`
+      if (!block.includes(currentLoad)) {
+        assert.ok(block.includes(oldLoad), 'Einstellungen-Ladung fehlt beim Wiederherstellen der Performance-Schicht.')
+        block = block.replace(oldLoad, currentLoad)
+      }
     }
 
     const setFormLine = "      setForm((current) => ({ ...current, ...data.settings }))"
@@ -103,4 +105,42 @@ if (appPerformanceActive) {
   console.log('Full portal performance layer retained and final cache rules restored')
 } else {
   await import('./apply-full-portal-performance.mjs')
+}
+
+// The employee directory used to change employeeNames, which recreated loadActual/loadPlanned/reload
+// and caused the Stundenzettel to refetch the same period again. Keep names in a ref and rebind
+// already loaded rows locally instead of repeating network requests.
+timesheet = await readFile(timesheetPath, 'utf8')
+if (!timesheet.includes('const employeeNamesRef = useRef(employeeNames)')) {
+  timesheet = timesheet.replace(
+    "import { useCallback, useEffect, useMemo, useState } from 'react'",
+    "import { useCallback, useEffect, useMemo, useRef, useState } from 'react'",
+  )
+
+  const rowsAnchor = "  const rows = useMemo(() => mergeTimesheetRows(actual.rows, planned.rows), [actual.rows, planned.rows])"
+  const namesLayer = `  const employeeNamesRef = useRef(employeeNames)\n  useEffect(() => { employeeNamesRef.current = employeeNames }, [employeeNames])\n\n  const rebindEmployeeNames = useCallback((current, names) => {\n    let changed = false\n    const rows = current.rows.map((row) => {\n      const nextName = names.get(String(row.userId || ''))\n      if (!nextName || nextName === row.employeeName) return row\n      changed = true\n      return { ...row, employeeName: nextName }\n    })\n    return changed ? { ...current, rows } : current\n  }, [])\n\n  useEffect(() => {\n    setActual((current) => rebindEmployeeNames(current, employeeNames))\n    setPlanned((current) => rebindEmployeeNames(current, employeeNames))\n  }, [employeeNames, rebindEmployeeNames])\n\n${rowsAnchor}`
+  assert.ok(timesheet.includes(rowsAnchor), 'Stundenzettel-Zeilenanker für lokale Namensbindung fehlt.')
+  timesheet = timesheet.replace(rowsAnchor, namesLayer)
+
+  timesheet = timesheet.replace(
+    'buildActualSessions(data.entries || [], employeeNames)',
+    'buildActualSessions(data.entries || [], employeeNamesRef.current)',
+  )
+  timesheet = timesheet.replace(
+    'buildPlannedRows(entries, employeeNames)',
+    'buildPlannedRows(entries, employeeNamesRef.current)',
+  )
+  timesheet = timesheet.replace(
+    '  }, [employeeNames, from, management, to, userId])',
+    '  }, [from, management, to, userId])',
+  )
+  timesheet = timesheet.replace(
+    '  }, [employeeNames, from, management, sessionUserId, to, userId])',
+    '  }, [from, management, sessionUserId, to, userId])',
+  )
+
+  await writeFile(timesheetPath, timesheet)
+  console.log('Stundenzettel duplicate reload prevention applied')
+} else {
+  console.log('Stundenzettel duplicate reload prevention already applied')
 }
