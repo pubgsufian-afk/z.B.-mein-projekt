@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ADMIN_OVERVIEW_TIME_ZONE, berlinDateKey, buildDeploymentGroups, countReportWords } from './admin-overview-utils.mjs'
 import './admin-overview.css'
+import './daily-report-management.css'
 
 const ADMINISTRATION = new Set(['owner', 'admin'])
 const MAX_REPORT_WORDS = 1000
@@ -23,6 +24,25 @@ async function apiJson(path, options = {}) {
   return body
 }
 
+async function downloadPdf(path) {
+  const response = await fetch(path, { credentials: 'same-origin', cache: 'no-store' })
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}))
+    throw new Error(body.message || `PDF-Download fehlgeschlagen (${response.status}).`)
+  }
+  const blob = await response.blob()
+  const disposition = response.headers.get('content-disposition') || ''
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'Tagesbericht.pdf'
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 function Icon({ name }) {
   const common = { width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }
   if (name === 'shield') return <svg {...common}><path d="M12 3 19 6v5c0 4.7-2.8 8.1-7 10-4.2-1.9-7-5.3-7-10V6l7-3Z" /><circle cx="12" cy="10" r="2.2" /><path d="M8.8 16c.8-1.5 1.9-2.2 3.2-2.2s2.4.7 3.2 2.2" /></svg>
@@ -35,6 +55,8 @@ function Icon({ name }) {
   if (name === 'close') return <svg {...common} width="20" height="20"><path d="M6 6l12 12M18 6 6 18" /></svg>
   if (name === 'info') return <svg {...common} width="20" height="20"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>
   if (name === 'users') return <svg {...common}><circle cx="9" cy="9" r="3" /><path d="M3.8 18c.8-3.1 2.5-4.7 5.2-4.7s4.4 1.6 5.2 4.7" /><path d="M15 6.8a3 3 0 0 1 0 5.7M16 13.5c2.2.5 3.6 2 4.2 4.5" /></svg>
+  if (name === 'download') return <svg {...common}><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M5 20h14" /></svg>
+  if (name === 'trash') return <svg {...common}><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" /></svg>
   return null
 }
 
@@ -70,9 +92,32 @@ function StatusRow({ id, label, tone, entries, open, onToggle }) {
   )
 }
 
-function DailyReportDialog({ mode, onClose, reportText, setReportText, onSave, saving, notice, reports, loadingReports }) {
+function DailyReportDialog({
+  mode,
+  onClose,
+  reportText,
+  setReportText,
+  onSave,
+  saving,
+  notice,
+  reports,
+  loadingReports,
+  reportDate,
+  onDateChange,
+  onDayPdf,
+  onReportPdf,
+  downloadingReport,
+  onEdit,
+  onDelete,
+  deletingReport,
+  onCancelDelete,
+  onConfirmDelete,
+  deletingBusy,
+}) {
   const words = countReportWords(reportText)
   const overLimit = words > MAX_REPORT_WORDS
+  const editing = mode === 'edit'
+  const composing = mode === 'compose' || editing
 
   useEffect(() => {
     const closeOnEscape = (event) => { if (event.key === 'Escape') onClose() }
@@ -86,13 +131,13 @@ function DailyReportDialog({ mode, onClose, reportText, setReportText, onSave, s
         <header className="daily-report-modal-header">
           <div>
             <span className="daily-report-kicker">Tagesbericht</span>
-            <h3 id="daily-report-dialog-title">{mode === 'compose' ? 'Bericht schreiben' : 'Gespeicherte Berichte'}</h3>
+            <h3 id="daily-report-dialog-title">{editing ? 'Bericht bearbeiten' : mode === 'compose' ? 'Bericht schreiben' : 'Gespeicherte Berichte'}</h3>
           </div>
           <button type="button" className="daily-report-close" aria-label="Dialog schließen" onClick={onClose}><Icon name="close" /></button>
         </header>
 
-        {mode === 'compose' ? <div className="daily-report-compose">
-          <p className="daily-report-helper">Schreibe den Bericht vollständig. Name, Datum und Uhrzeit werden beim Speichern automatisch ergänzt.</p>
+        {composing ? <div className="daily-report-compose">
+          <p className="daily-report-helper">{editing ? 'Der ursprüngliche Verfasser und die Erstellungszeit bleiben erhalten. Die letzte Bearbeitung wird automatisch dokumentiert.' : 'Schreibe den Bericht vollständig. Name, Datum und Uhrzeit werden beim Speichern automatisch ergänzt.'}</p>
           <label htmlFor="daily-report-text">Bericht</label>
           <textarea
             id="daily-report-text"
@@ -106,18 +151,43 @@ function DailyReportDialog({ mode, onClose, reportText, setReportText, onSave, s
           {notice && <div className={`daily-report-notice ${notice.tone}`}>{notice.text}</div>}
           <div className="daily-report-modal-actions">
             <button type="button" className="daily-report-secondary" onClick={onClose}>Abbrechen</button>
-            <button type="button" className="daily-report-primary" disabled={saving || words === 0 || overLimit} onClick={onSave}>{saving ? 'Wird gespeichert …' : 'Bericht speichern'}</button>
+            <button type="button" className="daily-report-primary" disabled={saving || words === 0 || overLimit} onClick={onSave}>{saving ? 'Wird gespeichert …' : editing ? 'Änderungen speichern' : 'Bericht speichern'}</button>
           </div>
         </div> : <div className="daily-report-history">
+          <div className="daily-report-toolbar">
+            <label className="daily-report-date-field">
+              <span>Datum</span>
+              <input aria-label="Datum" type="date" value={reportDate} onChange={(event) => onDateChange(event.target.value)} />
+            </label>
+            <button type="button" className="daily-report-day-pdf" disabled={loadingReports || !reports.length || downloadingReport === 'day'} onClick={onDayPdf}>
+              <Icon name="download" />
+              <span>{downloadingReport === 'day' ? 'PDF wird erstellt …' : 'Tages-PDF herunterladen'}</span>
+            </button>
+          </div>
+
           {loadingReports ? <div className="daily-report-loading">Berichte werden geladen …</div> : reports.length ? reports.map((report) => (
-            <article className="daily-report-entry" key={report.id || report.key || report.createdAt}>
+            <article className="daily-report-entry" key={report.id || report.createdAt}>
               <div className="daily-report-entry-meta">
                 <strong>{report.authorName || 'Admin'}</strong>
-                <span>{formatReportDate(report.createdAt)} · {formatReportTime(report.createdAt)} Uhr</span>
+                <span>Erstellt am {formatReportDate(report.createdAt)} um {formatReportTime(report.createdAt)} Uhr</span>
+                {report.updatedAt && <span className="daily-report-edited">Zuletzt bearbeitet am {formatReportDate(report.updatedAt)} um {formatReportTime(report.updatedAt)} Uhr{report.updatedByName ? ` · ${report.updatedByName}` : ''}</span>}
               </div>
               <p>{report.text}</p>
+              <div className="daily-report-entry-actions">
+                <button type="button" disabled={downloadingReport === report.id} onClick={() => onReportPdf(report)}><Icon name="download" /><span>{downloadingReport === report.id ? 'Lädt …' : 'PDF'}</span></button>
+                <button type="button" onClick={() => onEdit(report)}><Icon name="pencil" /><span>Bearbeiten</span></button>
+                <button type="button" className="danger" onClick={() => onDelete(report)}><Icon name="trash" /><span>Löschen</span></button>
+              </div>
+              {deletingReport?.id === report.id && <div className="daily-report-delete-confirm" role="alertdialog" aria-label="Bericht endgültig löschen">
+                <strong>Bericht wirklich endgültig löschen?</strong>
+                <span>Diese Aktion kann nicht rückgängig gemacht werden.</span>
+                <div>
+                  <button type="button" className="daily-report-secondary" disabled={deletingBusy} onClick={onCancelDelete}>Abbrechen</button>
+                  <button type="button" className="daily-report-delete-button" disabled={deletingBusy} onClick={onConfirmDelete}>{deletingBusy ? 'Wird gelöscht …' : 'Endgültig löschen'}</button>
+                </div>
+              </div>}
             </article>
-          )) : <div className="daily-report-loading">Noch keine Tagesberichte gespeichert.</div>}
+          )) : <div className="daily-report-loading">Für dieses Datum sind keine Tagesberichte gespeichert.</div>}
           {notice && <div className={`daily-report-notice ${notice.tone}`}>{notice.text}</div>}
         </div>}
       </section>
@@ -138,7 +208,12 @@ export default function AdminOverview({ session, navigate }) {
   const [reports, setReports] = useState([])
   const [savingReport, setSavingReport] = useState(false)
   const [loadingReports, setLoadingReports] = useState(false)
+  const [editingReport, setEditingReport] = useState(null)
+  const [deletingReport, setDeletingReport] = useState(null)
+  const [deletingBusy, setDeletingBusy] = useState(false)
+  const [downloadingReport, setDownloadingReport] = useState('')
   const today = useMemo(() => berlinDateKey(), [])
+  const [reportDate, setReportDate] = useState(today)
 
   const loadOverview = useCallback(async () => {
     try {
@@ -164,18 +239,39 @@ export default function AdminOverview({ session, navigate }) {
   const groups = useMemo(() => buildDeploymentGroups(schedule, liveAttendance, today), [schedule, liveAttendance, today])
   const todayShifts = useMemo(() => schedule.filter((entry) => entry?.date === today && entry?.status !== 'draft'), [schedule, today])
 
-  const openCompose = () => { setReportNotice(null); setReportMode('compose') }
-  const openHistory = async () => {
-    setReportMode('history')
-    setReportNotice(null)
+  const loadReports = useCallback(async (date) => {
     setLoadingReports(true)
     try {
-      const data = await apiJson('/api/daily-reports')
+      const data = await apiJson(`/api/daily-reports?date=${encodeURIComponent(date)}`)
       setReports(Array.isArray(data.reports) ? data.reports : [])
     } catch (error) {
       setReports([])
       setReportNotice({ tone: 'error', text: error.message || 'Die Berichte konnten nicht geladen werden.' })
     } finally { setLoadingReports(false) }
+  }, [])
+
+  const closeReportDialog = useCallback(() => {
+    setReportMode('')
+    setEditingReport(null)
+    setDeletingReport(null)
+    setReportText('')
+    setReportNotice(null)
+  }, [])
+
+  const openCompose = () => {
+    setEditingReport(null)
+    setDeletingReport(null)
+    setReportText('')
+    setReportNotice(null)
+    setReportMode('compose')
+  }
+
+  const openHistory = async () => {
+    setEditingReport(null)
+    setDeletingReport(null)
+    setReportMode('history')
+    setReportNotice(null)
+    await loadReports(reportDate)
   }
 
   const saveReport = async () => {
@@ -190,6 +286,77 @@ export default function AdminOverview({ session, navigate }) {
     } catch (error) {
       setReportNotice({ tone: 'error', text: error.message || 'Der Tagesbericht konnte nicht gespeichert werden.' })
     } finally { setSavingReport(false) }
+  }
+
+  const startEditReport = (report) => {
+    setEditingReport(report)
+    setDeletingReport(null)
+    setReportText(report.text || '')
+    setReportNotice(null)
+    setReportMode('edit')
+  }
+
+  const saveEditedReport = async () => {
+    const words = countReportWords(reportText)
+    if (!editingReport || !words || words > MAX_REPORT_WORDS) return
+    setSavingReport(true)
+    setReportNotice(null)
+    try {
+      await apiJson(`/api/daily-reports?id=${encodeURIComponent(editingReport.id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ text: reportText }),
+      })
+      setEditingReport(null)
+      setReportText('')
+      setReportMode('history')
+      await loadReports(reportDate)
+      setReportNotice({ tone: 'success', text: 'Der Tagesbericht wurde bearbeitet.' })
+    } catch (error) {
+      setReportNotice({ tone: 'error', text: error.message || 'Der Tagesbericht konnte nicht bearbeitet werden.' })
+    } finally { setSavingReport(false) }
+  }
+
+  const changeReportDate = async (date) => {
+    if (!date) return
+    setReportDate(date)
+    setDeletingReport(null)
+    setReportNotice(null)
+    await loadReports(date)
+  }
+
+  const confirmDeleteReport = async () => {
+    if (!deletingReport) return
+    setDeletingBusy(true)
+    setReportNotice(null)
+    try {
+      await apiJson(`/api/daily-reports?id=${encodeURIComponent(deletingReport.id)}`, { method: 'DELETE' })
+      setDeletingReport(null)
+      await loadReports(reportDate)
+      setReportNotice({ tone: 'success', text: 'Der Tagesbericht wurde endgültig gelöscht.' })
+    } catch (error) {
+      setReportNotice({ tone: 'error', text: error.message || 'Der Tagesbericht konnte nicht gelöscht werden.' })
+    } finally { setDeletingBusy(false) }
+  }
+
+  const downloadReportPdf = async (report) => {
+    setDownloadingReport(report.id)
+    setReportNotice(null)
+    try {
+      await downloadPdf(`/api/daily-reports-pdf?id=${encodeURIComponent(report.id)}`)
+    } catch (error) {
+      setReportNotice({ tone: 'error', text: error.message || 'Die PDF konnte nicht heruntergeladen werden.' })
+    } finally { setDownloadingReport('') }
+  }
+
+  const downloadDayPdf = async () => {
+    if (!reports.length) return
+    setDownloadingReport('day')
+    setReportNotice(null)
+    try {
+      await downloadPdf(`/api/daily-reports-pdf?date=${encodeURIComponent(reportDate)}`)
+    } catch (error) {
+      setReportNotice({ tone: 'error', text: error.message || 'Die Tages-PDF konnte nicht heruntergeladen werden.' })
+    } finally { setDownloadingReport('') }
   }
 
   return <div className="admin-overview-page">
@@ -215,13 +382,13 @@ export default function AdminOverview({ session, navigate }) {
     {isAdmin && <section className="daily-report-card" aria-labelledby="daily-report-card-title">
       <div className="admin-section-heading">
         <span className="admin-section-icon"><Icon name="file" /></span>
-        <div className="admin-section-copy"><h2 id="daily-report-card-title">Tagesbericht</h2><p>Bericht schreiben und gespeicherte Berichte ansehen.</p></div>
+        <div className="admin-section-copy"><h2 id="daily-report-card-title">Tagesbericht</h2><p>Bericht schreiben, verwalten und professionell als PDF herunterladen.</p></div>
       </div>
       <div className="daily-report-actions">
         <button type="button" className="daily-report-action primary" onClick={openCompose}><Icon name="pencil" /><span>Bericht schreiben</span></button>
         <button type="button" className="daily-report-action secondary" onClick={openHistory}><Icon name="folder" /><span>Berichte öffnen</span></button>
       </div>
-      <div className="daily-report-auto"><Icon name="info" /><span>Name, Datum und Uhrzeit werden automatisch gespeichert.</span></div>
+      <div className="daily-report-auto"><Icon name="info" /><span>Name, Datum und Uhrzeit werden automatisch gespeichert. Änderungen werden nachvollziehbar dokumentiert.</span></div>
     </section>}
 
     <section className="admin-quick-actions" aria-label="Schnellzugriff">
@@ -249,14 +416,25 @@ export default function AdminOverview({ session, navigate }) {
 
     {reportMode && isAdmin && <DailyReportDialog
       mode={reportMode}
-      onClose={() => setReportMode('')}
+      onClose={closeReportDialog}
       reportText={reportText}
       setReportText={setReportText}
-      onSave={saveReport}
+      onSave={reportMode === 'edit' ? saveEditedReport : saveReport}
       saving={savingReport}
       notice={reportNotice}
       reports={reports}
       loadingReports={loadingReports}
+      reportDate={reportDate}
+      onDateChange={changeReportDate}
+      onDayPdf={downloadDayPdf}
+      onReportPdf={downloadReportPdf}
+      downloadingReport={downloadingReport}
+      onEdit={startEditReport}
+      onDelete={(report) => { setDeletingReport(report); setReportNotice(null) }}
+      deletingReport={deletingReport}
+      onCancelDelete={() => setDeletingReport(null)}
+      onConfirmDelete={confirmDeleteReport}
+      deletingBusy={deletingBusy}
     />}
   </div>
 }
