@@ -142,7 +142,7 @@ export default function AdminOverview({ session, navigate }) {
 
   const loadOverview = useCallback(async () => {
     try {
-      const scheduleData = await apiJson('/api/schedule-v2?resource=entries')
+      const scheduleData = await apiJson(`/api/schedule-v2?resource=entries&from=${encodeURIComponent(today)}&to=${encodeURIComponent(today)}`)
       setSchedule(Array.isArray(scheduleData.entries) ? scheduleData.entries : [])
       setOverviewNotice(null)
     } catch (error) {
