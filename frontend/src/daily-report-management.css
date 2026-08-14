@@ -1,0 +1,198 @@
+.daily-report-toolbar {
+  display: grid;
+  grid-template-columns: minmax(170px, .72fr) minmax(210px, 1fr);
+  align-items: end;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 13px;
+  border: 1px solid #293338;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #111719, #0a0f11);
+}
+
+.daily-report-date-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  color: #a8b2b7;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.daily-report-date-field input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #354147;
+  border-radius: 11px;
+  padding: 0 11px;
+  color: #edf2f3;
+  background: #090d0f;
+  color-scheme: dark;
+  font: inherit;
+  font-size: 13px;
+}
+
+.daily-report-date-field input:focus {
+  outline: 2px solid rgba(239, 199, 94, .2);
+  border-color: rgba(239, 199, 94, .62);
+}
+
+.daily-report-day-pdf {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #d2a33a;
+  border-radius: 11px;
+  padding: 0 13px;
+  color: #1c1504;
+  background: linear-gradient(180deg, #f0c85e, #d7aa38);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.daily-report-day-pdf svg,
+.daily-report-entry-actions svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+}
+
+.daily-report-day-pdf:disabled,
+.daily-report-entry-actions button:disabled,
+.daily-report-delete-button:disabled {
+  opacity: .52;
+  cursor: default;
+}
+
+.daily-report-entry-meta .daily-report-edited {
+  color: #d8b85c;
+  font-weight: 700;
+}
+
+.daily-report-entry-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #232c30;
+}
+
+.daily-report-entry-actions button {
+  min-width: 0;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #344047;
+  border-radius: 10px;
+  padding: 7px 9px;
+  color: #dce3e6;
+  background: #111719;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.daily-report-entry-actions button:hover {
+  border-color: #506068;
+  background: #161e21;
+}
+
+.daily-report-entry-actions button.danger {
+  border-color: rgba(240, 113, 120, .36);
+  color: #f1a0a5;
+  background: rgba(240, 113, 120, .055);
+}
+
+.daily-report-entry-actions button.danger:hover {
+  border-color: rgba(240, 113, 120, .62);
+  background: rgba(240, 113, 120, .09);
+}
+
+.daily-report-delete-confirm {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+  padding: 13px;
+  border: 1px solid rgba(240, 113, 120, .38);
+  border-radius: 12px;
+  color: #e8edef;
+  background: linear-gradient(145deg, rgba(93, 24, 29, .26), rgba(30, 11, 13, .38));
+  animation: daily-report-confirm-reveal .16s ease both;
+}
+
+.daily-report-delete-confirm strong {
+  color: #f2b0b4;
+  font-size: 12px;
+}
+
+.daily-report-delete-confirm > span {
+  color: #a9b3b7;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.daily-report-delete-confirm > div {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 3px;
+}
+
+.daily-report-delete-button {
+  min-height: 44px;
+  border: 1px solid #c95860;
+  border-radius: 11px;
+  padding: 0 14px;
+  color: #fff2f3;
+  background: linear-gradient(180deg, #ad3f48, #842e35);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+@keyframes daily-report-confirm-reveal {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 560px) {
+  .daily-report-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-report-day-pdf {
+    width: 100%;
+  }
+
+  .daily-report-entry-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .daily-report-entry-actions button {
+    min-height: 46px;
+    padding-inline: 6px;
+  }
+
+  .daily-report-delete-confirm > div {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 380px) {
+  .daily-report-entry-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-report-delete-confirm > div {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .daily-report-delete-confirm { animation: none; }
+}
