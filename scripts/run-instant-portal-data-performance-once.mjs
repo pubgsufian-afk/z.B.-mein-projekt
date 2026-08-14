@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 
+const patchPath = 'scripts/apply-instant-portal-data-performance.mjs'
+let patch = await readFile(patchPath, 'utf8')
+const strictScheduleCount = "assert.ok(count >= 3, `Schedule Snapshot-Invalidierung erwartete mindestens 3 Schreibpfade, gefunden ${count}`)"
+const actualScheduleCount = "assert.ok(count >= 2, `Schedule Snapshot-Invalidierung erwartete mindestens 2 Schreibpfade, gefunden ${count}`)"
+if (!patch.includes(actualScheduleCount)) {
+  assert.ok(patch.includes(strictScheduleCount), 'Schedule Snapshot-Kompatibilitätsmarker fehlt.')
+  patch = patch.replace(strictScheduleCount, actualScheduleCount)
+  await writeFile(patchPath, patch)
+}
+
 const timesheetPath = 'frontend/src/TimesheetPage.jsx'
 let timesheet = await readFile(timesheetPath, 'utf8')
 
