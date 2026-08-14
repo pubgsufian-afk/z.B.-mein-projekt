@@ -107,4 +107,3 @@ if (appPerformanceActive) {
 
 await import('./apply-timesheet-excel-esm-fix.mjs')
 await import('./apply-timesheet-no-duplicate-reload.mjs')
-await import('./run-instant-portal-data-performance-once.mjs')
