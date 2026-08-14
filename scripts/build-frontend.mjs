@@ -1,6 +1,11 @@
 import { build } from 'esbuild'
 import { mkdir } from 'node:fs/promises'
 
+await import('./run-instant-portal-data-performance-once.mjs')
+await import('./display-snapshots-test.mjs')
+await import('./admin-overview-performance-test.mjs')
+await import('./instant-page-snapshots-test.mjs')
+
 await mkdir('public/assets', { recursive: true })
 await build({
   entryPoints: ['frontend/src/main.jsx'],
