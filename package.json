@@ -10,7 +10,7 @@
     "verify:database": "node scripts/netlify-database-config-test.mjs",
     "verify:admin-overview": "node scripts/apply-admin-overview-daily-report.mjs && node scripts/admin-overview-daily-report-test.mjs",
     "verify:daily-reports": "node --experimental-strip-types scripts/daily-report-crud-test.mjs && node scripts/daily-report-pdf-test.mjs && node scripts/daily-report-ui-test.mjs",
-    "verify:all": "npm run verify:legacy && npm run verify:v2 && npm run verify:unified && npm run verify:database && npm run verify:admin-overview && npm run verify:daily-reports",
+    "verify:all": "npm run verify:legacy && npm run verify:v2 && npm run verify:unified && npm run verify:database && npm run verify:daily-reports",
     "verify": "npm run verify:all",
     "build:frontend": "node scripts/apply-admin-overview-daily-report.mjs && node scripts/admin-overview-daily-report-test.mjs && node scripts/build-frontend.mjs",
     "build": "npm run verify && npm run build:frontend && node scripts/build.mjs",
