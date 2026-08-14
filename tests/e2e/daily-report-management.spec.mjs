@@ -143,7 +143,12 @@ async function login(page, role = 'admin') {
   await page.getByLabel('E-Mail-Adresse').fill(user.email)
   await page.getByLabel('Passwort').fill('TestPasswort123!')
   await page.getByRole('button', { name: 'Sicher anmelden' }).click()
-  await expect(page.locator('.topbar h1')).toHaveText(role === 'admin' ? 'Übersicht' : 'Stempeluhr')
+  if (role === 'admin') {
+    await expect(page.locator('.topbar h1')).toHaveText('Übersicht')
+  } else {
+    await expect(page.getByRole('main', { name: 'Mitarbeiter-Zeiterfassung' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Stempeluhr', level: 2 })).toBeVisible()
+  }
   return portal
 }
 
@@ -155,9 +160,10 @@ test('admin edits, downloads and permanently deletes daily reports with confirma
   await expect(page.getByText('Erster Testbericht')).toBeVisible()
 
   await page.getByRole('button', { name: 'Bearbeiten' }).first().click()
-  await expect(page.getByRole('heading', { name: 'Bericht bearbeiten' })).toBeVisible()
-  await page.getByLabel('Bericht').fill('Bearbeiteter Testbericht')
-  await page.getByRole('button', { name: 'Änderungen speichern' }).click()
+  const editDialog = page.getByRole('dialog', { name: 'Bericht bearbeiten' })
+  await expect(editDialog).toBeVisible()
+  await editDialog.getByRole('textbox', { name: 'Bericht' }).fill('Bearbeiteter Testbericht')
+  await editDialog.getByRole('button', { name: 'Änderungen speichern' }).click()
   await expect(page.getByText('Bearbeiteter Testbericht')).toBeVisible()
   await expect(page.getByText(/Zuletzt bearbeitet am/)).toBeVisible()
 
