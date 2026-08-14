@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/admin-overview-daily-report
+      - feat/daily-report-pdf-edit-delete
   pull_request:
     branches:
       - main
@@ -20,4 +21,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: npm install --no-audit --no-fund
       - run: npm run verify:admin-overview
+      - run: node --experimental-strip-types scripts/daily-report-crud-test.mjs
+      - run: node scripts/daily-report-pdf-test.mjs
+      - run: node scripts/daily-report-ui-test.mjs
