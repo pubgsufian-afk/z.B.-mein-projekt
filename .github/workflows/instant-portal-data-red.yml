@@ -18,4 +18,5 @@ jobs:
         with:
           node-version: 22
       - run: node scripts/display-snapshots-test.mjs
+      - run: node scripts/apply-instant-portal-data-performance.mjs
       - run: node scripts/admin-overview-performance-test.mjs
