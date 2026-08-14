@@ -24,7 +24,7 @@ Für `owner` und `admin` gelten dieselben Rechte innerhalb des Tagesbericht-Syst
 
 Der bestehende Dialog `Berichte öffnen` wird zu einer kleinen professionellen Berichtsverwaltung erweitert.
 
-Oben steht ein Datumsfilter. Standardmäßig ist der aktuelle Tag vorausgewählt. Daneben befindet sich der Button `Tages-PDF herunterladen`. Dieser Button ist deaktiviert, wenn für den ausgewählten Tag keine Berichte vorhanden sind.
+Oben steht ein Datumsfilter. Standardmäßig ist der aktuelle Tag vorausgewählt. Für Tagesgrenzen und Datumsfilter gilt durchgehend die Zeitzone `Europe/Berlin`. Daneben befindet sich der Button `Tages-PDF herunterladen`. Dieser Button ist deaktiviert, wenn für den ausgewählten Tag keine Berichte vorhanden sind.
 
 Jeder gespeicherte Bericht zeigt weiterhin Verfasser, Erstellungsdatum, Erstellungszeit und Berichtstext. Zusätzlich erhält jeder Eintrag die Aktionen:
 
@@ -94,6 +94,8 @@ Alle Methoden bleiben auf `owner` und `admin` beschränkt. Schreibende Methoden 
 
 Der Server vertraut weder Autoren- noch Zeit-Metadaten aus dem Browser. Bei Bearbeitung werden `updatedAt`, `updatedById` und `updatedByName` ausschließlich serverseitig erzeugt.
 
+Ein Tagesfilter ordnet einen Bericht anhand seines unveränderten `createdAt` der lokalen Kalenderdatum-Grenze in `Europe/Berlin` zu. Eine spätere Bearbeitung verschiebt einen Bericht deshalb nicht in einen anderen Tag.
+
 ## Speicherung und Kompatibilität
 
 Die vorhandenen Berichte im Netlify-Blobs-Store `portal-daily-reports` müssen unverändert lesbar bleiben.
@@ -122,7 +124,7 @@ Aufruf mit Datum, z. B.:
 
 `/api/daily-reports-pdf?date=2026-08-14`
 
-Die PDF enthält alle Berichte dieses Tages in chronologischer Reihenfolge von früh nach spät.
+Die PDF enthält alle Berichte dieses Tages in chronologischer Reihenfolge von früh nach spät. Auch hier wird der Tag nach `Europe/Berlin` bestimmt.
 
 Auch der PDF-Endpunkt ist ausschließlich für `owner` und `admin` zugänglich.
 
@@ -132,7 +134,7 @@ Die PDF wird serverseitig mit der bereits vorhandenen `pdf-lib`-Infrastruktur er
 
 Format: A4 Hochformat.
 
-Auf jeder PDF steht oben mittig das aktuelle Firmenlogo. Darunter folgen Firmenbezeichnung und die Überschrift `Tagesbericht`.
+Auf jeder erzeugten PDF steht oben mittig das aktuelle Firmenlogo. Darunter folgen Firmenbezeichnung und die Überschrift `Tagesbericht`.
 
 Bei einer Einzel-PDF werden darunter sauber getrennt dargestellt:
 
@@ -214,4 +216,5 @@ Die Erweiterung gilt als fertig, wenn:
 9. Mehrseitige PDFs Text korrekt umbrechen und Seitenzahlen enthalten.
 10. Vorhandene bereits gespeicherte Tagesberichte weiterhin funktionieren.
 11. Die bestehende zentrale PDF-Logo-Konfiguration verwendet wird.
-12. Die komplette Portal-Test-Suite sowie neue Tagesbericht-Tests erfolgreich durchlaufen.
+12. Tagesfilter und Tages-PDF durchgehend `Europe/Berlin` verwenden.
+13. Die komplette Portal-Test-Suite sowie neue Tagesbericht-Tests erfolgreich durchlaufen.
