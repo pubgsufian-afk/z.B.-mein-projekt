@@ -10,6 +10,8 @@ import {
 assert.equal(BERLIN_TIME_ZONE, 'Europe/Berlin')
 assert.equal(isIsoDateKey('2026-08-14'), true)
 assert.equal(isIsoDateKey('14.08.2026'), false)
+assert.equal(isIsoDateKey('2026-02-30'), false)
+assert.equal(isIsoDateKey('2026-13-01'), false)
 assert.equal(berlinDateKey('2026-08-14T22:30:00.000Z'), '2026-08-15')
 assert.equal(safePdfFilenamePart('Ädmin / Test'), 'Admin-Test')
 
