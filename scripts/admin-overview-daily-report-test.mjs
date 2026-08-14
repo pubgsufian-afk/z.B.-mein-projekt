@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { resolve, pathToFileURL } from 'node:path'
 
 const root = resolve(import.meta.dirname, '..')
 const appPath = resolve(root, 'frontend/src/App.jsx')
@@ -43,6 +43,30 @@ assert.match(utils, /break-start/, 'utils must map break-start')
 assert.match(utils, /break-end/, 'utils must map break-end')
 assert.match(utils, /clock-out/, 'utils must map clock-out')
 assert.match(utils, /Europe\/Berlin/, 'date helper must use Europe/Berlin')
+
+const { buildDeploymentGroups, countReportWords } = await import(pathToFileURL(utilsPath).href)
+assert.equal(countReportWords('  Eins zwei\n drei  '), 3, 'word counter must ignore surrounding/repeated whitespace')
+const groups = buildDeploymentGroups(
+  [
+    { id: 's1', date: '2026-08-14', employeeUserId: 'u1', employeeName: 'Aras', status: 'published' },
+    { id: 's2', date: '2026-08-14', employeeUserId: 'u1', employeeName: 'Aras', status: 'published' },
+    { id: 's3', date: '2026-08-14', employeeUserId: 'u2', employeeName: 'Adel', status: 'published' },
+    { id: 's4', date: '2026-08-14', employeeUserId: 'u3', employeeName: 'Amin', status: 'published' },
+    { id: 's5', date: '2026-08-14', employeeUserId: 'u4', employeeName: 'Kwame', status: 'published' },
+    { id: 'draft', date: '2026-08-14', employeeUserId: 'u5', employeeName: 'Draft', status: 'draft' },
+  ],
+  [
+    { userId: 'u1', action: 'clock-in', clientOccurredAt: '2026-08-14T06:00:00Z', eventDate: '2026-08-14' },
+    { userId: 'u2', action: 'break-start', clientOccurredAt: '2026-08-14T10:00:00Z', eventDate: '2026-08-14' },
+    { userId: 'u3', action: 'clock-in', clientOccurredAt: '2026-08-14T07:00:00Z', eventDate: '2026-08-14' },
+    { userId: 'u3', action: 'clock-out', clientOccurredAt: '2026-08-14T16:00:00Z', eventDate: '2026-08-14' },
+  ],
+  '2026-08-14',
+)
+assert.deepEqual(groups.working.map((entry) => entry.name), ['Aras'], 'clock-in maps to Im Dienst and duplicate shifts are deduped')
+assert.deepEqual(groups.paused.map((entry) => entry.name), ['Adel'], 'break-start maps to In Pause')
+assert.deepEqual(groups.completed.map((entry) => entry.name), ['Amin'], 'latest clock-out maps to Dienst beendet')
+assert.deepEqual(groups.notStarted.map((entry) => entry.name), ['Kwame'], 'missing attendance maps to Noch nicht gestartet')
 
 assert.match(api, /requirePortalRole\(\['owner', 'admin'\]\)/, 'API must be owner/admin only')
 assert.match(api, /portal-daily-reports/, 'API must use the dedicated lightweight blob store')
