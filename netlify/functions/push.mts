@@ -57,9 +57,10 @@ export default async function push(request: Request, _context: Context) {
   if (action === 'subscribe') {
     const subscription = body.subscription as { endpoint?: unknown } | null
     const endpoint = String(subscription?.endpoint || '').trim()
+    const existingToken = String(body.deviceToken || '').trim()
     if (!endpoint) return json({ message: 'Push-Abonnement fehlt.' }, 400)
     try {
-      return json(await registerPushDevice(actor, endpoint), 201)
+      return json(await registerPushDevice(actor, endpoint, existingToken), 201)
     } catch (error) {
       return json({ message: error instanceof Error ? error.message : 'Push konnte nicht aktiviert werden.' }, 400)
     }
