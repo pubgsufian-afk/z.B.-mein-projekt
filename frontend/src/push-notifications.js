@@ -1,7 +1,6 @@
 import { onAuthChange } from '@netlify/identity'
 
 const TOKEN_KEY = 'habunPushDeviceTokenV1'
-const MANAGEMENT = new Set(['owner', 'admin', 'manager', 'scheduler'])
 const ACTIVE_PORTAL_ROLES = new Set(['owner', 'admin', 'manager', 'scheduler', 'employee'])
 let authListenerInstalled = false
 
@@ -54,6 +53,14 @@ async function syncDeviceToken(registration, token) {
   await navigator.serviceWorker.ready.then((ready) => ready.active?.postMessage({ type: 'SET_PUSH_DEVICE_TOKEN', token })).catch(() => {})
 }
 
+function readLocalRegistration(userId) {
+  try {
+    const value = JSON.parse(localStorage.getItem(TOKEN_KEY) || 'null')
+    if (value?.userId === userId && value?.token) return value
+  } catch {}
+  return null
+}
+
 async function ensureSubscription(registration, requestPermission, userId) {
   if (requestPermission && Notification.permission === 'default') await Notification.requestPermission()
   if (Notification.permission !== 'granted') throw new Error('Benachrichtigungen wurden nicht erlaubt.')
@@ -67,19 +74,18 @@ async function ensureSubscription(registration, requestPermission, userId) {
     })
   }
 
-  let localRegistration = null
-  try { localRegistration = JSON.parse(localStorage.getItem(TOKEN_KEY) || 'null') } catch {}
-  let deviceToken = localRegistration?.userId === userId ? String(localRegistration.token || '') : ''
-  if (!deviceToken) {
-    const result = await jsonFetch('/api/push', {
-      method: 'POST',
-      body: JSON.stringify({ action: 'subscribe', subscription: subscription.toJSON() }),
-    })
-    deviceToken = String(result.deviceToken || '')
-    if (!deviceToken) throw new Error('Das Gerät konnte nicht für Benachrichtigungen registriert werden.')
-    localStorage.setItem(TOKEN_KEY, JSON.stringify({ token: deviceToken, userId }))
-  }
-
+  const localRegistration = readLocalRegistration(userId)
+  const result = await jsonFetch('/api/push', {
+    method: 'POST',
+    body: JSON.stringify({
+      action: 'subscribe',
+      subscription: subscription.toJSON(),
+      deviceToken: localRegistration?.token || '',
+    }),
+  })
+  const deviceToken = String(result.deviceToken || '')
+  if (!deviceToken) throw new Error('Das Gerät konnte nicht für Benachrichtigungen registriert werden.')
+  localStorage.setItem(TOKEN_KEY, JSON.stringify({ token: deviceToken, userId }))
   await syncDeviceToken(registration, deviceToken)
 
   if (requestPermission) {
@@ -92,29 +98,31 @@ async function ensureSubscription(registration, requestPermission, userId) {
   return subscription
 }
 
-function mountPermissionCard({ onEnable }) {
-  if (document.querySelector('[data-habun-push-card]')) return
+function mountPermissionCard({ onEnable, repair = false }) {
+  document.querySelector('[data-habun-push-card]')?.remove()
   const card = document.createElement('aside')
   card.dataset.habunPushCard = 'true'
   card.className = 'habun-push-card'
 
-  if (isIOS() && !isStandalone()) {
-    card.classList.add('habun-push-ios-guide')
-    card.innerHTML = '<div><strong>Benachrichtigungen aktivieren</strong><span>Auf iPhone oder iPad zuerst unten auf Teilen tippen, „Zum Home-Bildschirm“ wählen und das Mitarbeiterportal danach über das neue Symbol öffnen.</span></div>'
-  } else if (Notification.permission === 'denied') {
-    card.innerHTML = '<div><strong>Benachrichtigungen sind ausgeschaltet</strong><span>Bitte in den Geräte- oder Browser-Einstellungen Benachrichtigungen für das Mitarbeiterportal erlauben.</span></div><button type="button" data-close aria-label="Hinweis schließen">×</button>'
+  if (Notification.permission === 'denied') {
+    card.innerHTML = '<div><strong>Benachrichtigungen sind ausgeschaltet</strong><span>Bitte in den iPhone- oder Browser-Einstellungen Benachrichtigungen für das Mitarbeiterportal erlauben.</span></div><button type="button" data-close aria-label="Hinweis schließen">×</button>'
   } else {
-    card.innerHTML = '<div><strong>Benachrichtigungen aktivieren</strong><span>Erhalte Dienstplan-Änderungen und wichtige Mitteilungen direkt auf diesem Gerät.</span></div><div class="habun-push-card-actions"><button type="button" class="habun-push-enable">Aktivieren</button><button type="button" data-close>Später</button></div>'
+    const title = repair ? 'Benachrichtigungen erneut verbinden' : 'Benachrichtigungen aktivieren'
+    const text = repair
+      ? 'Die Verbindung dieses Geräts muss erneuert werden. Tippe einmal auf „Erneut verbinden“.'
+      : 'Erhalte Dienstplan-Änderungen und Erinnerungen vor Dienstbeginn direkt auf diesem Gerät.'
+    const buttonText = repair ? 'Erneut verbinden' : 'Aktivieren'
+    card.innerHTML = `<div><strong>${title}</strong><span>${text}</span></div><div class="habun-push-card-actions"><button type="button" class="habun-push-enable">${buttonText}</button><button type="button" data-close>Später</button></div>`
     card.querySelector('.habun-push-enable')?.addEventListener('click', async (event) => {
       const button = event.currentTarget
       button.disabled = true
-      button.textContent = 'Wird aktiviert …'
+      button.textContent = repair ? 'Wird verbunden …' : 'Wird aktiviert …'
       try {
         await onEnable()
         card.remove()
       } catch (error) {
         button.disabled = false
-        button.textContent = 'Aktivieren'
+        button.textContent = buttonText
         const span = card.querySelector('span')
         if (span) span.textContent = error.message || 'Benachrichtigungen konnten nicht aktiviert werden.'
       }
@@ -125,102 +133,8 @@ function mountPermissionCard({ onEnable }) {
   document.body.appendChild(card)
 }
 
-function mountAdminSender(session) {
-  if (!MANAGEMENT.has(String(session.role)) || document.querySelector('[data-habun-push-admin]')) return
-
-  const launcher = document.createElement('button')
-  launcher.type = 'button'
-  launcher.dataset.habunPushAdmin = 'true'
-  launcher.className = 'habun-push-launcher'
-  launcher.setAttribute('aria-label', 'Mitteilungen öffnen')
-  launcher.textContent = '🔔'
-
-  let backdrop = null
-  let loadedEmployees = false
-
-  function ensureModal() {
-    if (backdrop) return backdrop
-    backdrop = document.createElement('div')
-    backdrop.className = 'habun-push-modal-backdrop'
-    backdrop.hidden = true
-    backdrop.innerHTML = `
-      <section class="habun-push-modal" role="dialog" aria-modal="true" aria-labelledby="habun-push-title">
-        <header><div><span>Mitteilung</span><h3 id="habun-push-title">Neue Mitteilung</h3></div><button type="button" data-close aria-label="Schließen">×</button></header>
-        <label>Empfänger<select data-recipient><option value="">Alle registrierten Geräte</option></select></label>
-        <label>Titel<input data-title maxlength="80" value="Habun Mitarbeiterportal"></label>
-        <label>Nachricht<textarea data-message maxlength="300" rows="5" placeholder="Nachricht eingeben …"></textarea></label>
-        <div class="habun-push-modal-notice" data-notice aria-live="polite"></div>
-        <div class="habun-push-modal-actions"><button type="button" data-close>Abbrechen</button><button type="button" class="primary" data-send>Jetzt schicken</button></div>
-      </section>`
-
-    const close = () => { backdrop.hidden = true }
-    backdrop.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', close))
-    backdrop.addEventListener('mousedown', (event) => { if (event.target === backdrop) close() })
-
-    backdrop.querySelector('[data-send]')?.addEventListener('click', async (event) => {
-      const button = event.currentTarget
-      const notice = backdrop.querySelector('[data-notice]')
-      const title = backdrop.querySelector('[data-title]').value.trim()
-      const message = backdrop.querySelector('[data-message]').value.trim()
-      const targetUserId = backdrop.querySelector('[data-recipient]').value
-      if (!title || !message) {
-        notice.textContent = 'Bitte Titel und Nachricht eingeben.'
-        notice.dataset.tone = 'error'
-        return
-      }
-      button.disabled = true
-      button.textContent = 'Wird geschickt …'
-      try {
-        const result = await jsonFetch('/api/push', {
-          method: 'POST',
-          body: JSON.stringify({ action: 'send', targetUserId, title, message, url: '/' }),
-        })
-        notice.textContent = result.targeted
-          ? `An ${result.delivered} von ${result.targeted} registrierten Gerät(en) geschickt.`
-          : 'Für diesen Empfänger ist noch kein Gerät für Benachrichtigungen aktiviert.'
-        notice.dataset.tone = 'success'
-        if (result.delivered) backdrop.querySelector('[data-message]').value = ''
-      } catch (error) {
-        notice.textContent = error.message || 'Die Mitteilung konnte nicht verschickt werden.'
-        notice.dataset.tone = 'error'
-      } finally {
-        button.disabled = false
-        button.textContent = 'Jetzt schicken'
-      }
-    })
-
-    document.body.appendChild(backdrop)
-    return backdrop
-  }
-
-  launcher.addEventListener('click', async () => {
-    const modal = ensureModal()
-    modal.hidden = false
-    if (loadedEmployees) return
-    const recipient = modal.querySelector('[data-recipient]')
-    try {
-      const data = await jsonFetch('/api/registrations')
-      const employees = Array.isArray(data.employees) ? data.employees : []
-      for (const employee of employees) {
-        const userId = String(employee.userId || employee.id || '').trim()
-        const fullName = String(employee.fullName || employee.name || 'Mitarbeiter').trim()
-        if (!userId) continue
-        const option = document.createElement('option')
-        option.value = userId
-        option.textContent = fullName
-        recipient.appendChild(option)
-      }
-      loadedEmployees = true
-    } catch {}
-  })
-
-  document.body.appendChild(launcher)
-}
-
 function clearPushUi() {
   document.querySelector('[data-habun-push-card]')?.remove()
-  document.querySelector('[data-habun-push-admin]')?.remove()
-  document.querySelector('.habun-push-modal-backdrop')?.remove()
 }
 
 async function setupForCurrentSession() {
@@ -228,10 +142,8 @@ async function setupForCurrentSession() {
   try { session = await jsonFetch('/api/session') } catch { return }
   if (!session || !ACTIVE_PORTAL_ROLES.has(String(session.role))) return
 
-  mountAdminSender(session)
-
   if (isIOS() && !isStandalone()) {
-    mountPermissionCard({ onEnable: async () => {} })
+    clearPushUi()
     return
   }
 
@@ -239,13 +151,22 @@ async function setupForCurrentSession() {
 
   const registration = await registerServiceWorker().catch(() => null)
   if (!registration) return
+  const userId = String(session.userId || session.id || '')
 
   if (Notification.permission === 'granted') {
-    try { await ensureSubscription(registration, false, String(session.userId || session.id || '')) } catch {}
+    try {
+      await ensureSubscription(registration, false, userId)
+      clearPushUi()
+    } catch {
+      mountPermissionCard({
+        repair: true,
+        onEnable: () => ensureSubscription(registration, false, userId),
+      })
+    }
     return
   }
 
-  mountPermissionCard({ onEnable: () => ensureSubscription(registration, true, String(session.userId || session.id || '')) })
+  mountPermissionCard({ onEnable: () => ensureSubscription(registration, true, userId) })
 }
 
 export async function installPushNotifications() {
