@@ -91,9 +91,12 @@ assert.match(apply, /function OverviewPage/, 'apply script must patch only the o
 assert.match(apply, /AdminOverview/, 'apply script must inject AdminOverview')
 
 const installPush = push.match(/export async function installPushNotifications\(\)[\s\S]*$/)?.[0] || ''
+const validRoleGuardIndex = installPush.indexOf('ACTIVE_PORTAL_ROLES.has(String(session.role))')
 const iosPreflightIndex = installPush.indexOf('isIOS() && !isStandalone()')
 const unsupportedReturnIndex = installPush.indexOf('if (!pushSupported()) return')
+assert.ok(validRoleGuardIndex >= 0, 'push UI must require a real authenticated portal role before rendering')
 assert.ok(iosPreflightIndex >= 0, 'iPhone browser path must explicitly show the Home Screen instruction')
+assert.ok(validRoleGuardIndex < iosPreflightIndex, 'authenticated-role validation must happen before the iPhone guidance')
 assert.ok(unsupportedReturnIndex < 0 || iosPreflightIndex < unsupportedReturnIndex, 'iPhone Home Screen instruction must run before unsupported-browser early return')
 
 console.log('admin overview + daily report source contract: ok')
