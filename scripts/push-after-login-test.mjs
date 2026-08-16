@@ -1,5 +1,7 @@
 import fs from 'node:fs'
 
+await import('./apply-automatic-schedule-push.mjs')
+
 const source = fs.readFileSync(new URL('../frontend/src/push-notifications.js', import.meta.url), 'utf8')
 const css = fs.readFileSync(new URL('../frontend/src/push-notifications.css', import.meta.url), 'utf8')
 const setupBlock = source.match(/async function setupForCurrentSession\(\)[\s\S]*?export async function installPushNotifications/)?.[0] || ''
