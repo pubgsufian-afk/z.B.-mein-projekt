@@ -11,6 +11,7 @@ const cssPath = resolve(root, 'frontend/src/admin-overview.css')
 const apiPath = resolve(root, 'netlify/functions/daily-reports.mts')
 const modelPath = resolve(root, 'netlify/functions/_shared/daily-report-model.mts')
 const applyPath = resolve(root, 'scripts/apply-admin-overview-daily-report.mjs')
+const pushPath = resolve(root, 'frontend/src/push-notifications.js')
 
 assert.equal(existsSync(componentPath), true, 'AdminOverview.jsx must exist')
 assert.equal(existsSync(utilsPath), true, 'admin-overview-utils.mjs must exist')
@@ -18,6 +19,7 @@ assert.equal(existsSync(cssPath), true, 'admin-overview.css must exist')
 assert.equal(existsSync(apiPath), true, 'daily-reports.mts must exist')
 assert.equal(existsSync(modelPath), true, 'daily-report-model.mts must exist')
 assert.equal(existsSync(applyPath), true, 'overview apply script must exist')
+assert.equal(existsSync(pushPath), true, 'push notification client must exist')
 
 const app = readFileSync(appPath, 'utf8')
 const component = readFileSync(componentPath, 'utf8')
@@ -26,6 +28,7 @@ const css = readFileSync(cssPath, 'utf8')
 const api = readFileSync(apiPath, 'utf8')
 const model = readFileSync(modelPath, 'utf8')
 const apply = readFileSync(applyPath, 'utf8')
+const push = readFileSync(pushPath, 'utf8')
 
 assert.match(app, /AdminOverview/, 'App.jsx must be wired to AdminOverview after applying the patch')
 assert.doesNotMatch(app.match(/function OverviewPage[\s\S]*?function DigitalClock/)?.[0] || '', /Meine Zeiten/, 'old Meine Zeiten shortcut must be absent from overview')
@@ -86,5 +89,11 @@ assert.match(css, /@media/, 'mobile/responsive styles must exist')
 
 assert.match(apply, /function OverviewPage/, 'apply script must patch only the overview function')
 assert.match(apply, /AdminOverview/, 'apply script must inject AdminOverview')
+
+const installPush = push.match(/export async function installPushNotifications\(\)[\s\S]*$/)?.[0] || ''
+const iosPreflightIndex = installPush.indexOf('isIOS() && !isStandalone()')
+const unsupportedReturnIndex = installPush.indexOf('if (!pushSupported()) return')
+assert.ok(iosPreflightIndex >= 0, 'iPhone browser path must explicitly show the Home Screen instruction')
+assert.ok(unsupportedReturnIndex < 0 || iosPreflightIndex < unsupportedReturnIndex, 'iPhone Home Screen instruction must run before unsupported-browser early return')
 
 console.log('admin overview + daily report source contract: ok')
