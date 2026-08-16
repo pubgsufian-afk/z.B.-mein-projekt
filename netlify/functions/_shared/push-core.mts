@@ -45,8 +45,7 @@ function store() {
 }
 
 function base64Url(buffer: Buffer | Uint8Array | string) {
-  const bytes = typeof buffer === 'string' ? Buffer.from(buffer) : Buffer.from(buffer)
-  return bytes.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+  return Buffer.from(buffer).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
 }
 
 function decodeBase64Url(value: string) {
@@ -63,14 +62,7 @@ function validVapidConfig(value: unknown): value is VapidConfig {
   if (!value || typeof value !== 'object') return false
   const row = value as Partial<VapidConfig>
   const jwk = row.privateJwk as Partial<VapidJwk> | undefined
-  return Boolean(
-    row.publicKey
-    && jwk?.kty === 'EC'
-    && jwk.crv === 'P-256'
-    && jwk.x
-    && jwk.y
-    && jwk.d,
-  )
+  return Boolean(row.publicKey && jwk?.kty === 'EC' && jwk.crv === 'P-256' && jwk.x && jwk.y && jwk.d)
 }
 
 async function vapidConfig() {
@@ -102,7 +94,6 @@ async function vapidConfig() {
     createdAt: new Date().toISOString(),
   }
   await current.setJSON(VAPID_KEY, config)
-
   const persisted = await current.get(VAPID_KEY, { type: 'json' }) as VapidConfig | null
   if (!validVapidConfig(persisted)) throw new Error('Push-Schlüssel konnten nicht gespeichert werden.')
   return persisted
@@ -159,9 +150,7 @@ export async function registerPushDevice(actor: PortalActor, endpoint: string) {
 
   const existing = await listDevices()
   for (const row of existing) {
-    if (row.endpoint === cleanEndpoint) {
-      await store().delete(`devices/${row.tokenHash}`)
-    }
+    if (row.endpoint === cleanEndpoint) await store().delete(`devices/${row.tokenHash}`)
   }
 
   const rawToken = `${crypto.randomUUID()}.${base64Url(randomBytes(24))}`
@@ -194,6 +183,37 @@ export async function readPushMessage(rawToken: string) {
   const record = await store().get(`devices/${tokenHash}`, { type: 'json' }) as DeviceRecord | null
   if (!record?.latestMessage) return null
   return record.latestMessage
+}
+
+export async function sendDeviceTestPush(actor: PortalActor, rawToken: string) {
+  const tokenHash = sha256(String(rawToken || ''))
+  const key = `devices/${tokenHash}`
+  const current = store()
+  const device = await current.get(key, { type: 'json' }) as DeviceRecord | null
+  if (!device || device.userId !== actor.userId) return { targeted: 0, delivered: 0, removed: 0 }
+
+  const message: PushMessage = {
+    id: crypto.randomUUID(),
+    title: 'Habun Mitarbeiterportal',
+    body: 'Benachrichtigungen funktionieren auf diesem Gerät.',
+    url: '/',
+    createdAt: new Date().toISOString(),
+  }
+  await current.setJSON(key, { ...device, latestMessage: message, updatedAt: new Date().toISOString() })
+
+  try {
+    const response = await sendWake(device.endpoint, await vapidConfig())
+    if (response.ok) return { targeted: 1, delivered: 1, removed: 0, messageId: message.id }
+    if (response.status === 404 || response.status === 410) {
+      await current.delete(key)
+      return { targeted: 1, delivered: 0, removed: 1, messageId: message.id }
+    }
+    console.warn('Push test rejected', response.status, device.endpoint.slice(0, 80))
+    return { targeted: 1, delivered: 0, removed: 0, messageId: message.id }
+  } catch (error) {
+    console.warn('Push test failed', error)
+    return { targeted: 1, delivered: 0, removed: 0, messageId: message.id }
+  }
 }
 
 export async function sendPortalPush(options: {
