@@ -85,8 +85,13 @@ await edit('netlify/functions/schedule-assistant.mts', (source) => {
   if (!source.includes("existing.status === 'published') await notifyScheduleChanged([existing.employeeUserId])")) {
     source = insertAfter(source, deleteAnchor, "  if (existing.status === 'published') await notifyScheduleChanged([existing.employeeUserId])\n", 'schedule-assistant delete')
   }
-  const batchAnchor = "        results.push(await publishOne(input as PublishInput, index, requestId, employees, worksites))\n      }\n"
+  const batchAnchors = [
+    "        results.push(await publishOne(input as PublishInput, index, requestId, employees, worksites, allowUnregistered))\n      }\n",
+    "        results.push(await publishOne(input as PublishInput, index, requestId, employees, worksites))\n      }\n",
+  ]
   if (!source.includes('publishedUserIds = results.flatMap')) {
+    const batchAnchor = batchAnchors.find((candidate) => source.includes(candidate))
+    if (!batchAnchor) throw new Error('Missing schedule-assistant batch publication anchor')
     source = insertAfter(source, batchAnchor, "      const publishedUserIds = results.flatMap((entry) =>\n        entry.status === 'published' && 'employeeUserId' in entry ? [String(entry.employeeUserId)] : [],\n      )\n      if (publishedUserIds.length) await notifySchedulePublished(publishedUserIds)\n", 'schedule-assistant batch')
   }
   if (!source.includes('AUTOMATIC_SCHEDULE_PUSH_APPLIED')) source += '\n// AUTOMATIC_SCHEDULE_PUSH_APPLIED\n'

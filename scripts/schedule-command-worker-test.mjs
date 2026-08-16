@@ -8,6 +8,7 @@ const responseKey = Buffer.alloc(32, 7).toString('base64')
 const valid = [
   { ...base, commandId: 'sync-1', action: 'sync-directory' },
   { ...base, commandId: 'publish-1', action: 'publish-shifts', shifts: [{ employeeName: 'Aras', date: '2026-08-11', start: '06:00', end: '14:00', workArea: 'ZuKo' }] },
+  { ...base, commandId: 'publish-guests-1', action: 'publish-shifts', allowUnregistered: true, shifts: [{ employeeName: 'Test Person', date: '2026-08-11', start: '06:00', end: '14:00', workArea: 'ZuKo' }] },
   { ...base, commandId: 'list-1', action: 'list-shifts', from: '2026-08-01', to: '2026-08-11', employeeName: 'Aras', responseKey },
   { ...base, commandId: 'get-1', action: 'get-shift', shiftId: 'shift-1', responseKey },
   { ...base, commandId: 'dup-1', action: 'find-duplicates', from: '2026-08-01', to: '2026-08-11', responseKey },
@@ -20,10 +21,12 @@ for (const input of valid) {
   assert.equal(result.command?.action, input.action)
 }
 assert.equal(parseScheduleCommand(JSON.stringify(valid[1]), now).command?.shifts?.length, 1)
-assert.equal(parseScheduleCommand(JSON.stringify(valid[2]), now).command?.from, '2026-08-01')
-assert.equal(parseScheduleCommand(JSON.stringify(valid[2]), now).command?.responseKey, responseKey)
-assert.equal(parseScheduleCommand(JSON.stringify(valid[3]), now).command?.shiftId, 'shift-1')
-assert.deepEqual(parseScheduleCommand(JSON.stringify(valid[5]), now).command?.changes, { start: '07:00' })
+assert.equal(parseScheduleCommand(JSON.stringify(valid[1]), now).command?.allowUnregistered, undefined)
+assert.equal(parseScheduleCommand(JSON.stringify(valid[2]), now).command?.allowUnregistered, true)
+assert.equal(parseScheduleCommand(JSON.stringify(valid[3]), now).command?.from, '2026-08-01')
+assert.equal(parseScheduleCommand(JSON.stringify(valid[3]), now).command?.responseKey, responseKey)
+assert.equal(parseScheduleCommand(JSON.stringify(valid[4]), now).command?.shiftId, 'shift-1')
+assert.deepEqual(parseScheduleCommand(JSON.stringify(valid[6]), now).command?.changes, { start: '07:00' })
 
 const invalid = [
   '',
@@ -34,6 +37,7 @@ const invalid = [
   JSON.stringify({ ...base, commandId: 'x', createdAt: '2026-08-11T14:00:00.000Z', action: 'sync-directory' }),
   JSON.stringify({ ...base, commandId: 'x', action: 'delete-users' }),
   JSON.stringify({ ...base, commandId: 'x', action: 'publish-shifts' }),
+  JSON.stringify({ ...base, commandId: 'x', action: 'publish-shifts', allowUnregistered: 'true', shifts: [{ employeeName: 'Test Person' }] }),
   JSON.stringify({ ...base, commandId: 'x', action: 'get-shift' }),
   JSON.stringify({ ...base, commandId: 'x', action: 'update-shift', shiftId: 'shift-1' }),
   JSON.stringify({ ...base, commandId: 'x', action: 'delete-shift' }),

@@ -17,6 +17,7 @@ export type ScheduleWorkerCommand = {
   createdAt: string
   action: ScheduleWorkerAction
   shifts?: unknown[]
+  allowUnregistered?: boolean
   from?: string
   to?: string
   employeeName?: string
@@ -102,6 +103,9 @@ export function parseScheduleCommand(raw: unknown, now = new Date()): ParseResul
   if (action === 'publish-shifts' && (!Array.isArray(parsed.shifts) || parsed.shifts.length === 0)) {
     return { ok: false, message: 'Dienstliste fehlt.' }
   }
+  if (action === 'publish-shifts' && parsed.allowUnregistered !== undefined && typeof parsed.allowUnregistered !== 'boolean') {
+    return { ok: false, message: 'Gastmodus ist ungültig.' }
+  }
 
   if (action === 'list-shifts' || action === 'find-duplicates') {
     const from = text(parsed.from)
@@ -174,7 +178,10 @@ export function parseScheduleCommand(raw: unknown, now = new Date()): ParseResul
     action,
   }
 
-  if (action === 'publish-shifts') command.shifts = (parsed.shifts as unknown[]).slice(0, 100)
+  if (action === 'publish-shifts') {
+    command.shifts = (parsed.shifts as unknown[]).slice(0, 100)
+    if (parsed.allowUnregistered === true) command.allowUnregistered = true
+  }
   if (action === 'list-shifts' || action === 'find-duplicates') {
     command.from = text(parsed.from)
     command.to = text(parsed.to)

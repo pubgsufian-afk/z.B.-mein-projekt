@@ -1,0 +1,32 @@
+name: Provisional employee verification
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provisional-employee:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: node --experimental-strip-types scripts/schedule-provisional-employee-test.mjs
+      - run: node --experimental-strip-types scripts/schedule-provisional-reconciliation-test.mjs
+      - run: node scripts/apply-provisional-employee-reconciliation.mjs
+      - run: node scripts/schedule-provisional-reconciliation-source-test.mjs
+      - run: node scripts/schedule-assistant-source-test.mjs
+      - run: node scripts/schedule-assistant-management-source-test.mjs
+      - run: node --experimental-strip-types scripts/schedule-command-worker-test.mjs
+      - run: node scripts/schedule-command-worker-source-test.mjs
+      - run: node scripts/schedule-oidc-trigger-source-test.mjs
+      - run: node --experimental-strip-types scripts/timesheet-schedule-sync-test.mjs
+      - run: node scripts/timesheet-provisional-report-source-test.mjs

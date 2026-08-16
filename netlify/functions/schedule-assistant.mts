@@ -25,6 +25,10 @@ import {
   type AssistantShiftInput,
   type AssistantWorksite,
 } from './_shared/schedule-assistant-core.mts'
+import {
+  isProvisionalEmployeeUserId,
+  provisionalEmployeeUserId,
+} from './_shared/schedule-provisional-employee.mts'
 import { ensureLegacyScheduleMigrated } from './_shared/schedule-legacy-bootstrap.mts'
 import {
   combineScheduleAccessRows,
@@ -384,6 +388,7 @@ async function publishOne(
   requestId: string,
   employees: AssistantDirectoryEmployee[],
   worksites: AssistantWorksite[],
+  allowUnregistered: boolean,
 ) {
   const validation = validateAssistantShiftInput(input)
   if (!validation.ok) {
@@ -391,9 +396,6 @@ async function publishOne(
   }
 
   const resolved = resolveAssistantEmployee(input.employeeName, employees)
-  if (resolved.status === 'not_found') {
-    return { index, employeeName: text(input.employeeName), status: 'not_found' }
-  }
   if (resolved.status === 'ambiguous') {
     return {
       index,
@@ -403,8 +405,19 @@ async function publishOne(
     }
   }
 
-  const employee = resolved.employee
-  if (!employee) return { index, employeeName: text(input.employeeName), status: 'not_found' }
+  let employee: { userId: string; fullName: string }
+  if (resolved.status === 'matched' && resolved.employee) {
+    employee = resolved.employee
+  } else if (allowUnregistered && resolved.status === 'not_found') {
+    const fullName = text(input.employeeName)
+    const userId = provisionalEmployeeUserId(fullName)
+    if (!userId) {
+      return { index, employeeName: fullName, status: 'invalid', message: 'Mitarbeitername fehlt.' }
+    }
+    employee = { userId, fullName }
+  } else {
+    return { index, employeeName: text(input.employeeName), status: 'not_found' }
+  }
 
   const resolvedWorksite = resolveAssistantWorksite(input.location, worksites)
   if (resolvedWorksite.status === 'not_found') {
@@ -481,6 +494,7 @@ async function publishOne(
         location: shift.location,
         workArea: shift.workArea,
         pauseMinutes: shift.pauseMinutes,
+        provisionalEmployee: isProvisionalEmployeeUserId(shift.employeeUserId),
       },
     })
     return {
@@ -697,6 +711,7 @@ export default async function scheduleAssistant(request: Request, _context: Cont
     if (action === 'publish-shifts') {
       const shifts = Array.isArray(body.shifts) ? body.shifts.slice(0, MAX_BATCH) : []
       if (!shifts.length) return json({ message: 'Mindestens ein Dienst ist erforderlich.' }, 400)
+      const allowUnregistered = body.allowUnregistered === true
       const worksites = await activePortalWorksites()
       const results = []
       for (let index = 0; index < shifts.length; index += 1) {
@@ -705,7 +720,7 @@ export default async function scheduleAssistant(request: Request, _context: Cont
           results.push({ index, status: 'invalid', message: 'Dienst ist ungültig.' })
           continue
         }
-        results.push(await publishOne(input as PublishInput, index, requestId, employees, worksites))
+        results.push(await publishOne(input as PublishInput, index, requestId, employees, worksites, allowUnregistered))
       }
       return json({
         integration: 'Dienstplan-Assistent',
