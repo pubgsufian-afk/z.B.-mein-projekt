@@ -15,7 +15,7 @@ const checks = [
   ['validates active portal roles', source.includes('ACTIVE_PORTAL_ROLES.has(String(session.role))')],
   ['shows explicit iPhone Home Screen guidance', source.includes("card.classList.add('habun-push-ios-guide')")],
   ['checks iPhone guidance before push capability', iosIndex >= 0 && capabilityIndex >= 0 && iosIndex < capabilityIndex],
-  ['iPhone browser guide has no blocking button', Boolean(iosCardBlock) && !iosCardBlock.includes('<button')],
+  ['iPhone browser guide is dismissible but has no enable button', Boolean(iosCardBlock) && iosCardBlock.includes('data-dismiss-ios-guide') && !iosCardBlock.includes('habun-push-enable')],
   ['admin push labels do not collide with Ende field', !source.includes('Benachrichtigung senden')],
   ['push guidance itself never intercepts portal taps', /\.habun-push-card\{[^}]*pointer-events:none/.test(css)],
   ['interactive push buttons stay clickable', /\.habun-push-card button\{[^}]*pointer-events:auto/.test(css)],
