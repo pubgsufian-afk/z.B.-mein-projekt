@@ -91,7 +91,8 @@ function mountPermissionCard({ onEnable }) {
   card.className = 'habun-push-card'
 
   if (isIOS() && !isStandalone()) {
-    card.innerHTML = '<div><strong>Benachrichtigungen aktivieren</strong><span>Auf iPhone oder iPad zuerst unten auf Teilen tippen, „Zum Home-Bildschirm“ wählen und das Mitarbeiterportal danach über das neue Symbol öffnen.</span></div><button type="button" data-close aria-label="Hinweis schließen">×</button>'
+    card.classList.add('habun-push-ios-guide')
+    card.innerHTML = '<div><strong>Benachrichtigungen aktivieren</strong><span>Auf iPhone oder iPad zuerst unten auf Teilen tippen, „Zum Home-Bildschirm“ wählen und das Mitarbeiterportal danach über das neue Symbol öffnen.</span></div>'
   } else if (Notification.permission === 'denied') {
     card.innerHTML = '<div><strong>Benachrichtigungen sind ausgeschaltet</strong><span>Bitte in den Geräte- oder Browser-Einstellungen Benachrichtigungen für das Mitarbeiterportal erlauben.</span></div><button type="button" data-close aria-label="Hinweis schließen">×</button>'
   } else {
