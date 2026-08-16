@@ -15,4 +15,12 @@ assert.match(core, /export async function sendDeviceTestPush/, 'push core must p
 assert.match(core, /device\.userId !== actor\.userId/, 'test delivery must reject device tokens owned by another user')
 assert.match(core, /Benachrichtigungen funktionieren auf diesem Gerät\./, 'test notification text must be explicit')
 
+assert.doesNotMatch(client, /mountAdminSender/, 'manual push sender UI must be removed')
+assert.doesNotMatch(client, /data-habun-push-admin/, 'manual push bell must be removed')
+assert.doesNotMatch(api, /action === ['"]send['"]/, 'manual send API action must be removed')
+assert.doesNotMatch(api, /sendPortalPush/, 'manual send API must not import broadcast sender')
+assert.doesNotMatch(core, /export async function sendPortalPush/, 'manual broadcast primitive must be removed')
+assert.match(core, /export async function sendPushToUsers/, 'server-side targeted push primitive must exist')
+assert.match(core, /userIds:\s*string\[\]/, 'targeted push must require explicit user ids')
+
 console.log('push automatic test source contract: ok')
