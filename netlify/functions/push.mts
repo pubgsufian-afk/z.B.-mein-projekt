@@ -5,6 +5,7 @@ import {
   pushPublicKey,
   readPushMessage,
   registerPushDevice,
+  sendDeviceTestPush,
   sendPortalPush,
   unregisterPushDevice,
 } from './_shared/push-core.mts'
@@ -51,22 +52,32 @@ export default async function push(request: Request, _context: Context) {
   const body = await request.json().catch(() => null) as Record<string, unknown> | null
   if (!body) return json({ message: 'Ungültige Anfrage.' }, 400)
   const action = String(body.action || '').trim()
+  const actor = { userId: current.userId, email: current.email, role: current.role }
 
   if (action === 'subscribe') {
     const subscription = body.subscription as { endpoint?: unknown } | null
     const endpoint = String(subscription?.endpoint || '').trim()
     if (!endpoint) return json({ message: 'Push-Abonnement fehlt.' }, 400)
     try {
-      return json(await registerPushDevice({ userId: current.userId, email: current.email, role: current.role }, endpoint), 201)
+      return json(await registerPushDevice(actor, endpoint), 201)
     } catch (error) {
       return json({ message: error instanceof Error ? error.message : 'Push konnte nicht aktiviert werden.' }, 400)
     }
   }
 
+  if (action === 'test') {
+    const token = String(body.deviceToken || '').trim()
+    if (!token) return json({ message: 'Geräte-Token fehlt.' }, 400)
+    const result = await sendDeviceTestPush(actor, token)
+    if (!result.targeted) return json({ message: 'Dieses Gerät ist nicht für das aktuelle Konto registriert.' }, 404)
+    if (!result.delivered) return json({ ...result, message: 'Die Testbenachrichtigung konnte nicht zugestellt werden.' }, 502)
+    return json(result)
+  }
+
   if (action === 'unsubscribe') {
     const token = String(body.deviceToken || '').trim()
     if (!token) return json({ removed: false })
-    return json({ removed: await unregisterPushDevice({ userId: current.userId, email: current.email, role: current.role }, token) })
+    return json({ removed: await unregisterPushDevice(actor, token) })
   }
 
   if (action === 'send') {
