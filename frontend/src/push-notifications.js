@@ -86,7 +86,7 @@ function mountPermissionCard({ onEnable }) {
   card.className = 'habun-push-card'
 
   if (isIOS() && !isStandalone()) {
-    card.innerHTML = '<div><strong>Benachrichtigungen aktivieren</strong><span>Auf iPhone oder iPad das Portal zuerst zum Home-Bildschirm hinzufügen und von dort öffnen.</span></div><button type="button" data-close aria-label="Hinweis schließen">×</button>'
+    card.innerHTML = '<div><strong>Benachrichtigungen aktivieren</strong><span>Auf iPhone oder iPad zuerst unten auf Teilen tippen, „Zum Home-Bildschirm“ wählen und das Mitarbeiterportal danach über das neue Symbol öffnen.</span></div><button type="button" data-close aria-label="Hinweis schließen">×</button>'
   } else if (Notification.permission === 'denied') {
     card.innerHTML = '<div><strong>Benachrichtigungen sind ausgeschaltet</strong><span>Bitte in den Geräte- oder Browser-Einstellungen Benachrichtigungen für das Mitarbeiterportal erlauben.</span></div><button type="button" data-close aria-label="Hinweis schließen">×</button>'
   } else {
@@ -195,15 +195,21 @@ function mountAdminSender(session) {
 }
 
 export async function installPushNotifications() {
-  if (!pushSupported()) return
   let session
   try { session = await jsonFetch('/api/session') } catch { return }
   if (!session || session.role === 'pending') return
 
+  mountAdminSender(session)
+
+  if (isIOS() && !isStandalone()) {
+    mountPermissionCard({ onEnable: async () => {} })
+    return
+  }
+
+  if (!pushSupported()) return
+
   const registration = await registerServiceWorker().catch(() => null)
   if (!registration) return
-
-  mountAdminSender(session)
 
   if (Notification.permission === 'granted') {
     try { await ensureSubscription(registration, false, String(session.userId || session.id || '')) } catch {}
