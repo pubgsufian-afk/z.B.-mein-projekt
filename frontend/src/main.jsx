@@ -1,9 +1,11 @@
 import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
 import { installAdminTimeEditing } from './admin-time-editing.js'
+import { installPushNotifications } from './push-notifications.js'
 import './styles.css'
 import './mobile-navigation.css'
 import './logo-visibility.css'
+import './push-notifications.css'
 
 function isIOSWebKit() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
@@ -130,3 +132,4 @@ installAdminTimeEditing()
 const root = document.getElementById('root')
 if (!root) throw new Error('Portal-Wurzelelement fehlt.')
 createRoot(root).render(<App />)
+installPushNotifications()
