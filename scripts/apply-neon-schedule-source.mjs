@@ -62,4 +62,5 @@ assert.ok(handlerStart >= 0 && routeStart > handlerStart, 'Dienstplan-Handler ko
 assert.ok(!neonSchedule.slice(handlerStart, routeStart).includes('syncActiveEmployees()'), 'Mitarbeitersynchronisierung darf den normalen Dienstplan-Leseweg nicht blockieren.')
 await writeFile(neonSchedulePath, neonSchedule)
 
+await import('./apply-provisional-employee-reconciliation.mjs')
 console.log('Neon schedule source routing, re-registration rebinding and fast read path applied')
