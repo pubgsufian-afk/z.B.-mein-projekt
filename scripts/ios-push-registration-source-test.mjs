@@ -13,6 +13,8 @@ assert.match(
   /if \(isIOS\(\) && !isStandalone\(\)\) \{\s*clearPushUi\(\)\s*return\s*\}/,
   'normal iPhone browser must leave push UI hidden',
 )
+assert.doesNotMatch(client, /['"]PushManager['"] in window/, 'iPhone Home Screen push must not depend on a global window.PushManager')
+assert.match(client, /const registration = await registerServiceWorker\(\)\.catch\(\(\) => null\)[\s\S]*registration\?\.pushManager/, 'push capability must be checked on the actual ServiceWorkerRegistration')
 assert.match(client, /action: 'subscribe'[\s\S]*deviceToken: localRegistration\?\.token \|\| ''/, 'every app sync must send the previous local device token')
 assert.match(client, /Notification\.permission === 'granted'[\s\S]*ensureSubscription\(registration, false, userId\)[\s\S]*repair: true/, 'granted permission must self-heal or surface a repair button')
 assert.match(client, /Erneut verbinden/, 'failed silent sync must expose a visible repair action')

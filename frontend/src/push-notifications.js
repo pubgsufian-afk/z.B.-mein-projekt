@@ -39,7 +39,7 @@ function isStandalone() {
 }
 
 function pushSupported() {
-  return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+  return 'serviceWorker' in navigator && 'Notification' in window
 }
 
 async function registerServiceWorker() {
@@ -150,7 +150,7 @@ async function setupForCurrentSession() {
   if (!pushSupported()) return
 
   const registration = await registerServiceWorker().catch(() => null)
-  if (!registration) return
+  if (!registration?.pushManager) return
   const userId = String(session.userId || session.id || '')
 
   if (Notification.permission === 'granted') {
