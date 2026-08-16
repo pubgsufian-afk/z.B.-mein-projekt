@@ -39,4 +39,26 @@ const manualShift = { id: 'manual', employeeUserId: 'u1', employeeName: 'A', dat
 await service.syncPublishedScheduleShift(manualShift, 'tester', new Date('2026-08-11T21:30:00Z'))
 assert.equal(saved.get('manual').start, '10:00', 'manual override must survive schedule sync')
 
+const provisionalShift = {
+  id: 'guest-shift',
+  employeeUserId: `guest:${'a'.repeat(64)}`,
+  employeeName: 'Gast Beispiel',
+  date: '2026-08-13',
+  start: '08:30',
+  end: '17:00',
+  pauseMinutes: 30,
+  location: 'Test Einsatzort',
+  workArea: 'Bauhelfer',
+  status: 'published',
+}
+await service.syncPublishedScheduleShift(provisionalShift, 'tester', new Date('2026-08-11T21:30:00Z'))
+const provisionalEntry = saved.get('guest-shift')
+assert.ok(provisionalEntry, 'provisional published shift must materialize in timesheets')
+assert.equal(provisionalEntry.employeeUserId, provisionalShift.employeeUserId)
+assert.equal(provisionalEntry.employeeName, 'Gast Beispiel')
+assert.equal(provisionalEntry.pauseMinutes, 30)
+assert.equal(provisionalEntry.netMinutes, 480)
+assert.equal(provisionalEntry.workArea, 'Bauhelfer')
+assert.equal(provisionalEntry.location, 'Test Einsatzort')
+
 console.log('timesheet schedule sync tests passed')
