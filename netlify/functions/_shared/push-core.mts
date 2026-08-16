@@ -1,4 +1,4 @@
-import { createHash, createPrivateKey, randomBytes, sign } from 'node:crypto'
+import { createHash, createPrivateKey, generateKeyPairSync, randomBytes, sign } from 'node:crypto'
 import { getStore } from '@netlify/blobs'
 
 type PortalActor = { userId: string; email?: string; role?: string }
@@ -22,7 +22,22 @@ type DeviceRecord = {
   latestMessage?: PushMessage | null
 }
 
+type VapidJwk = {
+  kty: string
+  crv: string
+  x: string
+  y: string
+  d: string
+}
+
+type VapidConfig = {
+  publicKey: string
+  privateJwk: VapidJwk
+  createdAt: string
+}
+
 const STORE_NAME = 'portal-push-devices-v1'
+const VAPID_KEY = 'config/vapid'
 const MANAGEMENT = new Set(['owner', 'admin', 'manager', 'scheduler'])
 
 function store() {
@@ -44,23 +59,64 @@ function sha256(value: string) {
   return createHash('sha256').update(value).digest('hex')
 }
 
-export function pushPublicKey() {
-  return String(Netlify.env.get('PUSH_VAPID_PUBLIC_KEY') || '').trim()
+function validVapidConfig(value: unknown): value is VapidConfig {
+  if (!value || typeof value !== 'object') return false
+  const row = value as Partial<VapidConfig>
+  const jwk = row.privateJwk as Partial<VapidJwk> | undefined
+  return Boolean(
+    row.publicKey
+    && jwk?.kty === 'EC'
+    && jwk.crv === 'P-256'
+    && jwk.x
+    && jwk.y
+    && jwk.d,
+  )
 }
 
-function vapidPrivateKey() {
-  const publicKey = decodeBase64Url(pushPublicKey())
-  const privateD = String(Netlify.env.get('PUSH_VAPID_PRIVATE_KEY') || '').trim()
-  if (publicKey.length !== 65 || publicKey[0] !== 4 || !privateD) throw new Error('Push-Schlüssel sind nicht vollständig konfiguriert.')
-  const x = publicKey.subarray(1, 33)
-  const y = publicKey.subarray(33, 65)
-  return createPrivateKey({
-    key: { kty: 'EC', crv: 'P-256', x: base64Url(x), y: base64Url(y), d: privateD },
-    format: 'jwk',
-  })
+async function vapidConfig() {
+  const current = store()
+  const existing = await current.get(VAPID_KEY, { type: 'json' }) as VapidConfig | null
+  if (validVapidConfig(existing)) return existing
+
+  const pair = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+  const publicJwk = pair.publicKey.export({ format: 'jwk' })
+  const privateJwk = pair.privateKey.export({ format: 'jwk' })
+  if (!publicJwk.x || !publicJwk.y || !privateJwk.x || !privateJwk.y || !privateJwk.d) {
+    throw new Error('Push-Schlüssel konnten nicht erzeugt werden.')
+  }
+
+  const publicKey = base64Url(Buffer.concat([
+    Buffer.from([4]),
+    decodeBase64Url(publicJwk.x),
+    decodeBase64Url(publicJwk.y),
+  ]))
+  const config: VapidConfig = {
+    publicKey,
+    privateJwk: {
+      kty: 'EC',
+      crv: 'P-256',
+      x: privateJwk.x,
+      y: privateJwk.y,
+      d: privateJwk.d,
+    },
+    createdAt: new Date().toISOString(),
+  }
+  await current.setJSON(VAPID_KEY, config)
+
+  const persisted = await current.get(VAPID_KEY, { type: 'json' }) as VapidConfig | null
+  if (!validVapidConfig(persisted)) throw new Error('Push-Schlüssel konnten nicht gespeichert werden.')
+  return persisted
 }
 
-function vapidAuthorization(endpoint: string) {
+export async function pushPublicKey() {
+  return (await vapidConfig()).publicKey
+}
+
+function privateKey(config: VapidConfig) {
+  return createPrivateKey({ key: config.privateJwk, format: 'jwk' })
+}
+
+function vapidAuthorization(endpoint: string, config: VapidConfig) {
   const audience = new URL(endpoint).origin
   const header = base64Url(JSON.stringify({ typ: 'JWT', alg: 'ES256' }))
   const payload = base64Url(JSON.stringify({
@@ -70,17 +126,17 @@ function vapidAuthorization(endpoint: string) {
   }))
   const unsigned = `${header}.${payload}`
   const signature = sign('sha256', Buffer.from(unsigned), {
-    key: vapidPrivateKey(),
+    key: privateKey(config),
     dsaEncoding: 'ieee-p1363',
   })
-  return `vapid t=${unsigned}.${base64Url(signature)}, k=${pushPublicKey()}`
+  return `vapid t=${unsigned}.${base64Url(signature)}, k=${config.publicKey}`
 }
 
-async function sendWake(endpoint: string) {
+async function sendWake(endpoint: string, config: VapidConfig) {
   return fetch(endpoint, {
     method: 'POST',
     headers: {
-      Authorization: vapidAuthorization(endpoint),
+      Authorization: vapidAuthorization(endpoint, config),
       TTL: '3600',
       Urgency: 'normal',
     },
@@ -155,6 +211,7 @@ export async function sendPortalPush(options: {
 
   const devices = (await listDevices()).filter((row) => !options.targetUserId || row.userId === options.targetUserId)
   const message: PushMessage = { id: crypto.randomUUID(), title, body, url, createdAt: new Date().toISOString() }
+  const config = await vapidConfig()
   let delivered = 0
   let removed = 0
 
@@ -162,7 +219,7 @@ export async function sendPortalPush(options: {
     const key = `devices/${device.tokenHash}`
     await store().setJSON(key, { ...device, latestMessage: message, updatedAt: new Date().toISOString() })
     try {
-      const response = await sendWake(device.endpoint)
+      const response = await sendWake(device.endpoint, config)
       if (response.ok) delivered += 1
       else if (response.status === 404 || response.status === 410) {
         await store().delete(key)

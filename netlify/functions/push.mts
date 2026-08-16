@@ -26,9 +26,12 @@ export default async function push(request: Request, _context: Context) {
   const url = new URL(request.url)
 
   if (request.method === 'GET' && url.searchParams.get('resource') === 'public-key') {
-    const publicKey = pushPublicKey()
-    if (!publicKey) return json({ message: 'Push ist noch nicht konfiguriert.' }, 503)
-    return json({ publicKey })
+    try {
+      return json({ publicKey: await pushPublicKey() })
+    } catch (error) {
+      console.error('Portal push public key', error)
+      return json({ message: 'Push konnte nicht vorbereitet werden.' }, 503)
+    }
   }
 
   if (request.method === 'GET' && url.searchParams.get('resource') === 'message') {
