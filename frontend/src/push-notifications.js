@@ -1,5 +1,8 @@
+import { onAuthChange } from '@netlify/identity'
+
 const TOKEN_KEY = 'habunPushDeviceTokenV1'
 const MANAGEMENT = new Set(['owner', 'admin', 'manager', 'scheduler'])
+let authListenerInstalled = false
 
 function jsonFetch(path, options = {}) {
   return fetch(path, {
@@ -194,8 +197,13 @@ function mountAdminSender(session) {
   document.body.append(launcher, backdrop)
 }
 
-export async function installPushNotifications() {
-  if (!pushSupported()) return
+function clearPushUi() {
+  document.querySelector('[data-habun-push-card]')?.remove()
+  document.querySelector('[data-habun-push-admin]')?.remove()
+  document.querySelector('.habun-push-modal-backdrop')?.remove()
+}
+
+async function setupForCurrentSession() {
   let session
   try { session = await jsonFetch('/api/session') } catch { return }
   if (!session || session.role === 'pending') return
@@ -211,4 +219,21 @@ export async function installPushNotifications() {
   }
 
   mountPermissionCard({ onEnable: () => ensureSubscription(registration, true, String(session.userId || session.id || '')) })
+}
+
+export async function installPushNotifications() {
+  if (!pushSupported()) return
+
+  if (!authListenerInstalled) {
+    authListenerInstalled = true
+    onAuthChange(async (_event, currentUser) => {
+      if (!currentUser) {
+        clearPushUi()
+        return
+      }
+      await setupForCurrentSession()
+    })
+  }
+
+  await setupForCurrentSession()
 }
