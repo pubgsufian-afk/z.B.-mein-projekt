@@ -1,4 +1,5 @@
 import { getDatabase } from '@netlify/database'
+import { isProvisionalEmployeeUserId } from './schedule-provisional-employee.mts'
 
 export type ScheduleStatus = 'draft' | 'published'
 export type ScheduleSource = 'portal' | 'chatgpt' | 'legacy-blob'
@@ -36,6 +37,11 @@ export type ScheduleEmployee = {
   status: 'active' | 'inactive'
   location: string
   syncedAt?: string
+}
+
+export type ProvisionalScheduleEmployee = {
+  userId: string
+  fullName: string
 }
 
 function iso(value: unknown) {
@@ -104,6 +110,101 @@ export async function listScheduleShifts(filters: {
     params,
   )
   return result.rows.map((row) => mapScheduleShiftRow(row))
+}
+
+export async function listProvisionalScheduleEmployees(): Promise<ProvisionalScheduleEmployee[]> {
+  const database = getDatabase()
+  const result = await database.pool.query(
+    `SELECT DISTINCT employee_user_id, employee_name
+       FROM schedule_shifts
+      WHERE employee_user_id LIKE 'guest:%'
+      ORDER BY employee_user_id, employee_name`,
+  )
+  return result.rows.map((row) => ({
+    userId: String(row.employee_user_id || ''),
+    fullName: String(row.employee_name || ''),
+  }))
+}
+
+export async function rebindProvisionalEmployeeIdentity(input: {
+  provisionalUserId: string
+  userId: string
+  fullName: string
+  actorId: string
+}) {
+  const provisionalUserId = String(input.provisionalUserId || '').trim()
+  const userId = String(input.userId || '').trim()
+  const fullName = String(input.fullName || '').trim()
+  const actorId = String(input.actorId || '').trim() || 'identity-rebind'
+  if (!isProvisionalEmployeeUserId(provisionalUserId) || !userId || isProvisionalEmployeeUserId(userId) || !fullName) {
+    return { rebound: false, reason: 'invalid', shiftCount: 0, timesheetCount: 0 }
+  }
+
+  const database = getDatabase()
+  const client = await database.pool.connect()
+  try {
+    await client.query('BEGIN')
+    const conflict = await client.query(
+      `SELECT guest.id
+         FROM schedule_shifts guest
+         JOIN schedule_shifts existing
+           ON existing.employee_user_id = $2
+          AND existing.id <> guest.id
+          AND existing.shift_date = guest.shift_date
+          AND existing.start_time = guest.start_time
+          AND existing.end_time = guest.end_time
+          AND lower(btrim(existing.location)) = lower(btrim(guest.location))
+          AND lower(btrim(existing.work_area)) = lower(btrim(guest.work_area))
+        WHERE guest.employee_user_id = $1
+        LIMIT 1`,
+      [provisionalUserId, userId],
+    )
+    if (conflict.rows.length) {
+      await client.query('ROLLBACK')
+      return { rebound: false, reason: 'duplicate-conflict', shiftCount: 0, timesheetCount: 0 }
+    }
+
+    const shifts = await client.query(
+      `UPDATE schedule_shifts
+          SET employee_user_id = $2,
+              employee_name = $3,
+              updated_at = now(),
+              updated_by = $4
+        WHERE employee_user_id = $1
+        RETURNING id`,
+      [provisionalUserId, userId, fullName, actorId],
+    )
+    const timesheets = await client.query(
+      `UPDATE timesheet_entries
+          SET employee_user_id = $2,
+              employee_name = $3,
+              updated_at = now(),
+              updated_by = $4
+        WHERE employee_user_id = $1
+        RETURNING id`,
+      [provisionalUserId, userId, fullName, actorId],
+    )
+    const shiftCount = shifts.rowCount || 0
+    const timesheetCount = timesheets.rowCount || 0
+    if (shiftCount || timesheetCount) {
+      await client.query(
+        `INSERT INTO schedule_audit_log (id, occurred_at, actor_id, actor_type, action, shift_id, details)
+         VALUES ($1, now(), $2, 'chatgpt', 'provisional-employee-rebound', NULL, $3::jsonb)`,
+        [
+          crypto.randomUUID(),
+          actorId,
+          JSON.stringify({ provisionalUserId, userId, shiftCount, timesheetCount }),
+        ],
+      )
+    }
+    await client.query('COMMIT')
+    return { rebound: true, reason: shiftCount || timesheetCount ? 'rebound' : 'not-found', shiftCount, timesheetCount }
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
 }
 
 export async function findScheduleShift(id: string) {
