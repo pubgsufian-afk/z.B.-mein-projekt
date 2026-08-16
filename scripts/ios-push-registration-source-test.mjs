@@ -14,7 +14,19 @@ assert.match(
   'normal iPhone browser must leave push UI hidden',
 )
 assert.doesNotMatch(client, /['"]PushManager['"] in window/, 'iPhone Home Screen push must not depend on a global window.PushManager')
-assert.match(client, /const registration = await registerServiceWorker\(\)\.catch\(\(\) => null\)[\s\S]*registration\?\.pushManager/, 'push capability must be checked on the actual ServiceWorkerRegistration')
+
+const defaultPromptIndex = client.indexOf("Notification.permission === 'default'")
+const workerRegistrationIndex = client.indexOf('const registration = await registerServiceWorker()')
+assert.ok(defaultPromptIndex >= 0, 'installed app must explicitly handle default notification permission')
+assert.ok(workerRegistrationIndex >= 0, 'installed app must still register a service worker for push')
+assert.ok(defaultPromptIndex < workerRegistrationIndex, 'activation prompt must be mounted before service-worker registration can fail')
+assert.match(
+  client,
+  /Notification\.permission === 'default'[\s\S]*mountPermissionCard\([\s\S]*onEnable:\s*async \(\) => \{[\s\S]*registerServiceWorker\(\)/,
+  'default permission must show an activation button whose tap performs worker setup and requests permission',
+)
+
+assert.match(client, /registration\?\.pushManager/, 'push capability must be checked on the actual ServiceWorkerRegistration')
 assert.match(client, /action: 'subscribe'[\s\S]*deviceToken: localRegistration\?\.token \|\| ''/, 'every app sync must send the previous local device token')
 assert.match(client, /Notification\.permission === 'granted'[\s\S]*ensureSubscription\(registration, false, userId\)[\s\S]*repair: true/, 'granted permission must self-heal or surface a repair button')
 assert.match(client, /Erneut verbinden/, 'failed silent sync must expose a visible repair action')
