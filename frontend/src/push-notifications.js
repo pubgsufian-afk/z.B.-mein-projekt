@@ -78,7 +78,16 @@ async function ensureSubscription(registration, requestPermission, userId) {
     if (!deviceToken) throw new Error('Das Gerät konnte nicht für Benachrichtigungen registriert werden.')
     localStorage.setItem(TOKEN_KEY, JSON.stringify({ token: deviceToken, userId }))
   }
+
   await syncDeviceToken(registration, deviceToken)
+
+  if (requestPermission) {
+    await jsonFetch('/api/push', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'test', deviceToken }),
+    })
+  }
+
   return subscription
 }
 
