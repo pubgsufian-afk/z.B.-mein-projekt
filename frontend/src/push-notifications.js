@@ -1,5 +1,6 @@
 const TOKEN_KEY = 'habunPushDeviceTokenV1'
 const MANAGEMENT = new Set(['owner', 'admin', 'manager', 'scheduler'])
+const ACTIVE_PORTAL_ROLES = new Set(['owner', 'admin', 'manager', 'scheduler', 'employee'])
 
 function jsonFetch(path, options = {}) {
   return fetch(path, {
@@ -197,7 +198,7 @@ function mountAdminSender(session) {
 export async function installPushNotifications() {
   let session
   try { session = await jsonFetch('/api/session') } catch { return }
-  if (!session || session.role === 'pending') return
+  if (!session || !ACTIVE_PORTAL_ROLES.has(String(session.role))) return
 
   mountAdminSender(session)
 
