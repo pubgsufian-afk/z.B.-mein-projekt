@@ -2,6 +2,7 @@ import { onAuthChange } from '@netlify/identity'
 
 const TOKEN_KEY = 'habunPushDeviceTokenV1'
 const MANAGEMENT = new Set(['owner', 'admin', 'manager', 'scheduler'])
+const ACTIVE_PORTAL_ROLES = new Set(['owner', 'admin', 'manager', 'scheduler', 'employee'])
 let authListenerInstalled = false
 
 function jsonFetch(path, options = {}) {
@@ -89,7 +90,8 @@ function mountPermissionCard({ onEnable }) {
   card.className = 'habun-push-card'
 
   if (isIOS() && !isStandalone()) {
-    card.innerHTML = '<div><strong>Benachrichtigungen aktivieren</strong><span>Auf iPhone oder iPad das Portal zuerst zum Home-Bildschirm hinzufügen und von dort öffnen.</span></div><button type="button" data-close aria-label="Hinweis schließen">×</button>'
+    card.classList.add('habun-push-ios-guide')
+    card.innerHTML = '<div><strong>Benachrichtigungen aktivieren</strong><span>Auf iPhone oder iPad zuerst unten auf Teilen tippen, „Zum Home-Bildschirm“ wählen und das Mitarbeiterportal danach über das neue Symbol öffnen.</span></div>'
   } else if (Notification.permission === 'denied') {
     card.innerHTML = '<div><strong>Benachrichtigungen sind ausgeschaltet</strong><span>Bitte in den Geräte- oder Browser-Einstellungen Benachrichtigungen für das Mitarbeiterportal erlauben.</span></div><button type="button" data-close aria-label="Hinweis schließen">×</button>'
   } else {
@@ -121,31 +123,72 @@ function mountAdminSender(session) {
   launcher.type = 'button'
   launcher.dataset.habunPushAdmin = 'true'
   launcher.className = 'habun-push-launcher'
-  launcher.setAttribute('aria-label', 'Benachrichtigung senden')
+  launcher.setAttribute('aria-label', 'Mitteilungen öffnen')
   launcher.textContent = '🔔'
 
-  const backdrop = document.createElement('div')
-  backdrop.className = 'habun-push-modal-backdrop'
-  backdrop.hidden = true
-  backdrop.innerHTML = `
-    <section class="habun-push-modal" role="dialog" aria-modal="true" aria-labelledby="habun-push-title">
-      <header><div><span>Mitteilung</span><h3 id="habun-push-title">Benachrichtigung senden</h3></div><button type="button" data-close aria-label="Schließen">×</button></header>
-      <label>Empfänger<select data-recipient><option value="">Alle registrierten Geräte</option></select></label>
-      <label>Titel<input data-title maxlength="80" value="Habun Mitarbeiterportal"></label>
-      <label>Nachricht<textarea data-message maxlength="300" rows="5" placeholder="Nachricht eingeben …"></textarea></label>
-      <div class="habun-push-modal-notice" data-notice aria-live="polite"></div>
-      <div class="habun-push-modal-actions"><button type="button" data-close>Abbrechen</button><button type="button" class="primary" data-send>Benachrichtigung senden</button></div>
-    </section>`
-
-  const close = () => { backdrop.hidden = true }
-  backdrop.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', close))
-  backdrop.addEventListener('mousedown', (event) => { if (event.target === backdrop) close() })
-
+  let backdrop = null
   let loadedEmployees = false
+
+  function ensureModal() {
+    if (backdrop) return backdrop
+    backdrop = document.createElement('div')
+    backdrop.className = 'habun-push-modal-backdrop'
+    backdrop.hidden = true
+    backdrop.innerHTML = `
+      <section class="habun-push-modal" role="dialog" aria-modal="true" aria-labelledby="habun-push-title">
+        <header><div><span>Mitteilung</span><h3 id="habun-push-title">Neue Mitteilung</h3></div><button type="button" data-close aria-label="Schließen">×</button></header>
+        <label>Empfänger<select data-recipient><option value="">Alle registrierten Geräte</option></select></label>
+        <label>Titel<input data-title maxlength="80" value="Habun Mitarbeiterportal"></label>
+        <label>Nachricht<textarea data-message maxlength="300" rows="5" placeholder="Nachricht eingeben …"></textarea></label>
+        <div class="habun-push-modal-notice" data-notice aria-live="polite"></div>
+        <div class="habun-push-modal-actions"><button type="button" data-close>Abbrechen</button><button type="button" class="primary" data-send>Jetzt schicken</button></div>
+      </section>`
+
+    const close = () => { backdrop.hidden = true }
+    backdrop.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', close))
+    backdrop.addEventListener('mousedown', (event) => { if (event.target === backdrop) close() })
+
+    backdrop.querySelector('[data-send]')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget
+      const notice = backdrop.querySelector('[data-notice]')
+      const title = backdrop.querySelector('[data-title]').value.trim()
+      const message = backdrop.querySelector('[data-message]').value.trim()
+      const targetUserId = backdrop.querySelector('[data-recipient]').value
+      if (!title || !message) {
+        notice.textContent = 'Bitte Titel und Nachricht eingeben.'
+        notice.dataset.tone = 'error'
+        return
+      }
+      button.disabled = true
+      button.textContent = 'Wird geschickt …'
+      try {
+        const result = await jsonFetch('/api/push', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'send', targetUserId, title, message, url: '/' }),
+        })
+        notice.textContent = result.targeted
+          ? `An ${result.delivered} von ${result.targeted} registrierten Gerät(en) geschickt.`
+          : 'Für diesen Empfänger ist noch kein Gerät für Benachrichtigungen aktiviert.'
+        notice.dataset.tone = 'success'
+        if (result.delivered) backdrop.querySelector('[data-message]').value = ''
+      } catch (error) {
+        notice.textContent = error.message || 'Die Mitteilung konnte nicht verschickt werden.'
+        notice.dataset.tone = 'error'
+      } finally {
+        button.disabled = false
+        button.textContent = 'Jetzt schicken'
+      }
+    })
+
+    document.body.appendChild(backdrop)
+    return backdrop
+  }
+
   launcher.addEventListener('click', async () => {
-    backdrop.hidden = false
+    const modal = ensureModal()
+    modal.hidden = false
     if (loadedEmployees) return
-    const recipient = backdrop.querySelector('[data-recipient]')
+    const recipient = modal.querySelector('[data-recipient]')
     try {
       const data = await jsonFetch('/api/registrations')
       const employees = Array.isArray(data.employees) ? data.employees : []
@@ -162,39 +205,7 @@ function mountAdminSender(session) {
     } catch {}
   })
 
-  backdrop.querySelector('[data-send]')?.addEventListener('click', async (event) => {
-    const button = event.currentTarget
-    const notice = backdrop.querySelector('[data-notice]')
-    const title = backdrop.querySelector('[data-title]').value.trim()
-    const message = backdrop.querySelector('[data-message]').value.trim()
-    const targetUserId = backdrop.querySelector('[data-recipient]').value
-    if (!title || !message) {
-      notice.textContent = 'Bitte Titel und Nachricht eingeben.'
-      notice.dataset.tone = 'error'
-      return
-    }
-    button.disabled = true
-    button.textContent = 'Wird gesendet …'
-    try {
-      const result = await jsonFetch('/api/push', {
-        method: 'POST',
-        body: JSON.stringify({ action: 'send', targetUserId, title, message, url: '/' }),
-      })
-      notice.textContent = result.targeted
-        ? `An ${result.delivered} von ${result.targeted} registrierten Gerät(en) gesendet.`
-        : 'Für diesen Empfänger ist noch kein Gerät für Benachrichtigungen aktiviert.'
-      notice.dataset.tone = 'success'
-      if (result.delivered) backdrop.querySelector('[data-message]').value = ''
-    } catch (error) {
-      notice.textContent = error.message || 'Die Benachrichtigung konnte nicht gesendet werden.'
-      notice.dataset.tone = 'error'
-    } finally {
-      button.disabled = false
-      button.textContent = 'Benachrichtigung senden'
-    }
-  })
-
-  document.body.append(launcher, backdrop)
+  document.body.appendChild(launcher)
 }
 
 function clearPushUi() {
@@ -206,12 +217,19 @@ function clearPushUi() {
 async function setupForCurrentSession() {
   let session
   try { session = await jsonFetch('/api/session') } catch { return }
-  if (!session || session.role === 'pending') return
+  if (!session || !ACTIVE_PORTAL_ROLES.has(String(session.role))) return
+
+  mountAdminSender(session)
+
+  if (isIOS() && !isStandalone()) {
+    mountPermissionCard({ onEnable: async () => {} })
+    return
+  }
+
+  if (!pushSupported()) return
 
   const registration = await registerServiceWorker().catch(() => null)
   if (!registration) return
-
-  mountAdminSender(session)
 
   if (Notification.permission === 'granted') {
     try { await ensureSubscription(registration, false, String(session.userId || session.id || '')) } catch {}
@@ -222,8 +240,6 @@ async function setupForCurrentSession() {
 }
 
 export async function installPushNotifications() {
-  if (!pushSupported()) return
-
   if (!authListenerInstalled) {
     authListenerInstalled = true
     onAuthChange(async (_event, currentUser) => {
