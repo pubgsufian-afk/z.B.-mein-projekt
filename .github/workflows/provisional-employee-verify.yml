@@ -28,3 +28,5 @@ jobs:
       - run: node --experimental-strip-types scripts/schedule-command-worker-test.mjs
       - run: node scripts/schedule-command-worker-source-test.mjs
       - run: node scripts/schedule-oidc-trigger-source-test.mjs
+      - run: node --experimental-strip-types scripts/timesheet-schedule-sync-test.mjs
+      - run: node scripts/timesheet-provisional-report-source-test.mjs
