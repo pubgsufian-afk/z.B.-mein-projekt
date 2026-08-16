@@ -20,7 +20,7 @@ await edit('netlify/functions/_shared/push-core.mts', (source) => {
   const marker = 'export async function sendPortalPush(options: {'
   const start = source.indexOf(marker)
   if (start < 0) {
-    if (source.includes('export async function sendPushToUsers')) return `${source}\n// AUTOMATIC_SCHEDULE_PUSH_APPLIED\n`
+    if (source.includes('export async function sendPushToUsers')) return source.includes('AUTOMATIC_SCHEDULE_PUSH_APPLIED') ? source : `${source}\n// AUTOMATIC_SCHEDULE_PUSH_APPLIED\n`
     throw new Error('Missing sendPortalPush in push-core.mts')
   }
   const replacement = `export type PushDeliveryResult = {\n  targeted: number\n  delivered: number\n  removed: number\n  messageId: string\n}\n\nexport async function sendPushToUsers(options: {\n  userIds: string[]\n  title: string\n  body: string\n  url?: string\n}): Promise<PushDeliveryResult> {\n  const userIds = [...new Set(options.userIds.map((value) => String(value || '').trim()).filter(Boolean))]\n  const title = String(options.title || '').trim().slice(0, 80)\n  const body = String(options.body || '').trim().slice(0, 300)\n  const url = String(options.url || '/').trim() || '/'\n  if (!title || !body) throw new TypeError('Titel und Nachricht sind erforderlich.')\n\n  const message: PushMessage = { id: crypto.randomUUID(), title, body, url, createdAt: new Date().toISOString() }\n  if (!userIds.length) return { targeted: 0, delivered: 0, removed: 0, messageId: message.id }\n\n  const recipients = new Set(userIds)\n  const devices = (await listDevices()).filter((row) => recipients.has(row.userId))\n  const config = devices.length ? await vapidConfig() : null\n  let delivered = 0\n  let removed = 0\n\n  for (const device of devices) {\n    const key = \`devices/\${device.tokenHash}\`\n    await store().setJSON(key, { ...device, latestMessage: message, updatedAt: new Date().toISOString() })\n    try {\n      const response = await sendWake(device.endpoint, config!)\n      if (response.ok) delivered += 1\n      else if (response.status === 404 || response.status === 410) {\n        await store().delete(key)\n        removed += 1\n      } else {\n        console.warn('Push service rejected request', response.status, device.endpoint.slice(0, 80))\n      }\n    } catch (error) {\n      console.warn('Push delivery failed', error)\n    }\n  }\n\n  return { targeted: devices.length, delivered, removed, messageId: message.id }\n}\n\n// AUTOMATIC_SCHEDULE_PUSH_APPLIED\n`
@@ -43,33 +43,11 @@ await edit('netlify/functions/push.mts', (source) => {
 
 await edit('frontend/src/push-notifications.js', (source) => {
   source = source.replace("const MANAGEMENT = new Set(['owner', 'admin', 'manager', 'scheduler'])\n", '')
-  if (!source.includes('IOS_GUIDE_DISMISSED_KEY')) {
-    source = source.replace(
-      "const TOKEN_KEY = 'habunPushDeviceTokenV1'\n",
-      "const TOKEN_KEY = 'habunPushDeviceTokenV1'\nconst IOS_GUIDE_DISMISSED_KEY = 'habunPushIosGuideDismissedV1'\n",
-    )
-  }
   const start = source.indexOf('function mountAdminSender(session) {')
   const end = source.indexOf('function clearPushUi() {', start)
   if (start >= 0 && end > start) source = source.slice(0, start) + source.slice(end)
   source = source.replace("function clearPushUi() {\n  document.querySelector('[data-habun-push-card]')?.remove()\n  document.querySelector('[data-habun-push-admin]')?.remove()\n  document.querySelector('.habun-push-modal-backdrop')?.remove()\n}", "function clearPushUi() {\n  document.querySelector('[data-habun-push-card]')?.remove()\n}")
   source = source.replace('\n  mountAdminSender(session)\n', '\n')
-  source = source.replace(
-    "    card.innerHTML = '<div><strong>Benachrichtigungen aktivieren</strong><span>Auf iPhone oder iPad zuerst unten auf Teilen tippen, „Zum Home-Bildschirm“ wählen und das Mitarbeiterportal danach über das neue Symbol öffnen.</span></div>'",
-    "    card.innerHTML = '<div><strong>Benachrichtigungen aktivieren</strong><span>Auf iPhone oder iPad zuerst unten auf Teilen tippen, „Zum Home-Bildschirm“ wählen und das Mitarbeiterportal danach über das neue Symbol öffnen. Wenn du das schon gemacht hast, kannst du diesen Hinweis schließen.</span></div><button type=\"button\" data-close data-dismiss-ios-guide aria-label=\"Hinweis dauerhaft schließen\">×</button>'",
-  )
-  if (!source.includes("localStorage.setItem(IOS_GUIDE_DISMISSED_KEY, '1')")) {
-    source = source.replace(
-      "  card.querySelector('[data-close]')?.addEventListener('click', () => card.remove())\n",
-      "  card.querySelector('[data-dismiss-ios-guide]')?.addEventListener('click', () => {\n    try { localStorage.setItem(IOS_GUIDE_DISMISSED_KEY, '1') } catch {}\n  })\n  card.querySelector('[data-close]')?.addEventListener('click', () => card.remove())\n",
-    )
-  }
-  if (!source.includes("localStorage.getItem(IOS_GUIDE_DISMISSED_KEY) === '1'")) {
-    source = source.replace(
-      "  if (isIOS() && !isStandalone()) {\n    mountPermissionCard({ onEnable: async () => {} })\n    return\n  }\n",
-      "  if (isIOS() && !isStandalone()) {\n    try {\n      if (localStorage.getItem(IOS_GUIDE_DISMISSED_KEY) === '1') return\n    } catch {}\n    mountPermissionCard({ onEnable: async () => {} })\n    return\n  }\n",
-    )
-  }
   if (!source.includes('AUTOMATIC_SCHEDULE_PUSH_APPLIED')) source += '\n// AUTOMATIC_SCHEDULE_PUSH_APPLIED\n'
   return source
 })

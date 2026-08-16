@@ -33,10 +33,12 @@ assert.match(core, /export async function sendPushToUsers/, 'server-side targete
 assert.match(core, /userIds:\s*string\[\]/, 'targeted push must require explicit user ids')
 assert.match(core, /if \(!userIds\.length\) return \{ targeted: 0/, 'empty recipient list must never broadcast')
 
-assert.match(client, /IOS_GUIDE_DISMISSED_KEY/, 'iOS browser guide must have a persistent dismissal key')
-assert.match(client, /data-dismiss-ios-guide/, 'iOS browser guide must provide a dismiss control')
-assert.match(client, /localStorage\.setItem\(IOS_GUIDE_DISMISSED_KEY, ['"]1['"]\)/, 'dismissing the iOS guide must be remembered')
-assert.match(client, /localStorage\.getItem\(IOS_GUIDE_DISMISSED_KEY\) === ['"]1['"]/, 'dismissed iOS browser guide must not be mounted again')
+assert.doesNotMatch(client, /IOS_GUIDE_DISMISSED_KEY|data-dismiss-ios-guide|habun-push-ios-guide|Zum Home-Bildschirm/, 'build output must not reintroduce an iPhone browser guide')
+assert.match(client, /if \(isIOS\(\) && !isStandalone\(\)\) \{\s*clearPushUi\(\)\s*return/, 'normal iPhone browser must keep push UI hidden')
+assert.match(client, /deviceToken: localRegistration\?\.token \|\| ''/, 'installed app must resync the previous device token')
+assert.match(client, /repair: true/, 'failed granted sync must expose a repair action')
+assert.match(api, /registerPushDevice\(actor, endpoint, existingToken\)/, 'build output must preserve device token refresh')
+assert.match(core, /existingRecord\?\.userId === actor\.userId && existingRecord\.endpoint === cleanEndpoint/, 'build output must preserve secure token reuse')
 
 assert.match(schedulePush, /Ein neuer Dienstplan wurde veröffentlicht\. Bitte im Mitarbeiterportal prüfen\./)
 assert.match(schedulePush, /Dein Dienstplan wurde geändert\. Bitte im Mitarbeiterportal prüfen\./)
