@@ -33,6 +33,11 @@ assert.match(core, /export async function sendPushToUsers/, 'server-side targete
 assert.match(core, /userIds:\s*string\[\]/, 'targeted push must require explicit user ids')
 assert.match(core, /if \(!userIds\.length\) return \{ targeted: 0/, 'empty recipient list must never broadcast')
 
+assert.match(client, /IOS_GUIDE_DISMISSED_KEY/, 'iOS browser guide must have a persistent dismissal key')
+assert.match(client, /data-dismiss-ios-guide/, 'iOS browser guide must provide a dismiss control')
+assert.match(client, /localStorage\.setItem\(IOS_GUIDE_DISMISSED_KEY, ['"]1['"]\)/, 'dismissing the iOS guide must be remembered')
+assert.match(client, /localStorage\.getItem\(IOS_GUIDE_DISMISSED_KEY\) === ['"]1['"]/, 'dismissed iOS browser guide must not be mounted again')
+
 assert.match(schedulePush, /Ein neuer Dienstplan wurde veröffentlicht\. Bitte im Mitarbeiterportal prüfen\./)
 assert.match(schedulePush, /Dein Dienstplan wurde geändert\. Bitte im Mitarbeiterportal prüfen\./)
 assert.match(schedulePush, /Dein Dienst beginnt gleich\. Bitte rechtzeitig einchecken\./)
