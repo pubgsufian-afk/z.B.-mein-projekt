@@ -144,13 +144,29 @@ async function listDevices() {
   return rows.filter((row): row is DeviceRecord => Boolean(row?.endpoint && row?.tokenHash && row?.userId))
 }
 
-export async function registerPushDevice(actor: PortalActor, endpoint: string) {
+export async function registerPushDevice(actor: PortalActor, endpoint: string, existingRawToken = '') {
   const cleanEndpoint = String(endpoint || '').trim()
   if (!cleanEndpoint.startsWith('https://')) throw new TypeError('Die Push-Registrierung ist ungültig.')
 
+  const current = store()
+  const cleanToken = String(existingRawToken || '').trim()
+  if (cleanToken) {
+    const tokenHash = sha256(cleanToken)
+    const existingRecord = await current.get(`devices/${tokenHash}`, { type: 'json' }) as DeviceRecord | null
+    if (existingRecord?.userId === actor.userId && existingRecord.endpoint === cleanEndpoint) {
+      await current.setJSON(`devices/${tokenHash}`, {
+        ...existingRecord,
+        email: String(actor.email || ''),
+        role: String(actor.role || ''),
+        updatedAt: new Date().toISOString(),
+      })
+      return { deviceToken: cleanToken, reused: true }
+    }
+  }
+
   const existing = await listDevices()
   for (const row of existing) {
-    if (row.endpoint === cleanEndpoint) await store().delete(`devices/${row.tokenHash}`)
+    if (row.endpoint === cleanEndpoint) await current.delete(`devices/${row.tokenHash}`)
   }
 
   const rawToken = `${crypto.randomUUID()}.${base64Url(randomBytes(24))}`
@@ -166,7 +182,7 @@ export async function registerPushDevice(actor: PortalActor, endpoint: string) {
     updatedAt: now,
     latestMessage: null,
   }
-  await store().setJSON(`devices/${tokenHash}`, record)
+  await current.setJSON(`devices/${tokenHash}`, record)
   return { deviceToken: rawToken, reused: false }
 }
 
