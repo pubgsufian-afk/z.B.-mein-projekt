@@ -28,4 +28,10 @@ assert.ok(deleteStart >= 0 && deleteRead > deleteStart && deleteWrite > deleteRe
 
 assert.doesNotMatch(source.slice(deleteStart, deleteWrite), /deleteScheduleShift\(text\(body\.employeeName\)/)
 
+const updateSource = source.slice(updateStart, deleteStart)
+assert.doesNotMatch(updateSource, /allowUnregistered/)
+assert.doesNotMatch(updateSource, /provisionalEmployeeUserId/)
+assert.match(updateSource, /resolveAssistantEmployee\(rawChanges\.employeeName, employees\)/)
+assert.match(updateSource, /EMPLOYEE_NOT_FOUND/)
+
 console.log('Schedule assistant management source tests passed')
