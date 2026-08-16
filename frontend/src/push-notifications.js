@@ -110,7 +110,7 @@ function mountPermissionCard({ onEnable, repair = false }) {
     const title = repair ? 'Benachrichtigungen erneut verbinden' : 'Benachrichtigungen aktivieren'
     const text = repair
       ? 'Die Verbindung dieses Geräts muss erneuert werden. Tippe einmal auf „Erneut verbinden“.'
-      : 'Erhalte Dienstplan-Änderungen und Erinnerungen vor Dienstbeginn direkt auf diesem Gerät.'
+      : 'Damit du neue Dienstpläne, Änderungen und Erinnerungen vor Dienstbeginn erhältst, aktiviere Benachrichtigungen einmal auf diesem Gerät.'
     const buttonText = repair ? 'Erneut verbinden' : 'Aktivieren'
     card.innerHTML = `<div><strong>${title}</strong><span>${text}</span></div><div class="habun-push-card-actions"><button type="button" class="habun-push-enable">${buttonText}</button><button type="button" data-close>Später</button></div>`
     card.querySelector('.habun-push-enable')?.addEventListener('click', async (event) => {
@@ -149,9 +149,36 @@ async function setupForCurrentSession() {
 
   if (!pushSupported()) return
 
-  const registration = await registerServiceWorker().catch(() => null)
-  if (!registration?.pushManager) return
   const userId = String(session.userId || session.id || '')
+
+  if (Notification.permission === 'default') {
+    mountPermissionCard({
+      onEnable: async () => {
+        const registration = await registerServiceWorker()
+        if (!registration?.pushManager) throw new Error('Push-Benachrichtigungen sind auf diesem Gerät noch nicht bereit.')
+        return ensureSubscription(registration, true, userId)
+      },
+    })
+    return
+  }
+
+  if (Notification.permission === 'denied') {
+    mountPermissionCard({ onEnable: async () => {} })
+    return
+  }
+
+  const registration = await registerServiceWorker().catch(() => null)
+  if (!registration?.pushManager) {
+    mountPermissionCard({
+      repair: true,
+      onEnable: async () => {
+        const retryRegistration = await registerServiceWorker()
+        if (!retryRegistration?.pushManager) throw new Error('Push-Benachrichtigungen sind auf diesem Gerät noch nicht bereit.')
+        return ensureSubscription(retryRegistration, false, userId)
+      },
+    })
+    return
+  }
 
   if (Notification.permission === 'granted') {
     try {
@@ -163,10 +190,7 @@ async function setupForCurrentSession() {
         onEnable: () => ensureSubscription(registration, false, userId),
       })
     }
-    return
   }
-
-  mountPermissionCard({ onEnable: () => ensureSubscription(registration, true, userId) })
 }
 
 export async function installPushNotifications() {
