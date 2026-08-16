@@ -43,11 +43,33 @@ await edit('netlify/functions/push.mts', (source) => {
 
 await edit('frontend/src/push-notifications.js', (source) => {
   source = source.replace("const MANAGEMENT = new Set(['owner', 'admin', 'manager', 'scheduler'])\n", '')
+  if (!source.includes('IOS_GUIDE_DISMISSED_KEY')) {
+    source = source.replace(
+      "const TOKEN_KEY = 'habunPushDeviceTokenV1'\n",
+      "const TOKEN_KEY = 'habunPushDeviceTokenV1'\nconst IOS_GUIDE_DISMISSED_KEY = 'habunPushIosGuideDismissedV1'\n",
+    )
+  }
   const start = source.indexOf('function mountAdminSender(session) {')
   const end = source.indexOf('function clearPushUi() {', start)
   if (start >= 0 && end > start) source = source.slice(0, start) + source.slice(end)
   source = source.replace("function clearPushUi() {\n  document.querySelector('[data-habun-push-card]')?.remove()\n  document.querySelector('[data-habun-push-admin]')?.remove()\n  document.querySelector('.habun-push-modal-backdrop')?.remove()\n}", "function clearPushUi() {\n  document.querySelector('[data-habun-push-card]')?.remove()\n}")
   source = source.replace('\n  mountAdminSender(session)\n', '\n')
+  source = source.replace(
+    "    card.innerHTML = '<div><strong>Benachrichtigungen aktivieren</strong><span>Auf iPhone oder iPad zuerst unten auf Teilen tippen, „Zum Home-Bildschirm“ wählen und das Mitarbeiterportal danach über das neue Symbol öffnen.</span></div>'",
+    "    card.innerHTML = '<div><strong>Benachrichtigungen aktivieren</strong><span>Auf iPhone oder iPad zuerst unten auf Teilen tippen, „Zum Home-Bildschirm“ wählen und das Mitarbeiterportal danach über das neue Symbol öffnen. Wenn du das schon gemacht hast, kannst du diesen Hinweis schließen.</span></div><button type=\"button\" data-close data-dismiss-ios-guide aria-label=\"Hinweis dauerhaft schließen\">×</button>'",
+  )
+  if (!source.includes("localStorage.setItem(IOS_GUIDE_DISMISSED_KEY, '1')")) {
+    source = source.replace(
+      "  card.querySelector('[data-close]')?.addEventListener('click', () => card.remove())\n",
+      "  card.querySelector('[data-dismiss-ios-guide]')?.addEventListener('click', () => {\n    try { localStorage.setItem(IOS_GUIDE_DISMISSED_KEY, '1') } catch {}\n  })\n  card.querySelector('[data-close]')?.addEventListener('click', () => card.remove())\n",
+    )
+  }
+  if (!source.includes("localStorage.getItem(IOS_GUIDE_DISMISSED_KEY) === '1'")) {
+    source = source.replace(
+      "  if (isIOS() && !isStandalone()) {\n    mountPermissionCard({ onEnable: async () => {} })\n    return\n  }\n",
+      "  if (isIOS() && !isStandalone()) {\n    try {\n      if (localStorage.getItem(IOS_GUIDE_DISMISSED_KEY) === '1') return\n    } catch {}\n    mountPermissionCard({ onEnable: async () => {} })\n    return\n  }\n",
+    )
+  }
   if (!source.includes('AUTOMATIC_SCHEDULE_PUSH_APPLIED')) source += '\n// AUTOMATIC_SCHEDULE_PUSH_APPLIED\n'
   return source
 })
