@@ -1,0 +1,1 @@
+Push login regression verification is executed by npm run verify:unified.
