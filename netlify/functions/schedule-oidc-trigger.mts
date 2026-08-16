@@ -73,7 +73,10 @@ function assistantRequestBody(command: ScheduleWorkerCommand) {
     action: command.action,
     requestId: command.commandId,
   }
-  if (command.action === 'publish-shifts') body.shifts = command.shifts
+  if (command.action === 'publish-shifts') {
+    body.shifts = command.shifts
+    body.allowUnregistered = command.allowUnregistered === true
+  }
   if (command.action === 'list-shifts' || command.action === 'find-duplicates') {
     body.from = command.from
     body.to = command.to
