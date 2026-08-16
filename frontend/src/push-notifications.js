@@ -36,6 +36,10 @@ function isStandalone() {
   return window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true
 }
 
+function portalReady() {
+  return Boolean(document.querySelector('.topbar h1'))
+}
+
 function pushSupported() {
   return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
 }
@@ -119,31 +123,72 @@ function mountAdminSender(session) {
   launcher.type = 'button'
   launcher.dataset.habunPushAdmin = 'true'
   launcher.className = 'habun-push-launcher'
-  launcher.setAttribute('aria-label', 'Benachrichtigung senden')
+  launcher.setAttribute('aria-label', 'Mitteilungen öffnen')
   launcher.textContent = '🔔'
 
-  const backdrop = document.createElement('div')
-  backdrop.className = 'habun-push-modal-backdrop'
-  backdrop.hidden = true
-  backdrop.innerHTML = `
-    <section class="habun-push-modal" role="dialog" aria-modal="true" aria-labelledby="habun-push-title">
-      <header><div><span>Mitteilung</span><h3 id="habun-push-title">Benachrichtigung senden</h3></div><button type="button" data-close aria-label="Schließen">×</button></header>
-      <label>Empfänger<select data-recipient><option value="">Alle registrierten Geräte</option></select></label>
-      <label>Titel<input data-title maxlength="80" value="Habun Mitarbeiterportal"></label>
-      <label>Nachricht<textarea data-message maxlength="300" rows="5" placeholder="Nachricht eingeben …"></textarea></label>
-      <div class="habun-push-modal-notice" data-notice aria-live="polite"></div>
-      <div class="habun-push-modal-actions"><button type="button" data-close>Abbrechen</button><button type="button" class="primary" data-send>Benachrichtigung senden</button></div>
-    </section>`
-
-  const close = () => { backdrop.hidden = true }
-  backdrop.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', close))
-  backdrop.addEventListener('mousedown', (event) => { if (event.target === backdrop) close() })
-
+  let backdrop = null
   let loadedEmployees = false
+
+  function ensureModal() {
+    if (backdrop) return backdrop
+    backdrop = document.createElement('div')
+    backdrop.className = 'habun-push-modal-backdrop'
+    backdrop.hidden = true
+    backdrop.innerHTML = `
+      <section class="habun-push-modal" role="dialog" aria-modal="true" aria-labelledby="habun-push-title">
+        <header><div><span>Mitteilung</span><h3 id="habun-push-title">Neue Mitteilung</h3></div><button type="button" data-close aria-label="Schließen">×</button></header>
+        <label>Empfänger<select data-recipient><option value="">Alle registrierten Geräte</option></select></label>
+        <label>Titel<input data-title maxlength="80" value="Habun Mitarbeiterportal"></label>
+        <label>Nachricht<textarea data-message maxlength="300" rows="5" placeholder="Nachricht eingeben …"></textarea></label>
+        <div class="habun-push-modal-notice" data-notice aria-live="polite"></div>
+        <div class="habun-push-modal-actions"><button type="button" data-close>Abbrechen</button><button type="button" class="primary" data-send>Jetzt schicken</button></div>
+      </section>`
+
+    const close = () => { backdrop.hidden = true }
+    backdrop.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', close))
+    backdrop.addEventListener('mousedown', (event) => { if (event.target === backdrop) close() })
+
+    backdrop.querySelector('[data-send]')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget
+      const notice = backdrop.querySelector('[data-notice]')
+      const title = backdrop.querySelector('[data-title]').value.trim()
+      const message = backdrop.querySelector('[data-message]').value.trim()
+      const targetUserId = backdrop.querySelector('[data-recipient]').value
+      if (!title || !message) {
+        notice.textContent = 'Bitte Titel und Nachricht eingeben.'
+        notice.dataset.tone = 'error'
+        return
+      }
+      button.disabled = true
+      button.textContent = 'Wird geschickt …'
+      try {
+        const result = await jsonFetch('/api/push', {
+          method: 'POST',
+          body: JSON.stringify({ action: 'send', targetUserId, title, message, url: '/' }),
+        })
+        notice.textContent = result.targeted
+          ? `An ${result.delivered} von ${result.targeted} registrierten Gerät(en) geschickt.`
+          : 'Für diesen Empfänger ist noch kein Gerät für Benachrichtigungen aktiviert.'
+        notice.dataset.tone = 'success'
+        if (result.delivered) backdrop.querySelector('[data-message]').value = ''
+      } catch (error) {
+        notice.textContent = error.message || 'Die Mitteilung konnte nicht verschickt werden.'
+        notice.dataset.tone = 'error'
+      } finally {
+        button.disabled = false
+        button.textContent = 'Jetzt schicken'
+      }
+    })
+
+    document.body.appendChild(backdrop)
+    return backdrop
+  }
+
   launcher.addEventListener('click', async () => {
-    backdrop.hidden = false
+    const modal = ensureModal()
+    modal.hidden = false
     if (loadedEmployees) return
-    const recipient = backdrop.querySelector('[data-recipient]')
+    const recipient = modal.querySelector('[data-recipient]')
     try {
       const data = await jsonFetch('/api/registrations')
       const employees = Array.isArray(data.employees) ? data.employees : []
@@ -160,42 +205,10 @@ function mountAdminSender(session) {
     } catch {}
   })
 
-  backdrop.querySelector('[data-send]')?.addEventListener('click', async (event) => {
-    const button = event.currentTarget
-    const notice = backdrop.querySelector('[data-notice]')
-    const title = backdrop.querySelector('[data-title]').value.trim()
-    const message = backdrop.querySelector('[data-message]').value.trim()
-    const targetUserId = backdrop.querySelector('[data-recipient]').value
-    if (!title || !message) {
-      notice.textContent = 'Bitte Titel und Nachricht eingeben.'
-      notice.dataset.tone = 'error'
-      return
-    }
-    button.disabled = true
-    button.textContent = 'Wird gesendet …'
-    try {
-      const result = await jsonFetch('/api/push', {
-        method: 'POST',
-        body: JSON.stringify({ action: 'send', targetUserId, title, message, url: '/' }),
-      })
-      notice.textContent = result.targeted
-        ? `An ${result.delivered} von ${result.targeted} registrierten Gerät(en) gesendet.`
-        : 'Für diesen Empfänger ist noch kein Gerät für Benachrichtigungen aktiviert.'
-      notice.dataset.tone = 'success'
-      if (result.delivered) backdrop.querySelector('[data-message]').value = ''
-    } catch (error) {
-      notice.textContent = error.message || 'Die Benachrichtigung konnte nicht gesendet werden.'
-      notice.dataset.tone = 'error'
-    } finally {
-      button.disabled = false
-      button.textContent = 'Benachrichtigung senden'
-    }
-  })
-
-  document.body.append(launcher, backdrop)
+  document.body.appendChild(launcher)
 }
 
-export async function installPushNotifications() {
+async function activatePushNotifications() {
   let session
   try { session = await jsonFetch('/api/session') } catch { return }
   if (!session || !ACTIVE_PORTAL_ROLES.has(String(session.role))) return
@@ -218,4 +231,18 @@ export async function installPushNotifications() {
   }
 
   mountPermissionCard({ onEnable: () => ensureSubscription(registration, true, String(session.userId || session.id || '')) })
+}
+
+export async function installPushNotifications() {
+  if (portalReady()) {
+    await activatePushNotifications()
+    return
+  }
+
+  const observer = new MutationObserver(() => {
+    if (!portalReady()) return
+    observer.disconnect()
+    void activatePushNotifications()
+  })
+  observer.observe(document.documentElement, { childList: true, subtree: true })
 }
