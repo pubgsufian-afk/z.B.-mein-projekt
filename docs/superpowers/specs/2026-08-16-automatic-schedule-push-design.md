@@ -21,6 +21,10 @@ Text:
 
 Ein Mitarbeiter erhält bei derselben Veröffentlichung nur eine Benachrichtigung, auch wenn er mehrere Dienste im veröffentlichten Plan hat.
 
+Als Veröffentlichungsereignis gelten sowohl die normale Wochenveröffentlichung im Portal als auch ein erfolgreicher Batch-Relay-/Dienstplan-Assistent-Auftrag, der mehrere Dienste direkt veröffentlicht.
+
+Wenn ein einzelner neuer Dienst direkt als veröffentlicht gespeichert oder ein einzelner Entwurf veröffentlicht wird, erhält der betroffene Mitarbeiter ebenfalls diese Veröffentlichungsnachricht.
+
 ### 2. Veröffentlichter Dienst wird später geändert
 
 Wenn ein bereits veröffentlichter Dienst geändert wird, erhält nur der betroffene Mitarbeiter eine Push-Benachrichtigung.
@@ -56,7 +60,7 @@ Text:
 
 > Dein Dienst beginnt gleich. Bitte rechtzeitig einchecken.
 
-Die Erinnerung wird pro Dienst höchstens einmal versendet.
+Die Erinnerung wird pro Dienst und geplantem Startzeitpunkt höchstens einmal versendet.
 
 ## Architektur
 
@@ -70,6 +74,8 @@ Alle vorhandenen Wege zur Dienstplanpflege müssen denselben Benachrichtigungsdi
 2. Dienstplan-Assistent und Batch-Relay über `/api/schedule-assistant` beziehungsweise den bestehenden `schedule-command-worker`.
 
 Die Benachrichtigung darf erst nach erfolgreicher Datenbankänderung ausgelöst werden. Schlägt das Speichern oder Veröffentlichen fehl, darf kein Push gesendet werden.
+
+Für einen Batch werden zuerst alle erfolgreich veröffentlichten Dienste verarbeitet. Danach werden die betroffenen `userId`s dedupliziert und gemeinsam benachrichtigt. Fehlgeschlagene oder als Duplikat übersprungene Batch-Einträge erzeugen keine zusätzliche Veröffentlichungspush.
 
 ### B. Gemeinsamer Push-Dienst
 
@@ -90,10 +96,12 @@ Der Worker:
 1. bestimmt die aktuelle Zeit in `Europe/Berlin`, einschließlich Sommer-/Winterzeit,
 2. sucht ausschließlich veröffentlichte Dienste, deren Beginn ungefähr fünf Minuten bevorsteht,
 3. sendet nur an den dem Dienst zugeordneten Mitarbeiter,
-4. speichert pro Dienst einen eindeutigen Versandmarker,
-5. überspringt bereits erinnerte Dienste.
+4. verwendet pro Dienst und geplantem Startzeitpunkt einen persistenten Versandmarker,
+5. überspringt bereits erfolgreich erinnerte Dienste.
 
-Die Zeitprüfung soll ein enges Fenster rund um `Dienstbeginn - 5 Minuten` verwenden, damit ein leicht verspäteter Cron-Lauf die Erinnerung nicht verliert, gleichzeitig aber keine Doppelmeldungen entstehen.
+Die Zeitprüfung verwendet ein enges Fenster rund um `Dienstbeginn - 5 Minuten`, damit ein leicht verspäteter Cron-Lauf die Erinnerung nicht verliert.
+
+Für die Deduplizierung wird ein Marker wie `reminders/<shiftId>/<scheduledStart>` mit den Zuständen `pending` und `sent` verwendet. Ein Worker schreibt bei Übernahme zunächst `pending` mit einem eindeutigen Claim-Token und kurzer Ablaufzeit, liest den Marker unmittelbar wieder und sendet nur, wenn sein Claim-Token noch Eigentümer ist. Nach erfolgreichem Versand wird `sent` gespeichert. Bei einem fehlgeschlagenen Versand wird der Claim wieder retry-fähig beziehungsweise läuft kurzfristig ab, sodass ein nachfolgender Worker-Lauf innerhalb des Erinnerungsfensters erneut versuchen kann. Damit werden parallele oder wiederholte Worker-Läufe ohne Doppelzustellung abgefangen.
 
 ## Deduplizierung
 
@@ -109,7 +117,7 @@ Eine einzelne veröffentlichte Änderung wird pro betroffenem `userId` einmal ve
 
 ### Dienstbeginn-Erinnerung
 
-Ein persistenter Marker, zum Beispiel `reminders/<shiftId>/<scheduledStart>`, verhindert Wiederholungen bei späteren Worker-Läufen. Wird die Startzeit eines veröffentlichten Dienstes geändert, erzeugt der neue geplante Start einen neuen Marker-Key; eine Erinnerung für die alte Startzeit darf danach nicht mehr ausgelöst werden.
+Der persistente Marker `reminders/<shiftId>/<scheduledStart>` verhindert Wiederholungen bei späteren Worker-Läufen. Wird die Startzeit eines veröffentlichten Dienstes geändert, ist nur der aktuelle Startzeitpunkt gültig. Der Worker prüft vor dem Versand den aktuellen Dienst aus der Datenquelle; dadurch darf eine Erinnerung für eine alte, inzwischen geänderte Startzeit nicht mehr ausgelöst werden.
 
 ## Verhalten der Push-Geräte
 
@@ -134,7 +142,7 @@ Der Browser darf keine beliebigen automatischen Dienstplan-Pushs auslösen.
 
 Automatische Benachrichtigungen werden ausschließlich serverseitig aus erfolgreichen Dienstplanaktionen beziehungsweise dem Reminder-Worker ausgelöst.
 
-Der bisherige manuelle `send`-Pfad der Push-API soll entfernt oder serverseitig deaktiviert werden, wenn er nach Entfernung der Glocke nicht mehr benötigt wird. Die API behält nur die für Geräteverwaltung und gegebenenfalls Aktivierungstest notwendigen Aktionen.
+Der bisherige manuelle `send`-Pfad der Push-API wird entfernt. Die Browser-API behält nur die für Geräteverwaltung und Aktivierungstest notwendigen Aktionen. Die automatischen Dienstplanbenachrichtigungen rufen die interne serverseitige Push-Funktion direkt auf.
 
 ## Fehlerbehandlung
 
@@ -148,7 +156,7 @@ Daher gilt:
 - Ungültige Endpunkte entfernen.
 - Kein zweites Speichern und keine doppelte Dienstplanänderung wegen eines Push-Fehlers.
 
-Für die Dienstbeginn-Erinnerung bleibt der Versandmarker nur dann endgültig gesetzt, wenn der Versandversuch fachlich als verarbeitet gilt. Die genaue Implementierung muss Doppelversand bei Funktionswiederholungen verhindern.
+Bei der Dienstbeginn-Erinnerung verhindert der `pending`-/`sent`-Marker Doppelversand. Ein fehlgeschlagener Versand darf innerhalb des engen Erinnerungsfensters erneut versucht werden, ohne bereits erfolgreich zugestellte Erinnerungen zu wiederholen.
 
 ## Daten- und Datenschutzprinzip
 
@@ -167,12 +175,14 @@ Die Umsetzung braucht mindestens folgende automatische Prüfungen:
 5. Umbuchung von A auf B benachrichtigt A und B jeweils einmal.
 6. Löschen eines veröffentlichten Dienstes benachrichtigt den bisherigen Mitarbeiter.
 7. Batch-Relay/Assistent nutzt dieselben Regeln wie die Portal-Veröffentlichung.
-8. Reminder-Worker sendet ungefähr fünf Minuten vor Beginn.
-9. Reminder-Worker sendet pro Dienst nicht doppelt, auch wenn er mehrfach läuft.
-10. Gelöschte oder auf eine andere Uhrzeit verschobene Dienste lösen keine veraltete Erinnerung aus.
-11. Push-Fehler lassen die erfolgreich gespeicherte Dienstplanänderung bestehen.
-12. Die manuelle Glocke und das manuelle Nachrichtenfenster sind nicht mehr sichtbar.
-13. Bestehende Push-Aktivierung auf Android, iPhone/iPad-Home-Screen-Web-App und unterstützten Desktop-Browsern bleibt erhalten.
+8. Einzelne direkte Veröffentlichung eines neuen Dienstes benachrichtigt den betroffenen Mitarbeiter.
+9. Reminder-Worker sendet ungefähr fünf Minuten vor Beginn.
+10. Reminder-Worker sendet pro Dienst und Startzeit nicht doppelt, auch wenn er mehrfach oder überlappend läuft.
+11. Gelöschte oder auf eine andere Uhrzeit verschobene Dienste lösen keine veraltete Erinnerung aus.
+12. Push-Fehler lassen die erfolgreich gespeicherte Dienstplanänderung bestehen.
+13. Die manuelle Glocke und das manuelle Nachrichtenfenster sind nicht mehr sichtbar.
+14. Der manuelle `send`-API-Pfad ist nicht mehr verfügbar.
+15. Bestehende Push-Aktivierung auf Android, iPhone/iPad-Home-Screen-Web-App und unterstützten Desktop-Browsern bleibt erhalten.
 
 ## Nicht Bestandteil dieser Änderung
 
