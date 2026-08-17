@@ -129,6 +129,10 @@ function installIOSPdfPreviewFallback() {
 installIOSPdfPreviewFallback()
 installAdminTimeEditing()
 
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/push-sw.js', { scope: '/' }).catch(() => {})
+}
+
 const root = document.getElementById('root')
 if (!root) throw new Error('Portal-Wurzelelement fehlt.')
 createRoot(root).render(<App />)
