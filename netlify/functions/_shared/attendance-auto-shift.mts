@@ -157,6 +157,7 @@ export async function findScheduleTiming(scheduleId: string) {
   return {
     id: String(row.id),
     employeeUserId: String(row.employee_user_id),
+    objectId: row.object_id == null ? null : String(row.object_id),
     source: String(row.source || 'portal'),
     scheduledStartAt: new Date(row.scheduled_start_at).toISOString(),
     scheduledEndAt: new Date(row.scheduled_end_at).toISOString(),
