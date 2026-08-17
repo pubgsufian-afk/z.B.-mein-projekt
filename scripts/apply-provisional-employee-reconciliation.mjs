@@ -38,3 +38,5 @@ if (!source.includes('PROVISIONAL_EMPLOYEE_RECONCILIATION_APPLIED')) {
 
 await writeFile(path, source)
 console.log('Provisional employee reconciliation applied')
+
+await import('./apply-schedule-publish-user-id.mjs')
