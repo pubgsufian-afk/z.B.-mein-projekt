@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
-import { createAttendanceService } from '../netlify/functions/_shared/attendance-service.mts'
+
+await import('./apply-attendance-system-actor.mjs')
+const { createAttendanceService } = await import('../netlify/functions/_shared/attendance-service.mts')
 
 const events = [{
   id: 'start', userId: 'employee-1', clientEventId: 'start', action: 'clock-in',
