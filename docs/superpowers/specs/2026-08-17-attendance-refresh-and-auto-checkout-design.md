@@ -20,7 +20,7 @@ Der konkrete Sonderaccount wird nicht mit Name oder E-Mail im öffentlichen Repo
 - Beim Wechsel zurück zur App wird kein vollständiger Seiten-Reload erzwungen.
 - Wichtige Ansichten wie Dienstplan, Zeiterfassung und Verwaltungsübersichten erhalten ein einheitliches Refresh-Verhalten.
 - API-Abfragen bleiben `no-store`, sodass ein ausgelöster Refresh frische Serverdaten liefert.
-- Ein kurzer Hintergrund-Refresh während aktiver Nutzung darf ergänzt werden, sofern er keine unnötige Last erzeugt.
+- Während die App sichtbar und aktiv ist, dürfen relevante Ansichten zusätzlich in einem schonenden Intervall aktualisiert werden; parallele Doppelabfragen werden vermieden.
 
 ### Fehlerverhalten
 
@@ -41,21 +41,25 @@ Der konkrete Sonderaccount wird nicht mit Name oder E-Mail im öffentlichen Repo
 
 Bei erfolgreichem Check-in des Sonderaccounts ohne vorhandenen Dienst:
 
-- wird serverseitig ein neuer Dienstplan-Eintrag erstellt,
+- wird serverseitig genau ein neuer Dienstplan-Eintrag erstellt,
 - `employeeUserId` wird an den echten Account gebunden,
 - der Anzeigename wird aus dem freigegebenen Konto übernommen,
 - Datum und Startzeit entsprechen dem tatsächlichen Check-in,
 - Einsatzort und Objekt werden aus der erfolgreich geprüften Standortzuordnung übernommen,
 - der Eintrag wird direkt als veröffentlicht gespeichert,
-- der Eintrag erhält eine interne Kennzeichnung, dass er automatisch aus der Zeiterfassung entstanden ist.
+- der Eintrag erhält eine interne Kennzeichnung, dass er automatisch aus der Zeiterfassung entstanden ist,
+- als vorläufiges geplantes Ende wird exakt `Check-in + 12 Stunden` hinterlegt, damit der Dienst sofort vollständig im Plan sichtbar ist.
 
-Beim normalen Check-out wird die Endzeit dieses automatisch erzeugten Dienstes auf die tatsächliche Check-out-Zeit gesetzt.
+Wenn das 12-Stunden-Ende auf den Folgetag fällt, darf dieser systemerzeugte Dienst über Mitternacht laufen. Die bestehende manuelle Dienstplan-Validierung für normale, von Menschen angelegte Dienste bleibt davon unberührt.
+
+Beim normalen Check-out wird die Endzeit dieses automatisch erzeugten Dienstes auf die tatsächliche Check-out-Zeit gesetzt. Die Zeiterfassungsereignisse bleiben die maßgebliche Quelle für die tatsächlich gearbeitete Zeit.
 
 ## C. Automatisches Auschecken
 
 ### Sonderaccount
 
-- Wenn der Sonderaccount nicht selbst auscheckt, wird der offene Dienst spätestens 12 Stunden nach dem Check-in automatisch beendet.
+- Wenn der Sonderaccount nicht selbst auscheckt, wird der offene Dienst exakt 12 Stunden nach dem Check-in automatisch beendet.
+- Das automatisch gespeicherte Check-out-Ereignis trägt als Arbeitsende exakt `Check-in + 12 Stunden`, auch wenn der serverseitige Prüflauf einige Minuten später stattfindet.
 - Das automatische Ende wird als systemseitiger Check-out gespeichert und im Audit nachvollziehbar gekennzeichnet.
 - Der zugehörige automatisch erzeugte Dienstplan-Eintrag erhält dieselbe Endzeit.
 
@@ -63,13 +67,15 @@ Beim normalen Check-out wird die Endzeit dieses automatisch erzeugten Dienstes a
 
 - Für Mitarbeiter mit geplantem Dienst gilt die im Dienstplan gespeicherte Endzeit.
 - Ist 30 Minuten nach dem geplanten Dienstende noch kein Check-out vorhanden, erzeugt der Server automatisch einen Check-out.
-- Beispiel: geplanter Dienst bis 22:00 Uhr → automatischer Check-out um 22:30 Uhr.
+- Beispiel: geplanter Dienst bis 22:00 Uhr → gespeichertes automatisches Arbeitsende exakt 22:30 Uhr.
 - Ein bereits manuell ausgecheckter Dienst wird niemals nochmals automatisch beendet.
+- Auch bei Diensten über Mitternacht wird das korrekte absolute Enddatum berücksichtigt.
 
 ### Serverseitige Ausführung
 
 - Die Prüfung läuft serverseitig nach Zeitplan und ist nicht von einer geöffneten App oder einem eingeschalteten Handy abhängig.
 - Die Aufgabe verarbeitet nur tatsächlich offene Arbeitsphasen.
+- Der Prüflauf darf in einem kurzen Intervall, beispielsweise alle fünf Minuten, laufen; die gespeicherte automatische Endzeit bleibt trotzdem der exakte Schwellenzeitpunkt.
 - Wiederholte Ausführungen müssen idempotent sein; derselbe offene Dienst darf nicht doppelt ausgecheckt werden.
 
 ## D. Datenintegrität
@@ -80,6 +86,7 @@ Beim normalen Check-out wird die Endzeit dieses automatisch erzeugten Dienstes a
 - Automatisch erzeugte Check-outs und Dienstplan-Einträge werden mit einer Systemquelle/Audit-Kennzeichnung gespeichert.
 - Arbeitszeiten dürfen sich durch die Automatik nicht mit einem nachfolgenden bereits vorhandenen Dienst überschneiden.
 - Bei Konflikten wird keine verdeckte Korrektur vorgenommen; stattdessen wird der Vorgang protokolliert und für die Verwaltung sichtbar gemacht.
+- Die automatische Check-out-Logik darf vorhandene Pausenereignisse nicht verändern oder löschen.
 
 ## E. Tests
 
@@ -89,13 +96,15 @@ Mindestens folgende Fälle werden automatisiert geprüft:
 2. Sonderaccount ohne Dienst kann an gespeichertem Einsatzort einchecken.
 3. Sonderaccount außerhalb eines gespeicherten Einsatzortes wird abgelehnt.
 4. Check-in des Sonderaccounts erzeugt genau einen veröffentlichten Dienstplan-Eintrag.
-5. Normaler Check-out aktualisiert die Endzeit des automatisch erzeugten Dienstes.
-6. Sonderaccount wird nach 12 Stunden automatisch ausgecheckt, falls noch offen.
-7. Normaler Mitarbeiter wird 30 Minuten nach geplantem Dienstende automatisch ausgecheckt, falls noch offen.
-8. Bereits ausgecheckte Dienste bleiben unverändert.
-9. Wiederholte Scheduler-Läufe erzeugen keine doppelten Check-outs.
-10. Rückkehr aus dem App-Hintergrund lädt frische Dienstplan- und Zeiterfassungsdaten, ohne die Seite komplett neu zu laden.
-11. Bei fehlgeschlagenem Refresh bleiben die zuletzt sichtbaren Daten erhalten.
+5. Automatisch erzeugter Sonderdienst kann korrekt über Mitternacht laufen.
+6. Normaler Check-out aktualisiert die Endzeit des automatisch erzeugten Dienstes.
+7. Sonderaccount wird nach 12 Stunden automatisch ausgecheckt, falls noch offen.
+8. Normaler Mitarbeiter wird 30 Minuten nach geplantem Dienstende automatisch ausgecheckt, falls noch offen.
+9. Die gespeicherte automatische Endzeit entspricht dem exakten Schwellenzeitpunkt und nicht der späteren Scheduler-Ausführungszeit.
+10. Bereits ausgecheckte Dienste bleiben unverändert.
+11. Wiederholte Scheduler-Läufe erzeugen keine doppelten Check-outs.
+12. Rückkehr aus dem App-Hintergrund lädt frische Dienstplan- und Zeiterfassungsdaten, ohne die Seite komplett neu zu laden.
+13. Bei fehlgeschlagenem Refresh bleiben die zuletzt sichtbaren Daten erhalten.
 
 ## Nicht im Umfang
 
