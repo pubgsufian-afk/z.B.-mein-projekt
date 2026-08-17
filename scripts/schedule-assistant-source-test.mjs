@@ -65,6 +65,8 @@ assert.match(publishSource, /allowUnregistered && resolved\.status === 'not_foun
 assert.match(publishSource, /provisionalEmployeeUserId\(fullName\)/)
 assert.match(publishSource, /employee = \{ userId, fullName \}/)
 assert.match(publishSource, /provisionalEmployee: isProvisionalEmployeeUserId\(shift\.employeeUserId\)/)
+assert.match(publishSource, /requestedEmployeeUserId/)
+assert.match(publishSource, /candidate\.userId === requestedEmployeeUserId/)
 
 const ambiguousIndex = publishSource.indexOf("resolved.status === 'ambiguous'")
 const provisionalIndex = publishSource.indexOf("allowUnregistered && resolved.status === 'not_found'")
