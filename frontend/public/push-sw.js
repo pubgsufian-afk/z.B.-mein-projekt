@@ -12,6 +12,14 @@ async function readDeviceToken() {
   return response ? (await response.text()).trim() : ''
 }
 
+async function notifyOpenClientsDataChanged() {
+  const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true })
+  for (const client of windows) {
+    if (new URL(client.url).origin !== self.location.origin) continue
+    client.postMessage({ type: 'PORTAL_DATA_CHANGED' })
+  }
+}
+
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SET_PUSH_DEVICE_TOKEN') {
     event.waitUntil(saveDeviceToken(event.data.token))
@@ -28,6 +36,8 @@ self.addEventListener('push', (event) => {
         if (response.ok) message = (await response.json())?.message || null
       } catch {}
     }
+
+    await notifyOpenClientsDataChanged()
 
     const title = message?.title || 'Habun Mitarbeiterportal'
     const body = message?.body || 'Es gibt eine neue Mitteilung im Mitarbeiterportal.'

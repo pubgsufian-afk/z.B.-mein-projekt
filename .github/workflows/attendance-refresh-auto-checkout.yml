@@ -1,0 +1,26 @@
+name: Attendance refresh and auto-checkout TDD
+
+on:
+  push:
+    branches:
+      - feat/attendance-refresh-auto-checkout-20260817
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  red-green:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: node scripts/data-refresh-source-test.mjs
+      - run: node --experimental-strip-types scripts/attendance-automation-policy-test.mjs
+      - run: node --experimental-strip-types scripts/attendance-auto-shift-test.mjs

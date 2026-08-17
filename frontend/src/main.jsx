@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
 import { installAdminTimeEditing } from './admin-time-editing.js'
 import { installPushNotifications } from './push-notifications.js'
+import { installDataRefreshTriggers } from './data-refresh.js'
 import './styles.css'
 import './mobile-navigation.css'
 import './logo-visibility.css'
@@ -128,6 +129,7 @@ function installIOSPdfPreviewFallback() {
 
 installIOSPdfPreviewFallback()
 installAdminTimeEditing()
+installDataRefreshTriggers({ intervalMs: 60000 })
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/push-sw.js', { scope: '/' }).catch(() => {})
