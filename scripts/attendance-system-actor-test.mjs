@@ -32,6 +32,6 @@ assert.equal(captured.actorId, 'system:auto-checkout')
 assert.equal(captured.actorRole, 'system')
 assert.equal(captured.event.action, 'clock-out')
 assert.equal(captured.event.clientOccurredAt, '2026-08-17T20:30:00.000Z')
-await assert.rejects(() => service.getHistory(actor), (error) => error?.code === 'FORBIDDEN')
+await assert.rejects(() => service.getLive(actor), (error) => error?.code === 'FORBIDDEN')
 
 console.log('audited system attendance actor: ok')
