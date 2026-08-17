@@ -62,9 +62,11 @@ async function navigate(page, label) {
 
 test('visible Dienstplan refreshes after app resume without reopening', async ({ page }) => {
   let version = 1
+  let scheduleGets = 0
   await loginOwner(page, async (route) => {
     const url = new URL(route.request().url())
     if (url.searchParams.get('resource') === 'entries') {
+      scheduleGets += 1
       const from = url.searchParams.get('from')
       return route.fulfill({
         status: 200,
@@ -77,17 +79,22 @@ test('visible Dienstplan refreshes after app resume without reopening', async ({
 
   await navigate(page, 'Dienstplan')
   await expect(page.getByText('Version 1').first()).toBeVisible()
+  const beforeResume = scheduleGets
   version = 2
+  await page.waitForTimeout(1700)
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow')))
+  await expect.poll(() => scheduleGets).toBeGreaterThan(beforeResume)
   await expect(page.getByText('Version 2').first()).toBeVisible()
   await expect(page.getByLabel('E-Mail-Adresse')).toHaveCount(0)
 })
 
 test('failed background refresh keeps the previous Dienstplan visible', async ({ page }) => {
   let failRefresh = false
+  let scheduleGets = 0
   await loginOwner(page, async (route) => {
     const url = new URL(route.request().url())
     if (url.searchParams.get('resource') === 'entries') {
+      scheduleGets += 1
       if (failRefresh) return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'Test refresh failed' }) })
       const from = url.searchParams.get('from')
       return route.fulfill({
@@ -101,7 +108,10 @@ test('failed background refresh keeps the previous Dienstplan visible', async ({
 
   await navigate(page, 'Dienstplan')
   await expect(page.getByText('Bleibt sichtbar').first()).toBeVisible()
+  const beforeResume = scheduleGets
   failRefresh = true
+  await page.waitForTimeout(1700)
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow')))
+  await expect.poll(() => scheduleGets).toBeGreaterThan(beforeResume)
   await expect(page.getByText('Bleibt sichtbar').first()).toBeVisible()
 })
