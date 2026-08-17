@@ -1,0 +1,42 @@
+name: Attendance feature full verification
+
+on:
+  push:
+    branches:
+      - feat/attendance-refresh-auto-checkout-20260817
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Existing portal verification
+        run: npm run verify
+      - name: Apply feature after existing source finalizers
+        run: node scripts/apply-attendance-refresh-auto-checkout.mjs
+      - name: Feature unit and source tests
+        run: |
+          node scripts/data-refresh-source-test.mjs
+          node --experimental-strip-types scripts/attendance-automation-policy-test.mjs
+          node --experimental-strip-types scripts/attendance-auto-shift-test.mjs
+          node --experimental-strip-types scripts/attendance-system-actor-test.mjs
+          node --experimental-strip-types scripts/attendance-flex-clock-test.mjs
+          node --experimental-strip-types scripts/attendance-auto-checkout-worker-test.mjs
+      - name: Production build
+        run: npm run build
+      - name: Feature contracts after production build
+        run: |
+          node scripts/data-refresh-source-test.mjs
+          node --experimental-strip-types scripts/attendance-system-actor-test.mjs
+          node --experimental-strip-types scripts/attendance-flex-clock-test.mjs
+          node --experimental-strip-types scripts/attendance-auto-checkout-worker-test.mjs
+      - name: Browser regression suite
+        run: npm run test:e2e
