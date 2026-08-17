@@ -3,6 +3,7 @@
   "name": "Habun Security Mitarbeiterportal",
   "short_name": "Habun Portal",
   "description": "Geschütztes Mitarbeiterportal für Dienstpläne und Arbeitszeiten.",
+  "lang": "de",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
