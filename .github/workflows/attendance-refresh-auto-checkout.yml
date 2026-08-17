@@ -23,3 +23,4 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: node scripts/data-refresh-source-test.mjs
       - run: node --experimental-strip-types scripts/attendance-automation-policy-test.mjs
+      - run: node --experimental-strip-types scripts/attendance-auto-shift-test.mjs
