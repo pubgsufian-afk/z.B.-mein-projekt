@@ -38,5 +38,7 @@ jobs:
           node --experimental-strip-types scripts/attendance-system-actor-test.mjs
           node --experimental-strip-types scripts/attendance-flex-clock-test.mjs
           node --experimental-strip-types scripts/attendance-auto-checkout-worker-test.mjs
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
       - name: Browser regression suite
         run: npm run test:e2e
