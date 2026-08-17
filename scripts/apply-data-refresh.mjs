@@ -39,9 +39,27 @@ async function patch(path, callbacks) {
   await writeFile(path, source)
 }
 
+async function preserveVisibleDataOnError(path, replacements) {
+  let source = await readFile(path, 'utf8')
+  for (const [before, after] of replacements) {
+    if (source.includes(after)) continue
+    if (source.includes(before)) source = source.replace(before, after)
+  }
+  await writeFile(path, source)
+}
+
 await patch('frontend/src/App.jsx', ['load', 'reload'])
 await patch('frontend/src/TimesheetPage.jsx', ['reload'])
 await patch('frontend/src/TimesheetMonthlyPage.jsx', ['loadTimesheet'])
 await patch('frontend/src/AdminOverview.jsx', ['loadOverview'])
+
+await preserveVisibleDataOnError('frontend/src/TimesheetPage.jsx', [
+  ["      setActual({ rows: [], error: error.message })", "      setActual((current) => ({ rows: current.rows, error: error.message }))"],
+  ["      setPlanned({ rows: [], error: error.message })", "      setPlanned((current) => ({ rows: current.rows, error: error.message }))"],
+])
+
+await preserveVisibleDataOnError('frontend/src/TimesheetMonthlyPage.jsx', [
+  ["      setRows([])\n      setSuppressedRows([])\n      setNotice({ tone: 'error', text: error.message })", "      setNotice({ tone: 'error', text: error.message })"],
+])
 
 console.log('Portal data refresh subscriptions applied')
