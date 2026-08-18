@@ -2,7 +2,8 @@ import { writeFile } from 'node:fs/promises'
 
 const OIDC_AUDIENCE = 'habun-schedule-assistant'
 const ENVELOPE_MARKER = '<!-- habun-schedule-envelope-v1 -->'
-const TRIGGER_URL = 'https://habun-mitarbeiterportal.netlify.app/api/schedule-oidc-trigger'
+const DEFAULT_TRIGGER_URL = 'https://habun-mitarbeiterportal.netlify.app/api/schedule-oidc-trigger'
+const RECONCILE_TRIGGER_URL = 'https://habun-mitarbeiterportal.netlify.app/api/schedule-reconcile-oidc'
 
 function requiredEnv(name) {
   const value = String(process.env[name] || '').trim()
@@ -54,6 +55,7 @@ function safeRelayError(value) {
 }
 
 const envelope = envelopeFromComment(requiredEnv('SCHEDULE_ENVELOPE_COMMENT'))
+const triggerUrl = envelope.target === 'reconcile' ? RECONCILE_TRIGGER_URL : DEFAULT_TRIGGER_URL
 const requestUrl = new URL(requiredEnv('ACTIONS_ID_TOKEN_REQUEST_URL'))
 requestUrl.searchParams.set('audience', OIDC_AUDIENCE)
 const requestToken = requiredEnv('ACTIONS_ID_TOKEN_REQUEST_TOKEN')
@@ -71,7 +73,7 @@ const tokenPayload = await tokenResponse.json()
 const oidcToken = String(tokenPayload?.value || '').trim()
 if (!oidcToken) throw new Error('GitHub OIDC token response is empty')
 
-const relayResponse = await fetch(TRIGGER_URL, {
+const relayResponse = await fetch(triggerUrl, {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
