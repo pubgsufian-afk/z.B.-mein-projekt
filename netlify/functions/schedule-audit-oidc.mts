@@ -1,7 +1,7 @@
 import type { Config, Context } from '@netlify/functions'
 import { verifyScheduleGithubOidc } from './_shared/schedule-github-oidc.mts'
 import { decryptScheduleCommandEnvelopeRuntime } from './_shared/schedule-command-envelope-runtime.mts'
-import { listScheduleShifts } from './_shared/schedule-neon-repository.mts'
+import { listScheduleShifts, rebindProvisionalEmployeeIdentity } from './_shared/schedule-neon-repository.mts'
 import scheduleAssistant from './schedule-assistant.mts'
 
 function json(data: unknown, status = 200) {
@@ -123,13 +123,34 @@ export default async function scheduleAuditOidc(request: Request, context: Conte
       results.push({ index, status: 'invalid' })
       continue
     }
+
+    const oldUserId = shift.employeeUserId
     const response = await assistant({
       action: 'update-shift',
       shiftId: shift.id,
       changes,
       requestId: text(payload.commandId) || crypto.randomUUID(),
     }, context)
-    results.push({ index, status: response.ok ? 'updated' : 'failed', httpStatus: response.status })
+
+    let rebound = false
+    if (response.ok && text(changes.employeeName) && oldUserId.startsWith('guest:')) {
+      const updated = response.data.shift && typeof response.data.shift === 'object' && !Array.isArray(response.data.shift)
+        ? response.data.shift as Record<string, unknown>
+        : {}
+      const newUserId = text(updated.employeeUserId)
+      const newName = text(updated.employeeName)
+      if (newUserId && newName && !newUserId.startsWith('guest:')) {
+        const result = await rebindProvisionalEmployeeIdentity({
+          provisionalUserId: oldUserId,
+          userId: newUserId,
+          fullName: newName,
+          actorId: 'dienstplan-audit',
+        })
+        rebound = result.rebound === true
+      }
+    }
+
+    results.push({ index, status: response.ok ? 'updated' : 'failed', httpStatus: response.status, rebound })
   }
 
   const count = (status: string) => results.filter((entry) => entry.status === status).length
@@ -142,6 +163,7 @@ export default async function scheduleAuditOidc(request: Request, context: Conte
     ambiguous: count('ambiguous'),
     failed: count('failed'),
     invalid: count('invalid'),
+    rebound: results.filter((entry) => entry.rebound === true).length,
     results,
   })
 }
