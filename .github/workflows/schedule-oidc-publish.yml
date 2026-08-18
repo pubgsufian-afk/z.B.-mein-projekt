@@ -5,7 +5,7 @@ on:
     types: [created]
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
 
 jobs:
@@ -28,36 +28,6 @@ jobs:
         env:
           SCHEDULE_ENVELOPE_COMMENT: ${{ github.event.comment.body }}
           SCHEDULE_ENCRYPTED_RESULT_PATH: ${{ runner.temp }}/habun-schedule-result.json
-      - name: Persist encrypted audit result
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RESULT_PATH: ${{ runner.temp }}/habun-schedule-result.json
-          REPOSITORY: ${{ github.repository }}
-          COMMENT_ID: ${{ github.event.comment.id }}
-        run: |
-          node --input-type=module <<'NODE'
-          import { readFile } from 'node:fs/promises'
-          let encrypted = ''
-          try { encrypted = (await readFile(process.env.RESULT_PATH, 'utf8')).trim() } catch {}
-          if (!encrypted) process.exit(0)
-          const chunks = encrypted.match(/.{1,1800}/g) || []
-          const path = `ops/audit-results/${process.env.COMMENT_ID}.txt`
-          const headers = {
-            Authorization: `Bearer ${process.env.GH_TOKEN}`,
-            Accept: 'application/vnd.github+json',
-            'Content-Type': 'application/json',
-            'X-GitHub-Api-Version': '2022-11-28',
-          }
-          const body = {
-            message: 'chore: store encrypted schedule audit result [skip ci]',
-            content: Buffer.from(chunks.join('\n') + '\n').toString('base64'),
-          }
-          const written = await fetch(`https://api.github.com/repos/${process.env.REPOSITORY}/contents/${path}`, {
-            method: 'PUT', headers, body: JSON.stringify(body),
-          })
-          if (!written.ok) throw new Error(`write failed ${written.status}: ${await written.text()}`)
-          NODE
       - name: Upload encrypted schedule result
         if: always()
         uses: actions/upload-artifact@v4
