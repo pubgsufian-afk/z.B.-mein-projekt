@@ -1,0 +1,52 @@
+name: Habun one-time encrypted schedule audit
+
+on:
+  push:
+    paths:
+      - '.github/workflows/schedule-audit-once.yml'
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query encrypted schedule result
+        env:
+          ENVELOPE: '{"version":1,"state":"command","algorithm":"RSA-OAEP-256+A256GCM","encryptedKey":"QWbFR+zdKdPJ12GtjH/JpJ4CtpywY2b6ueLqqOD5w1tCxs8YS9Ay746e/V8o5PABcF1Wpsoq9/9a/hfTttgq8FE2Xi6+Xeq9dpt6YilXVo7dhtDJT2YJR72r/h6nNwiKMA/yQnV8XIFIfrmcJ6LbR8BRS7XgBPHwdvivsLh08jIT4bBQZfWA/F5OG8I62osAB0PXrq+yDJVzdEbj5XxCxuBc5Wyh51I9BoIa2z/G8BiCAwDWH7o6J5CFGmY2ILJYLNYATWOd2/gbor8S7n0SIB5YPa0kwlc51NcdWVbrtH5ov2i1x1IV60aPvrlSU1cpjvQ760bURq9tEh1wkC9FJw==","iv":"ychNHXJ66zG5OWl+","ciphertext":"Yv+tUuEADUJ/skB4qHzcbRVUV8FYi9jJrSt+0/k5lWst7d+Ik5nkQalW9BoMOsuBoYyGMAaTYw8DtmGJDWYH3LdS8kkxoq1MOoOyB2AXRqQXdc8euB+qEhw4f4Bq89oW+wph91qjx2Hvk94qH5BCM9o+72oeKbBxQSSBbFrFSXTUJusb2iF/v7rMgHgPg7b3H6qU6Hp8HwkIiFz4NYnB9O/PX5gTCP6faRCLYKdBuCJjSVtxVkVrLGS+TDSvAwwGI5WLQs8DRTSoyCLQdjRE+3oOhYRyM5NgpAg1LKmpEwnSs9HC+Dft7HJISQFAT/z6emQC7IsGfxP4TpWnn764XOc6N74gXhg=","tag":"CuObvjfaN3+AwuCDfd9ZhA=="}'
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          node --input-type=module <<'NODE'
+          const oidcUrl = new URL(process.env.ACTIONS_ID_TOKEN_REQUEST_URL)
+          oidcUrl.searchParams.set('audience', 'habun-schedule-assistant')
+          const oidcRes = await fetch(oidcUrl, { headers: { Authorization: `Bearer ${process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` } })
+          if (!oidcRes.ok) throw new Error(`OIDC ${oidcRes.status}`)
+          const { value: oidcToken } = await oidcRes.json()
+          const relayRes = await fetch('https://habun-mitarbeiterportal.netlify.app/api/schedule-oidc-trigger', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ oidcToken, envelope: JSON.parse(process.env.ENVELOPE) }),
+          })
+          const relay = await relayRes.json()
+          if (!relayRes.ok) throw new Error(`Relay ${relayRes.status}: ${JSON.stringify(relay)}`)
+          if (!relay.encryptedResult) throw new Error('No encryptedResult')
+          const path = 'ops/schedule-audit-result.json'
+          const body = {
+            message: 'chore: store encrypted schedule audit result [skip ci]',
+            content: Buffer.from(JSON.stringify(relay.encryptedResult)).toString('base64'),
+          }
+          const writeRes = await fetch(`https://api.github.com/repos/${process.env.REPOSITORY}/contents/${path}`, {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${process.env.GH_TOKEN}`,
+              Accept: 'application/vnd.github+json',
+              'Content-Type': 'application/json',
+              'X-GitHub-Api-Version': '2022-11-28',
+            },
+            body: JSON.stringify(body),
+          })
+          if (!writeRes.ok) throw new Error(`Write ${writeRes.status}: ${await writeRes.text()}`)
+          NODE
