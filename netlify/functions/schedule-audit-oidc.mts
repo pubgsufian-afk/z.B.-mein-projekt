@@ -1,3 +1,4 @@
+// Temporary audit endpoint for the current roster correction
 import type { Config, Context } from '@netlify/functions'
 import { verifyScheduleGithubOidc } from './_shared/schedule-github-oidc.mts'
 import { decryptScheduleCommandEnvelopeRuntime } from './_shared/schedule-command-envelope-runtime.mts'
