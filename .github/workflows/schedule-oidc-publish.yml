@@ -39,7 +39,9 @@ jobs:
           import { readFile } from 'node:fs/promises'
           const encrypted = (await readFile(process.env.RESULT_PATH, 'utf8')).trim()
           if (!encrypted) process.exit(0)
-          const path = 'ops/schedule-audit-result.json'
+          const chunks = encrypted.match(/.{1,1800}/g) || []
+          const wrapped = chunks.join('\n') + '\n'
+          const path = 'ops/schedule-audit-result.txt'
           const headers = {
             Authorization: `Bearer ${process.env.GH_TOKEN}`,
             Accept: 'application/vnd.github+json',
@@ -49,7 +51,7 @@ jobs:
           const existing = await fetch(`https://api.github.com/repos/${process.env.REPOSITORY}/contents/${path}`, { headers })
           const body = {
             message: 'chore: store encrypted schedule audit result [skip ci]',
-            content: Buffer.from(encrypted).toString('base64'),
+            content: Buffer.from(wrapped).toString('base64'),
           }
           if (existing.ok) body.sha = (await existing.json()).sha
           const written = await fetch(`https://api.github.com/repos/${process.env.REPOSITORY}/contents/${path}`, {
