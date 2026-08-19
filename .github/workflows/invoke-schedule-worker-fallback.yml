@@ -6,7 +6,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
   id-token: write
 
 jobs:
@@ -78,22 +77,5 @@ jobs:
           console.log(`Habun encrypted relay: published=${published} duplicate=${duplicate} rejected=${rejected}`)
           console.log(`Habun encrypted relay statuses: ${JSON.stringify(Array.isArray(result?.results) ? result.results : [])}`)
           console.log(`Habun encrypted relay directory: ${JSON.stringify(result?.directoryDiagnostics || {})}`)
-
-          const encrypted = result?.encryptedResult
-          if (encrypted?.version === 1 && encrypted?.algorithm === 'A256GCM') {
-            const responseComment = `<!-- habun-schedule-result-v1 -->\n${JSON.stringify(encrypted)}`
-            const postResponse = await fetch(`https://api.github.com/repos/${repo}/issues/73/comments`, {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${process.env.GITHUB_RELAY_TOKEN}`,
-                Accept: 'application/vnd.github+json',
-                'Content-Type': 'application/json',
-                'User-Agent': 'habun-schedule-encrypted-result',
-                'X-GitHub-Api-Version': '2022-11-28',
-              },
-              body: JSON.stringify({ body: responseComment }),
-            })
-            if (!postResponse.ok) throw new Error(`Encrypted result comment failed ${postResponse.status}`)
-          }
           if (rejected > 0) process.exitCode = 2
           NODE
