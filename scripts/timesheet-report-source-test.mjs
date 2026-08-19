@@ -18,4 +18,15 @@ assert.match(report, /spreadsheetml\.sheet/)
 assert.match(report, /ExcelJSModule\.default/)
 assert.equal(fs.existsSync('netlify/functions/timesheet-export.mts'), false)
 
+const augustCorrectionPath = 'netlify/database/migrations/20260819110500_fix-august-pauses-and-mohamad-identity/migration.sql'
+assert.equal(fs.existsSync(augustCorrectionPath), true, 'August pause/identity correction migration must exist')
+const augustCorrection = fs.readFileSync(augustCorrectionPath, 'utf8')
+assert.match(augustCorrection, /\('Amin Khalaf Kije',\s*30\)/)
+assert.match(augustCorrection, /\('Almusa',\s*60\)/)
+assert.match(augustCorrection, /\('Amjad',\s*60\)/)
+assert.match(augustCorrection, /\('Kanee',\s*60\)/)
+assert.match(augustCorrection, /Mohamad/)
+assert.match(augustCorrection, /\('Mohamed Ahmed warsame',\s*60\)/)
+assert.match(augustCorrection, /employee_user_id\s*=\s*canonical_mohamed_user_id/)
+
 console.log('unified timesheet export source contract passed')
