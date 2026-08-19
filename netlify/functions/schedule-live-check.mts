@@ -10,7 +10,8 @@ function secureTokenMatches(expected: string, provided: string) {
 
 export default async function scheduleLiveCheck(request: Request, context: Context) {
   const expected = Netlify.env.get('SCHEDULE_LIVE_CHECK_TOKEN') || ''
-  const provided = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || ''
+  const url = new URL(request.url)
+  const provided = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || url.searchParams.get('key') || ''
   if (!expected || !provided || !secureTokenMatches(expected, provided)) {
     return Response.json({ message: 'Nicht erlaubt.' }, { status: 401 })
   }
