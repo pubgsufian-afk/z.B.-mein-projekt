@@ -1,3 +1,4 @@
+import { createDecipheriv } from 'node:crypto'
 import { writeFile } from 'node:fs/promises'
 
 const OIDC_AUDIENCE = 'habun-schedule-assistant'
@@ -51,6 +52,26 @@ function safeRelayError(value) {
     .trim()
     .slice(0, 180)
   return { message }
+}
+
+function publicKeyFromEncryptedResult(envelope, encryptedResult) {
+  if (envelope?.state !== 'public-key-request' || !encryptedResult) return null
+  const responseKey = String(envelope.responseKey || '').trim()
+  const key = Buffer.from(responseKey, 'base64')
+  if (key.length !== 32) throw new Error('Ungültiger öffentlicher Antwortschlüssel')
+
+  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(encryptedResult.iv, 'base64'))
+  decipher.setAuthTag(Buffer.from(encryptedResult.tag, 'base64'))
+  const plaintext = Buffer.concat([
+    decipher.update(Buffer.from(encryptedResult.ciphertext, 'base64')),
+    decipher.final(),
+  ])
+  const payload = JSON.parse(plaintext.toString('utf8'))
+  const publicKey = String(payload?.publicKey || '').trim()
+  if (!/^-----BEGIN PUBLIC KEY-----\n[\s\S]+\n-----END PUBLIC KEY-----$/.test(publicKey)) {
+    throw new Error('Öffentlicher Relay-Schlüssel ist ungültig')
+  }
+  return `${publicKey}\n`
 }
 
 const envelope = envelopeFromComment(requiredEnv('SCHEDULE_ENVELOPE_COMMENT'))
@@ -109,5 +130,12 @@ if (encryptedResult) {
   const resultPath = requiredEnv('SCHEDULE_ENCRYPTED_RESULT_PATH')
   await writeFile(resultPath, JSON.stringify(encryptedResult), { encoding: 'utf8', mode: 0o600 })
   console.log('Habun schedule OIDC relay: encrypted result artifact prepared')
+
+  const publicKey = publicKeyFromEncryptedResult(envelope, encryptedResult)
+  if (publicKey) {
+    const publicKeyPath = requiredEnv('SCHEDULE_PUBLIC_KEY_RESULT_PATH')
+    await writeFile(publicKeyPath, publicKey, { encoding: 'utf8', mode: 0o600 })
+    console.log('Habun schedule OIDC relay: public key response prepared')
+  }
 }
 if (rejectedCount > 0) process.exitCode = 2

@@ -8,6 +8,7 @@ permissions:
   contents: read
   id-token: write
   statuses: write
+  issues: write
 
 jobs:
   publish:
@@ -50,6 +51,33 @@ jobs:
         env:
           SCHEDULE_ENVELOPE_COMMENT: ${{ github.event.comment.body }}
           SCHEDULE_ENCRYPTED_RESULT_PATH: ${{ runner.temp }}/habun-schedule-result.json
+          SCHEDULE_PUBLIC_KEY_RESULT_PATH: ${{ runner.temp }}/habun-schedule-public-key.pem
+      - name: Publish public relay key response
+        if: steps.relay.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile } from 'node:fs/promises'
+          const path = `${process.env.RUNNER_TEMP}/habun-schedule-public-key.pem`
+          const publicKey = await readFile(path, 'utf8').catch(() => '')
+          if (!publicKey.trim()) process.exit(0)
+          if (!/^-----BEGIN PUBLIC KEY-----\n[\s\S]+\n-----END PUBLIC KEY-----\n?$/.test(publicKey)) {
+            throw new Error('public key response is invalid')
+          }
+          const body = `<!-- habun-schedule-public-key-v1 -->\n\`\`\`text\n${publicKey.trim()}\n\`\`\``
+          const response = await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/issues/73/comments`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${process.env.GH_TOKEN}`,
+              Accept: 'application/vnd.github+json',
+              'Content-Type': 'application/json',
+              'X-GitHub-Api-Version': '2022-11-28',
+            },
+            body: JSON.stringify({ body }),
+          })
+          if (!response.ok) throw new Error(`public key comment failed ${response.status}`)
+          NODE
       - name: Publish safe relay status
         if: always()
         env:
