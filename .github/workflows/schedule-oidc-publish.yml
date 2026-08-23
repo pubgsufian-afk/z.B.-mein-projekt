@@ -15,7 +15,7 @@ jobs:
       github.repository == 'pubgsufian-afk/z.B.-mein-projekt' &&
       github.event.issue.pull_request &&
       github.event.issue.number == 73 &&
-      github.event.sender.id == 249184348 &&
+      github.event.comment.user.id == 249184348 &&
       startsWith(github.event.comment.body, '<!-- habun-schedule-envelope-v1 -->')
     runs-on: ubuntu-latest
     steps:
