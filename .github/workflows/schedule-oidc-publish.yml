@@ -66,6 +66,7 @@ jobs:
           let classification = state === 'success' ? 'success' : `exit-${exitCode || 'unknown'}`
           if (state === 'failure') {
             if (exitCode === '2') classification = 'rejected'
+            else if (/Verschlüsselter Dienstplan-Auftrag ist ungültig/i.test(summary)) classification = 'decrypt'
             else if (/relay failed \(401\)/i.test(summary)) classification = 'netlify-401'
             else if (/relay failed \(400\)/i.test(summary)) classification = 'netlify-400'
             else if (/OIDC token request failed|OIDC token response is empty/i.test(summary)) classification = 'github-oidc'
