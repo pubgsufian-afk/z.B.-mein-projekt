@@ -8,7 +8,9 @@ for (const needle of [
   'spoolPortalAdminExport',
   'context.responseKey',
   "operation.action === 'timesheet-export'",
+  "operation.action === 'stamp-comparison-export'",
   "operation.action === 'schedule-export'",
+  'Habun-Stempelprotokoll',
   'export:',
 ]) assert.ok(source.includes(needle), `missing ${needle}`)
 assert.doesNotMatch(source, /ciphertext|pdfLogoDataUrl|console\.log/)
