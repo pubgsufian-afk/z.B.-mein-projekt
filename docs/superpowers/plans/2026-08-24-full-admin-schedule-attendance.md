@@ -4,22 +4,22 @@
 
 **Goal:** Give the encrypted portal-admin relay complete, efficient schedule and timesheet/attendance administration, including bulk corrections, manual time creation, targeted historical inspection, and scoped guest-to-registered identity rebinds.
 
-**Architecture:** Build on the typed router from `2026-08-24-full-admin-relay-foundation.md`. Extract attendance mutation business rules into a reusable internal service so browser endpoints and relay use the same validation/audit/legal-hold rules. Add targeted schedule repository operations and scoped identity rebinds. New high-level actions are designed around one employee/range and bulk arrays to avoid per-day calls.
+**Architecture:** Build on the typed router from `2026-08-24-full-admin-relay-foundation.md`. Extract attendance mutation business rules into a reusable service shared by browser endpoints and relay. Add targeted schedule/timesheet reads, bounded bulk mutations, scoped rebind transactions, and a deterministic client planner so large requests use the fewest possible calls.
 
-**Tech Stack:** TypeScript/Netlify Functions, Netlify Database/Postgres, Netlify Blobs, Node.js 22, existing schedule/attendance helpers, Node assertion tests and existing Playwright E2E regression tests.
+**Tech Stack:** TypeScript/Netlify Functions, Netlify Database/Postgres, Netlify Blobs, Node.js 22, existing schedule/attendance helpers, Node assertion tests, Playwright E2E regressions.
 
 **Spec:** `docs/superpowers/specs/2026-08-24-full-admin-portal-relay-design.md`
 
 ## Global Constraints
 
-- Complete Foundation Plan first.
-- No direct schedule/attendance SQL from ChatGPT or the OIDC trigger; SQL remains inside typed repository/service modules.
-- Every attendance write preserves legal-hold, audit, retention, overlap, and pause-boundary protections.
-- Registered portal user IDs are canonical; ambiguous name matches are rejected.
-- User-facing requests may span arbitrary practical ranges. Server reads are targeted by employee/date; client-side planning splits only when response/batch limits require it.
-- No per-day loop when one range query can return the data.
-- Bulk changes omit no-op rows.
-- Cross-domain employee rebind must report consistent schedule, legacy `timesheet_entries`, attendance events, and attendance adjustments results.
+- Complete the Foundation Plan first.
+- SQL remains inside typed repository/service modules; the OIDC trigger never writes data directly.
+- Attendance writes preserve legal holds, audit, retention, overlap, future-time, and pause-boundary protections.
+- Registered portal user IDs are canonical; ambiguous matches are rejected.
+- User-facing requests may span arbitrary practical ranges; splitting occurs only when response/batch limits require it.
+- No per-day loop when one employee/date-range query can return the required data.
+- Bulk mutation code omits no-op rows.
+- A cross-domain rebind reports schedule, legacy `timesheet_entries`, attendance events, and attendance adjustments separately.
 - Normal target remains one combined inspection, one batch/rebind, one combined verification.
 
 ---
@@ -36,15 +36,11 @@
 - Modify: `scripts/admin-time-editing-test.mjs`
 - Modify: `scripts/attendance-assistant-source-test.mjs`
 
-- [ ] **Step 1: Write failing service contract tests**
-
-Test validation-independent dependency injection so the service can be exercised without production DB credentials.
+- [ ] **Step 1: Write failing dependency-injected service tests**
 
 ```js
 import assert from 'node:assert/strict'
-import {
-  createAttendanceAdminService,
-} from '../netlify/functions/_shared/attendance-admin-service.mts'
+import { createAttendanceAdminService } from '../netlify/functions/_shared/attendance-admin-service.mts'
 
 const calls = []
 const service = createAttendanceAdminService({
@@ -52,7 +48,6 @@ const service = createAttendanceAdminService({
   async updateSession(input, actor) { calls.push(['update', input, actor]); return { saved: true } },
   async deleteEvents(input, actor) { calls.push(['delete', input, actor]); return { deletedIds: input.eventIds } },
 })
-
 const actor = { userId: 'portal-admin-relay', email: 'portal-admin-relay@internal.invalid', role: 'owner' }
 assert.equal((await service.createSession({ userId: 'u1', clockInAt: '2026-08-20T06:00:00Z', clockOutAt: '2026-08-20T14:00:00Z', pauseMinutes: 30 }, actor)).saved, true)
 assert.equal((await service.updateSession({ clockInEventId: 'i', clockOutEventId: 'o', clockInAt: '2026-08-20T06:00:00Z', clockOutAt: '2026-08-20T14:00:00Z', pauseMinutes: 30, reason: 'Korrektur' }, actor)).saved, true)
@@ -60,17 +55,13 @@ assert.deepEqual((await service.deleteEvents({ eventIds: ['e1'], reason: 'Fehlei
 assert.equal(calls.length, 3)
 ```
 
-Also add source assertions that browser endpoints import `attendance-admin-service.mts` and no longer each contain their own large SQL mutation blocks.
-
 - [ ] **Step 2: Run and confirm failure**
 
 ```bash
 node --experimental-strip-types scripts/attendance-admin-service-test.mjs
 ```
 
-Expected: missing module/export.
-
-- [ ] **Step 3: Implement actor and service contracts**
+- [ ] **Step 3: Implement service contracts**
 
 ```ts
 export type AttendanceAdminActor = {
@@ -99,27 +90,21 @@ export type AttendanceSessionUpdateInput = {
 }
 ```
 
-Move the existing proven SQL/validation from `attendance-time-create.mts` and `attendance-time-edit.mts` into default repository functions inside this shared service. Preserve:
+Move the existing proven mutation logic from `attendance-time-create.mts`, `attendance-time-edit.mts`, and attendance-assistant delete handling into default service repository methods. Preserve `pg_advisory_xact_lock`, future-time checks, pause <= gross time, break boundary checks, legal holds, `attendance_adjustments`, `attendance_audit_log`, and current retention fields.
 
-- `pg_advisory_xact_lock` overlap protection for create.
-- future-time validation.
-- pause <= gross time.
-- existing break events remaining within edited boundaries.
-- exact-event legal hold checks.
-- `attendance_adjustments` writes.
-- `attendance_audit_log` entries.
-- current 24-month retention fields.
+- [ ] **Step 4: Convert browser endpoints to thin adapters**
 
-For deletes, reuse the exact legal-hold/audit semantics currently in `attendance-assistant.mts` instead of maintaining a second implementation.
-
-- [ ] **Step 4: Convert the browser endpoints into thin adapters**
-
-`attendance-time-create.mts`:
+Use explicit HTTP responses rather than embedding service logic:
 
 ```ts
 const current = await currentPortalActor()
-if (!current || !DIRECT_TIME_CREATE_ROLES.has(current.role)) return ...
-try { verifyRequestOrigin(request) } catch { ... }
+if (!current) return json({ message: 'Nicht angemeldet.' }, 401)
+if (!DIRECT_TIME_CREATE_ROLES.has(current.role)) return json({ message: 'Keine Berechtigung.' }, 403)
+try {
+  verifyRequestOrigin(request)
+} catch {
+  return json({ message: 'Ungültige Anfragequelle.' }, 403)
+}
 const result = await attendanceAdminService().createSession(body, {
   userId: current.userId,
   email: current.email,
@@ -128,9 +113,7 @@ const result = await attendanceAdminService().createSession(body, {
 return json(result, 201)
 ```
 
-`attendance-time-edit.mts` follows the same pattern.
-
-`attendance-assistant.mts` calls the same service for update/delete with the stable relay actor:
+`attendance-time-edit.mts` follows the same pattern. `attendance-assistant.mts` uses:
 
 ```ts
 const RELAY_ACTOR = {
@@ -140,7 +123,7 @@ const RELAY_ACTOR = {
 }
 ```
 
-- [ ] **Step 5: Run existing + new attendance tests**
+- [ ] **Step 5: Run attendance regressions**
 
 ```bash
 node --experimental-strip-types scripts/attendance-admin-service-test.mjs
@@ -149,8 +132,6 @@ node scripts/admin-time-editing-test.mjs
 node scripts/attendance-assistant-source-test.mjs
 node --experimental-strip-types scripts/attendance-assistant-core-test.mjs
 ```
-
-Expected: pass.
 
 - [ ] **Step 6: Commit**
 
@@ -161,38 +142,31 @@ git commit -m "refactor: share attendance admin business rules"
 
 ---
 
-## Task 2: Add targeted combined employee-history inspection
+## Task 2: Add one targeted combined employee-history inspection
 
 **Files:**
 - Create: `netlify/functions/_shared/portal-admin-history.mts`
 - Modify: `netlify/functions/_shared/schedule-neon-repository.mts`
-- Modify: `netlify/functions/_shared/portal-admin-schedule.mts`
-- Modify: `netlify/functions/_shared/portal-admin-attendance.mts`
+- Modify: `netlify/functions/_shared/attendance-admin-service.mts`
+- Modify: `netlify/functions/_shared/portal-admin-router.mts`
 - Modify: `ops/portal-admin-capabilities.json`
 - Create: `scripts/portal-admin-history-test.mjs`
 
-- [ ] **Step 1: Write failing query-builder tests**
-
-The combined inspection input must support user ID and/or exact normalized name plus range and selected domains.
+- [ ] **Step 1: Write failing normalization tests**
 
 ```js
 import assert from 'node:assert/strict'
 import { normalizeHistoryInspection } from '../netlify/functions/_shared/portal-admin-history.mts'
 
 assert.deepEqual(normalizeHistoryInspection({
-  employeeUserId: 'u1',
-  from: '2026-08-01',
-  to: '2026-08-24',
-  domains: ['schedule', 'attendance'],
+  employeeUserId: 'u1', from: '2026-08-01', to: '2026-08-24', domains: ['schedule', 'attendance'],
 }), {
   employeeUserId: 'u1', employeeName: '', from: '2026-08-01', to: '2026-08-24', domains: ['schedule', 'attendance'],
 })
 assert.throws(() => normalizeHistoryInspection({ from: '2026-08-01', to: '2026-08-24' }), /Mitarbeiter/)
 ```
 
-- [ ] **Step 2: Add pure targeted repository reads**
-
-Extend `listScheduleShifts` only where needed; do not fetch full directory history. Add:
+- [ ] **Step 2: Add targeted legacy timesheet read using the confirmed schema**
 
 ```ts
 export async function listLegacyTimesheetEntries(filters: {
@@ -220,17 +194,31 @@ export async function listLegacyTimesheetEntries(filters: {
 }
 ```
 
-Use the confirmed schema column `timesheet_entries.work_date`.
+`timesheet_entries.work_date` is confirmed by migration `20260811233000_create-timesheet-monthly-snapshots`.
 
-For attendance inspection, add a read helper in `attendance-admin-service.mts` or `portal-admin-history.mts` that filters `attendance_events.event_date BETWEEN from/to` and exact `user_id` where known, joins latest pause adjustment, and returns only fields required for correction.
+- [ ] **Step 3: Add targeted attendance read**
 
-- [ ] **Step 3: Resolve the employee once**
+Query `attendance_events` by `event_date BETWEEN from/to` and exact `user_id` when resolved, left-join the latest `attendance_adjustments` value, and return only event/session correction fields. Do not load all employees or all history.
 
-`portal-admin-history.mts` first obtains the canonical registered user ID using the existing directory merge logic. If the user supplies an old/provisional identity plus target registered identity, return both identities explicitly. If a name maps to 0 or >1 active registered accounts, return `not_found`/`conflict`; never guess.
+- [ ] **Step 4: Resolve identity once and return a typed snapshot**
 
-- [ ] **Step 4: Add `portal.inspect-employee-history`**
+Define:
 
-Register:
+```ts
+export type EmployeeHistorySnapshot = {
+  employee: { userId: string; fullName: string } | null
+  provisionalIdentities: Array<{ userId: string; fullName: string }>
+  schedule: ScheduleShift[]
+  legacyTimesheet: LegacyTimesheetEntry[]
+  attendance: AttendanceEventSnapshot[]
+  counts: { schedule: number; legacyTimesheet: number; attendance: number }
+  truncated: false
+}
+```
+
+If exact name resolution gives zero matches, return `not_found`; if more than one active account matches, return `conflict`. Never guess.
+
+- [ ] **Step 5: Register `portal.inspect-employee-history`**
 
 ```json
 {
@@ -244,37 +232,18 @@ Register:
 }
 ```
 
-The result contains one compact object:
+Register a `portal` handler in the router for this action.
 
-```ts
-{
-  employee: { userId, fullName },
-  provisionalIdentities: [{ userId, fullName }],
-  schedule: [...],
-  legacyTimesheet: [...],
-  attendance: [...],
-  counts: { schedule, legacyTimesheet, attendance },
-  truncated: false,
-}
-```
+- [ ] **Step 6: Guard encrypted result size**
 
-Do not include email unless the requested operation actually needs it.
+Calculate JSON byte length before returning detailed data. If it would exceed 400,000 bytes, return `conflict` code `RANGE_RESULT_TOO_LARGE` with counts and requested date bounds only. The client planner then creates the minimum number of chunks.
 
-- [ ] **Step 5: Add a hard encrypted-result size guard**
-
-If the projected result would exceed the existing 400 KB encrypted payload limit, return a `conflict` item with code `RANGE_RESULT_TOO_LARGE` and counts/date bounds, not a silently truncated row set. The caller then splits the range into the minimum number of chunks.
-
-- [ ] **Step 6: Run tests**
+- [ ] **Step 7: Run tests and commit**
 
 ```bash
 node --experimental-strip-types scripts/portal-admin-history-test.mjs
 node scripts/schedule-provisional-reconciliation-source-test.mjs
-```
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add netlify/functions/_shared/portal-admin-history.mts netlify/functions/_shared/schedule-neon-repository.mts netlify/functions/_shared/portal-admin-schedule.mts netlify/functions/_shared/portal-admin-attendance.mts ops/portal-admin-capabilities.json scripts/portal-admin-history-test.mjs
+git add netlify/functions/_shared/portal-admin-history.mts netlify/functions/_shared/schedule-neon-repository.mts netlify/functions/_shared/attendance-admin-service.mts netlify/functions/_shared/portal-admin-router.mts ops/portal-admin-capabilities.json scripts/portal-admin-history-test.mjs
 git commit -m "feat: inspect employee history through one targeted relay read"
 ```
 
@@ -288,9 +257,9 @@ git commit -m "feat: inspect employee history through one targeted relay read"
 - Modify: `ops/portal-admin-capabilities.json`
 - Create: `scripts/portal-admin-bulk-schedule-test.mjs`
 
-- [ ] **Step 1: Write failing bulk schedule tests**
+- [ ] **Step 1: Write failing tests for 1–100 updates, order, no-op, conflict, and not-found results**
 
-Test 1–100 updates, preserved order, no-op detection, duplicate/overlap protection, and partial explicit results.
+Use inputs shaped as:
 
 ```js
 const input = {
@@ -301,41 +270,24 @@ const input = {
 }
 ```
 
-Expected per item status is one of `success`, `not_found`, `conflict`, `rejected`; unchanged values return `success` with `{ changed: false }` and must not rewrite the row/audit log.
+- [ ] **Step 2: Refactor current single-shift update into a reusable record function**
 
-- [ ] **Step 2: Implement `bulk-update-shifts` in the schedule assistant**
-
-Reuse `updateAssistantShift` for business validation, but refactor its core into an internal function returning data rather than Response so the bulk loop does not HTTP-call itself.
+The helper returns a typed result and performs the same employee/worksite/overlap/audit validation as today. For a missing row return:
 
 ```ts
-for (const update of updates) {
-  const before = await findScheduleShift(update.shiftId)
-  if (!before) { results.push(...); continue }
-  if (shiftChangesAreNoop(before, update.changes)) {
-    results.push({ itemId: update.itemId, status: 'success', changed: false, shiftId: before.id })
-    continue
-  }
-  results.push(await updateAssistantShiftRecord(update.shiftId, update.changes, employees, requestId))
-}
+results.push({ itemId: update.itemId, status: 'not_found', code: 'SHIFT_NOT_FOUND', shiftId: update.shiftId })
 ```
 
-Keep `MAX_BATCH = 100`.
+For unchanged projected values return `success` with `changed: false` and skip upsert/audit. Otherwise call the reusable update helper. Keep `MAX_BATCH = 100`.
 
-- [ ] **Step 3: Register and route the action**
+- [ ] **Step 3: Register `schedule.bulk-update-shifts` and map it in the adapter**
 
-Add `schedule.bulk-update-shifts` to capability registry. The adapter maps relay input `{ updates }` to assistant action `bulk-update-shifts`.
-
-- [ ] **Step 4: Run focused tests**
+- [ ] **Step 4: Run tests and commit**
 
 ```bash
 node scripts/portal-admin-bulk-schedule-test.mjs
 node scripts/schedule-assistant-management-source-test.mjs
 node scripts/schedule-assistant-source-test.mjs
-```
-
-- [ ] **Step 5: Commit**
-
-```bash
 git add netlify/functions/schedule-assistant.mts netlify/functions/_shared/portal-admin-schedule.mts ops/portal-admin-capabilities.json scripts/portal-admin-bulk-schedule-test.mjs
 git commit -m "feat: bulk update schedule shifts through relay"
 ```
@@ -350,61 +302,47 @@ git commit -m "feat: bulk update schedule shifts through relay"
 - Modify: `ops/portal-admin-capabilities.json`
 - Create: `scripts/portal-admin-bulk-attendance-test.mjs`
 
-- [ ] **Step 1: Write failing batch tests**
+- [ ] **Step 1: Write failing tests**
 
-Cover:
+Cover `bulk-update-attendance-sessions` with 1–100 sessions, `create-attendance-session`, one legal-hold rejection inside a mixed batch, and no-op detection.
 
-- `bulk-update-attendance-sessions` with 1–100 sessions.
-- `create-attendance-session` using the shared service.
-- legal-hold rejection on one item without falsely marking the whole command success.
-- no-op update when clock times/pause already equal effective values.
-
-- [ ] **Step 2: Implement assistant actions**
+- [ ] **Step 2: Implement bounded assistant actions using `attendance-admin-service`**
 
 ```ts
 if (action === 'bulk-update-attendance-sessions') {
   const updates = Array.isArray(body.updates) ? body.updates.slice(0, 100) : []
   const results = []
-  for (const update of updates) {
-    results.push(await updateAttendanceItem(update, RELAY_ACTOR))
-  }
+  for (const update of updates) results.push(await updateAttendanceItem(update, RELAY_ACTOR))
   return json({ results })
 }
 
 if (action === 'create-attendance-session') {
-  const result = await attendanceAdminService().createSession(body.input, RELAY_ACTOR)
+  const input = body.input && typeof body.input === 'object' ? body.input as Record<string, unknown> : {}
+  const result = await attendanceAdminService().createSession(input, RELAY_ACTOR)
   return json({ result }, 201)
 }
 ```
 
-Do not relax the service protections for relay use.
+Do not relax service protections for relay use.
 
 - [ ] **Step 3: Register capabilities**
 
-Add:
+Add `attendance.bulk-update-sessions` and `attendance.create-session` as `relay-supported`.
 
-- `attendance.bulk-update-sessions` -> relay-supported.
-- `attendance.create-session` -> relay-supported.
-
-- [ ] **Step 4: Run focused tests**
+- [ ] **Step 4: Run tests and commit**
 
 ```bash
 node scripts/portal-admin-bulk-attendance-test.mjs
 node scripts/attendance-assistant-source-test.mjs
 node scripts/timesheet-create-source-test.mjs
 node scripts/admin-time-editing-test.mjs
-```
-
-- [ ] **Step 5: Commit**
-
-```bash
 git add netlify/functions/attendance-assistant.mts netlify/functions/_shared/portal-admin-attendance.mts ops/portal-admin-capabilities.json scripts/portal-admin-bulk-attendance-test.mjs
 git commit -m "feat: bulk manage attendance through portal relay"
 ```
 
 ---
 
-## Task 5: Add scoped employee-history rebind across schedule, legacy timesheet, and attendance
+## Task 5: Add scoped employee-history rebind
 
 **Files:**
 - Modify: `netlify/functions/_shared/schedule-neon-repository.mts`
@@ -414,121 +352,69 @@ git commit -m "feat: bulk manage attendance through portal relay"
 - Modify: `ops/portal-admin-capabilities.json`
 - Create: `scripts/portal-admin-history-rebind-test.mjs`
 
-- [ ] **Step 1: Write failing scoped-rebind tests**
+- [ ] **Step 1: Write failing range/domain tests**
 
-Use a fake repository to prove rows outside the requested range are untouched and requested domains are honored.
+Use a fake repository with rows before, inside, and after the range and assert only requested rows/domains change.
 
-```js
-const result = await rebindEmployeeHistory({
-  sourceUserId: 'guest:abc',
-  targetUserId: 'registered-kwame',
-  targetFullName: 'Kwame Akakpo',
-  from: '2026-08-01',
-  to: '2026-08-24',
-  domains: ['schedule', 'attendance'],
-  reason: 'Registriertes Konto zuordnen',
-}, actor, repository)
+- [ ] **Step 2: Add scoped schedule + legacy timesheet transaction**
 
-assert.deepEqual(result.range, { from: '2026-08-01', to: '2026-08-24' })
-assert.equal(result.schedule.shiftCount >= 0, true)
-assert.equal(result.attendance.eventCount >= 0, true)
+```sql
+UPDATE schedule_shifts
+   SET employee_user_id = $2, employee_name = $3, updated_at = now(), updated_by = $6
+ WHERE employee_user_id = $1
+   AND shift_date BETWEEN $4::date AND $5::date
 ```
 
-- [ ] **Step 2: Add a scoped schedule/legacy-timesheet repository transaction**
+```sql
+UPDATE timesheet_entries
+   SET employee_user_id = $2, employee_name = $3, updated_at = now(), updated_by = $6
+ WHERE employee_user_id = $1
+   AND work_date BETWEEN $4::date AND $5::date
+```
 
-Create a new function instead of changing the semantics of legacy `rebindProvisionalEmployeeIdentity` immediately:
+Before update, detect exact target schedule conflicts in the same range. Keep the current unscoped legacy rebind function intact for backward compatibility until all callers migrate.
+
+- [ ] **Step 3: Add scoped attendance rebind**
+
+Within one DB transaction/unit:
+
+1. select source event IDs with `user_id = sourceUserId` and requested `event_date` range.
+2. reject when any selected event is under `attendance_legal_holds`.
+3. update `attendance_events.user_id` for selected IDs.
+4. update `attendance_adjustments.user_id` for adjustments tied to selected IDs.
+5. insert one `attendance_audit_log` row with action `admin-employee-rebind`, range, source/target IDs, and counts.
+
+- [ ] **Step 4: Coordinate the requested domains**
+
+Input contract:
 
 ```ts
-export async function rebindScheduleEmployeeHistory(input: {
+export type EmployeeHistoryRebindInput = {
   sourceUserId: string
   targetUserId: string
   targetFullName: string
   from: string
   to: string
-  actorId: string
-})
-```
-
-Schedule update:
-
-```sql
-UPDATE schedule_shifts
-   SET employee_user_id = $2,
-       employee_name = $3,
-       updated_at = now(),
-       updated_by = $6
- WHERE employee_user_id = $1
-   AND shift_date BETWEEN $4::date AND $5::date
-```
-
-Legacy timesheet update uses the confirmed `work_date` schema:
-
-```sql
-UPDATE timesheet_entries
-   SET employee_user_id = $2,
-       employee_name = $3,
-       updated_at = now(),
-       updated_by = $6
- WHERE employee_user_id = $1
-   AND work_date BETWEEN $4::date AND $5::date
-```
-
-Before update, detect exact target schedule conflicts in the same range. Write audit counts and range, never employee private data beyond IDs already required for the audit model.
-
-- [ ] **Step 3: Add scoped attendance rebind**
-
-In one transaction/atomic SQL unit where supported:
-
-1. Find source attendance event IDs where `user_id = sourceUserId AND event_date BETWEEN from AND to`.
-2. Reject if any exact event ID has an active `attendance_legal_holds` row.
-3. Update `attendance_events.user_id` for those event IDs.
-4. Update `attendance_adjustments.user_id` for adjustments tied to those event IDs.
-5. Add an `attendance_audit_log` record with action `admin-employee-rebind`, range, source/target IDs and affected counts.
-
-Do not modify timestamps/actions merely for rebind.
-
-- [ ] **Step 4: Coordinate domains in `employee-history-rebind.mts`**
-
-Allowed domains are exactly `schedule`, `attendance`, or both. Schedule service itself includes legacy `timesheet_entries` because those rows mirror schedule/manual timesheets in the same DB.
-
-If schedule rebind succeeds and attendance fails, return `conflict` with per-domain details and immediately run targeted verification. Do not claim full success. Where both use the same database connection abstraction during implementation, prefer a single shared transaction; if they remain separate pools/stores, use explicit coordinated workflow with before/after counts as specified.
-
-- [ ] **Step 5: Register `portal.rebind-employee-history`**
-
-Input:
-
-```ts
-{
-  sourceUserId: string,
-  targetUserId: string,
-  targetFullName: string,
-  from: string,
-  to: string,
-  domains: Array<'schedule' | 'attendance'>,
-  reason: string,
+  domains: Array<'schedule' | 'attendance'>
+  reason: string
 }
 ```
 
-Require source and target IDs to differ. Target cannot be `guest:`. When source is a provisional guest, validate via `isProvisionalEmployeeUserId`; for explicit stale registered-ID corrections, require `reason` and a uniquely resolved target.
+Target ID cannot start with `guest:` and source/target must differ. If source is not provisional, require an explicit reason and uniquely verified target. Return per-domain counts. On partial failure return `conflict` and immediately perform a targeted verification read; never state full success.
 
-- [ ] **Step 6: Run tests**
+- [ ] **Step 5: Register `portal.rebind-employee-history` and run tests**
 
 ```bash
 node --experimental-strip-types scripts/portal-admin-history-rebind-test.mjs
 node scripts/schedule-provisional-reconciliation-source-test.mjs
 node scripts/attendance-assistant-source-test.mjs
-```
-
-- [ ] **Step 7: Commit**
-
-```bash
 git add netlify/functions/_shared/schedule-neon-repository.mts netlify/functions/_shared/attendance-admin-service.mts netlify/functions/_shared/employee-history-rebind.mts netlify/functions/_shared/portal-admin-history.mts ops/portal-admin-capabilities.json scripts/portal-admin-history-rebind-test.mjs
 git commit -m "feat: rebind employee history by scoped date range"
 ```
 
 ---
 
-## Task 6: Add minimum-chunk range planning and no-op mutation planning
+## Task 6: Add minimum-chunk and no-op client planning
 
 **Files:**
 - Create: `scripts/portal-admin-client-planner.mjs`
@@ -536,15 +422,11 @@ git commit -m "feat: rebind employee history by scoped date range"
 
 - [ ] **Step 1: Write failing planner tests**
 
-The client-side helper is used by future relay invocation code, not the portal runtime.
-
 ```js
 import assert from 'node:assert/strict'
 import { minimalDateChunks, changedRowsOnly } from './portal-admin-client-planner.mjs'
 
-assert.deepEqual(minimalDateChunks('2026-08-01', '2026-08-24', 62), [
-  { from: '2026-08-01', to: '2026-08-24' },
-])
+assert.deepEqual(minimalDateChunks('2026-08-01', '2026-08-24', 62), [{ from: '2026-08-01', to: '2026-08-24' }])
 assert.equal(minimalDateChunks('2026-01-01', '2026-08-24', 62).length, 4)
 assert.deepEqual(changedRowsOnly([
   { id: 'a', before: { pauseMinutes: 30 }, after: { pauseMinutes: 30 } },
@@ -552,55 +434,35 @@ assert.deepEqual(changedRowsOnly([
 ]).map((row) => row.id), ['b'])
 ```
 
-- [ ] **Step 2: Implement deterministic minimal chunking**
+- [ ] **Step 2: Implement deterministic minimal date chunking**
 
-Use calendar-day arithmetic in UTC noon/date-only form. Generate the fewest contiguous chunks for the supplied maximum inclusive days; never split a range that already fits.
+Use date-only UTC arithmetic; generate the fewest contiguous inclusive chunks and never split a range that already fits.
 
-- [ ] **Step 3: Implement no-op diffing for JSON-safe projected fields**
+- [ ] **Step 3: Implement deterministic no-op diffing**
 
-Compare only explicit `before`/`after` projected fields, not metadata timestamps. Keep deterministic key ordering.
+Compare only explicit projected `before`/`after` values, not audit/update timestamps.
 
-- [ ] **Step 4: Run tests**
+- [ ] **Step 4: Run and commit**
 
 ```bash
 node scripts/portal-admin-client-planner-test.mjs
-```
-
-- [ ] **Step 5: Commit**
-
-```bash
 git add scripts/portal-admin-client-planner.mjs scripts/portal-admin-client-planner-test.mjs
 git commit -m "feat: plan minimal portal admin range batches"
 ```
 
 ---
 
-## Task 7: End-to-end Kwame-style historical correction verification
+## Task 7: Prove the Kwame-style correction and sparse-call contract
 
 **Files:**
 - Create: `scripts/portal-admin-schedule-attendance-integration-test.mjs`
 - Modify: `package.json`
 
-- [ ] **Step 1: Build an integration fixture that represents a newly registered employee**
+- [ ] **Step 1: Build a deterministic integration fixture**
 
-Fixture includes:
+Fixture contains registered `Kwame Akakpo`, old provisional `Kwame`, schedule and `timesheet_entries.work_date` rows before/inside/after `2026-08-01..2026-08-24`, attendance events/adjustments in range, and an unrelated employee.
 
-- registered `Kwame Akakpo` identity.
-- old provisional `Kwame` guest identity.
-- schedule rows before, inside, and after `2026-08-01..2026-08-24`.
-- matching `timesheet_entries.work_date` rows.
-- attendance events/adjustments inside range.
-- one unrelated employee.
-
-Test flow must be exactly:
-
-1. one `inspect-employee-history`.
-2. one `rebind-employee-history`.
-3. one verification `inspect-employee-history`.
-
-Assert the in-range rows use the registered user ID and name, out-of-range rows remain unchanged, and unrelated rows remain untouched.
-
-- [ ] **Step 2: Assert the cost contract in the test**
+- [ ] **Step 2: Execute exactly one inspect, one rebind, one verification inspect**
 
 ```js
 assert.deepEqual(calls.map((call) => call.action), [
@@ -610,7 +472,7 @@ assert.deepEqual(calls.map((call) => call.action), [
 ])
 ```
 
-This makes the sparse-call design executable, not merely documentation.
+Assert all in-range target rows use the registered ID/name after rebind; out-of-range and unrelated rows are unchanged.
 
 - [ ] **Step 3: Add focused verification script**
 
@@ -618,17 +480,10 @@ This makes the sparse-call design executable, not merely documentation.
 "verify:portal-admin-schedule-attendance": "node --experimental-strip-types scripts/attendance-admin-service-test.mjs && node --experimental-strip-types scripts/portal-admin-history-test.mjs && node scripts/portal-admin-bulk-schedule-test.mjs && node scripts/portal-admin-bulk-attendance-test.mjs && node --experimental-strip-types scripts/portal-admin-history-rebind-test.mjs && node scripts/portal-admin-client-planner-test.mjs && node --experimental-strip-types scripts/portal-admin-schedule-attendance-integration-test.mjs"
 ```
 
-- [ ] **Step 4: Run focused tests**
+- [ ] **Step 4: Run focused and existing regressions**
 
 ```bash
 npm run verify:portal-admin-schedule-attendance
-```
-
-Expected: exit 0.
-
-- [ ] **Step 5: Run relevant existing regressions**
-
-```bash
 node scripts/schedule-assistant-source-test.mjs
 node scripts/schedule-assistant-management-source-test.mjs
 node scripts/schedule-provisional-reconciliation-source-test.mjs
@@ -638,15 +493,10 @@ node scripts/timesheet-create-source-test.mjs
 node scripts/timesheet-utils-test.mjs
 node scripts/timesheet-integration-test.mjs
 node scripts/timesheet-report-source-test.mjs
-```
-
-- [ ] **Step 6: Run full verification**
-
-```bash
 npm run verify
 ```
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add scripts/portal-admin-schedule-attendance-integration-test.mjs package.json
@@ -655,9 +505,9 @@ git commit -m "test: verify full schedule attendance admin flow"
 
 ## Schedule & Attendance Done Criteria
 
-- A single combined read can inspect one employee/range across schedule, legacy timesheet, and attendance.
-- Schedule shifts can be corrected in one bounded bulk command.
-- Attendance sessions can be created or corrected in one bounded bulk command using the same rules as the portal UI.
-- Pauses can be changed through the relay without bypassing audit/legal-hold rules.
-- Explicit scoped rebind can move old guest/stale history to one registered identity for only the requested range/domains.
+- One combined read inspects one employee/range across schedule, legacy timesheet, and attendance.
+- Schedule shifts and attendance sessions support bounded bulk correction.
+- Manual attendance creation uses the same business rules as the portal UI.
+- Pauses can be corrected without bypassing audit/legal-hold protections.
+- Scoped rebind updates only requested dates/domains and uses the registered canonical identity.
 - The Kwame-style use case is proven as `1 read -> 1 rebind -> 1 verification`, with no per-day loop.
