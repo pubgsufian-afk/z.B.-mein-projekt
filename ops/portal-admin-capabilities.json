@@ -81,6 +81,15 @@
     "relay": { "domain": "schedule", "action": "update-shift" }
   },
   {
+    "id": "schedule.bulk-update-shifts",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-oidc-trigger",
+    "method": "POST",
+    "action": "bulk-update-shifts",
+    "classification": "relay-supported",
+    "relay": { "domain": "schedule", "action": "bulk-update-shifts" }
+  },
+  {
     "id": "schedule.delete-shift",
     "surface": "Dienstplan",
     "endpoint": "/api/schedule-assistant",
