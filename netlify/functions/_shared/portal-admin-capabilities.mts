@@ -1,4 +1,5 @@
-import registry from '../../../ops/portal-admin-capabilities.json' with { type: 'json' }
+import baseRegistry from '../../../ops/portal-admin-capabilities.json' with { type: 'json' }
+import extraRegistry from '../../../ops/portal-admin-capabilities-extra.json' with { type: 'json' }
 import type { PortalAdminDomain } from './portal-admin-command-core.mts'
 
 export type PortalAdminCapabilityClassification =
@@ -20,7 +21,7 @@ export type PortalAdminCapability = {
   reason?: string
 }
 
-const capabilities = registry as PortalAdminCapability[]
+const capabilities = [...baseRegistry, ...extraRegistry] as PortalAdminCapability[]
 
 export function portalAdminCapability(domain: PortalAdminDomain, action: string) {
   return capabilities.find((entry) => entry.relay?.domain === domain && entry.relay.action === action)
