@@ -8,6 +8,10 @@ import { createPortalAdminRouter } from './_shared/portal-admin-router.mts'
 import { createSchedulePortalAdminHandler } from './_shared/portal-admin-schedule.mts'
 import { createAttendancePortalAdminHandler } from './_shared/portal-admin-attendance.mts'
 import { createPortalHistoryAdminHandler } from './_shared/portal-admin-history.mts'
+import { createEmployeePortalAdminHandler } from './_shared/portal-admin-employees.mts'
+import { createRegistrationsPortalAdminHandler } from './_shared/portal-admin-registrations.mts'
+import { createWorksitePortalAdminHandler } from './_shared/portal-admin-worksites.mts'
+import { createCompanyPortalAdminHandler } from './_shared/portal-admin-company.mts'
 import { findScheduleShift } from './_shared/schedule-neon-repository.mts'
 import { syncPublishedScheduleShift } from './_shared/timesheet-schedule-sync.mts'
 import scheduleAssistant from './schedule-assistant.mts'
@@ -212,8 +216,12 @@ export default async function scheduleOidcTrigger(request: Request, context: Con
 
     const router = createPortalAdminRouter({
       portal: createPortalHistoryAdminHandler(),
+      employees: createEmployeePortalAdminHandler(),
+      registrations: createRegistrationsPortalAdminHandler('owner'),
       schedule: createSchedulePortalAdminHandler(context),
       attendance: createAttendancePortalAdminHandler(context),
+      worksites: createWorksitePortalAdminHandler(),
+      company: createCompanyPortalAdminHandler('owner'),
     })
     const data = await router.run(parsedPortal.command)
     let encryptedResult: ReturnType<typeof encryptAssistantResult>
