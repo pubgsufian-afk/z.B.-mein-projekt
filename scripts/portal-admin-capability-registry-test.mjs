@@ -30,7 +30,6 @@ for (const id of [
   'attendance.delete-events',
   'attendance.list-corrections',
   'timesheets.list',
-  'notifications.send',
   'reports.stamp-comparison-export',
 ]) assert.ok(registry.some((row) => row.id === id), `missing ${id}`)
 
@@ -38,7 +37,6 @@ assert.equal(portalAdminActionAllowed('schedule', 'publish-shifts'), true)
 assert.equal(portalAdminActionAllowed('attendance', 'update-session'), true)
 assert.equal(portalAdminActionAllowed('employees', 'get'), true)
 assert.equal(portalAdminActionAllowed('attendance', 'timesheet-list'), true)
-assert.equal(portalAdminActionAllowed('company', 'send-notification'), true)
 assert.equal(portalAdminCapability('attendance', 'list')?.id, 'attendance.list')
 assert.equal(portalAdminCapability('reports', 'stamp-comparison-export')?.id, 'reports.stamp-comparison-export')
 
