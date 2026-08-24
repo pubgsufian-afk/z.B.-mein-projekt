@@ -1,5 +1,14 @@
 [
   {
+    "id": "portal.inspect-employee-history",
+    "surface": "Portal Admin",
+    "endpoint": "/api/schedule-oidc-trigger",
+    "method": "POST",
+    "action": "inspect-employee-history",
+    "classification": "relay-read-only",
+    "relay": { "domain": "portal", "action": "inspect-employee-history" }
+  },
+  {
     "id": "schedule.sync-directory",
     "surface": "Dienstplan",
     "endpoint": "/api/schedule-assistant",
