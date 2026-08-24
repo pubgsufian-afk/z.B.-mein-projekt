@@ -4,6 +4,14 @@ import {
   PortalAdminReportError,
 } from './portal-admin-report-service.mts'
 import {
+  createDailyReportAdmin,
+  deleteDailyReportAdmin,
+  generateDailyReportAdminPdf,
+  listDailyReportsAdmin,
+  PortalAdminDailyReportError,
+  updateDailyReportAdmin,
+} from './portal-admin-daily-report-service.mts'
+import {
   spoolPortalAdminExport,
   PortalAdminExportSpoolError,
 } from './portal-admin-export-spool.mts'
@@ -15,43 +23,91 @@ function failureStatus(status: number) {
   return 'rejected' as const
 }
 
+async function spoolGenerated(generated: {
+  bytes: Uint8Array
+  filename: string
+  contentType: string
+  rowCount: number
+}, responseKey: string) {
+  const exported = await spoolPortalAdminExport({
+    bytes: generated.bytes,
+    responseKey,
+    filename: generated.filename,
+    contentType: generated.contentType,
+  })
+  return { export: exported, rowCount: generated.rowCount }
+}
+
 export function createReportsPortalAdminHandler(): PortalAdminHandler {
   return async (operation, context) => {
     try {
-      const generated = operation.action === 'timesheet-export'
-        ? await generateTimesheetAdminExport(operation.input)
-        : operation.action === 'schedule-export'
-          ? await generateScheduleAdminExport(operation.input)
-          : null
-
-      if (!generated) {
+      if (operation.action === 'timesheet-export') {
         return {
           itemId: operation.itemId,
           domain: operation.domain,
           action: operation.action,
-          status: 'rejected',
-          code: 'ACTION_NOT_MAPPED',
+          status: 'success',
+          data: await spoolGenerated(await generateTimesheetAdminExport(operation.input), context.responseKey),
         }
       }
-
-      const exported = await spoolPortalAdminExport({
-        bytes: generated.bytes,
-        responseKey: context.responseKey,
-        filename: generated.filename,
-        contentType: generated.contentType,
-      })
+      if (operation.action === 'schedule-export') {
+        return {
+          itemId: operation.itemId,
+          domain: operation.domain,
+          action: operation.action,
+          status: 'success',
+          data: await spoolGenerated(await generateScheduleAdminExport(operation.input), context.responseKey),
+        }
+      }
+      if (operation.action === 'daily-list') {
+        const reports = await listDailyReportsAdmin(String(operation.input.date || ''))
+        return {
+          itemId: operation.itemId,
+          domain: operation.domain,
+          action: operation.action,
+          status: 'success',
+          data: { reports, count: reports.length },
+        }
+      }
+      if (operation.action === 'daily-create') {
+        const report = await createDailyReportAdmin(operation.input.text)
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data: { report } }
+      }
+      if (operation.action === 'daily-update') {
+        const report = await updateDailyReportAdmin(operation.input.id, operation.input.text)
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data: { report } }
+      }
+      if (operation.action === 'daily-delete') {
+        if (operation.input.confirm !== true) {
+          return {
+            itemId: operation.itemId,
+            domain: operation.domain,
+            action: operation.action,
+            status: 'rejected',
+            code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED',
+          }
+        }
+        const data = await deleteDailyReportAdmin(operation.input.id)
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data }
+      }
+      if (operation.action === 'daily-export') {
+        return {
+          itemId: operation.itemId,
+          domain: operation.domain,
+          action: operation.action,
+          status: 'success',
+          data: await spoolGenerated(await generateDailyReportAdminPdf(operation.input), context.responseKey),
+        }
+      }
       return {
         itemId: operation.itemId,
         domain: operation.domain,
         action: operation.action,
-        status: 'success',
-        data: {
-          export: exported,
-          rowCount: generated.rowCount,
-        },
+        status: 'rejected',
+        code: 'ACTION_NOT_MAPPED',
       }
     } catch (error) {
-      if (error instanceof PortalAdminReportError || error instanceof PortalAdminExportSpoolError) {
+      if (error instanceof PortalAdminReportError || error instanceof PortalAdminDailyReportError || error instanceof PortalAdminExportSpoolError) {
         return {
           itemId: operation.itemId,
           domain: operation.domain,
