@@ -38,8 +38,10 @@ export function createAttendancePortalAdminHandler(context: Context): PortalAdmi
       }
     }
 
+    const reason = String(operation.input.reason || commandContext.reason || '').trim()
     const body = {
       ...operation.input,
+      ...(reason ? { reason } : {}),
       action: assistantAction,
       requestId: `${commandContext.commandId}:${operation.itemId}`,
     }
