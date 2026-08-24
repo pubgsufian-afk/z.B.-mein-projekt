@@ -1,5 +1,6 @@
 import type { Context } from '@netlify/functions'
 import scheduleAssistant from '../schedule-assistant.mts'
+import { bulkUpdateScheduleShifts } from './portal-admin-bulk-schedule.mts'
 import type { PortalAdminHandler } from './portal-admin-router.mts'
 
 function httpFailureStatus(status: number) {
@@ -23,6 +24,23 @@ function publishResultStatus(data: Record<string, unknown>) {
 
 export function createSchedulePortalAdminHandler(context: Context): PortalAdminHandler {
   return async (operation, commandContext) => {
+    if (operation.action === 'bulk-update-shifts') {
+      const data = await bulkUpdateScheduleShifts(operation.input, commandContext.commandId)
+      const results = Array.isArray(data.results) ? data.results : []
+      const failed = results.filter((entry) => {
+        const row = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {}
+        return String(row.status || '') !== 'success'
+      }).length
+      return {
+        itemId: operation.itemId,
+        domain: operation.domain,
+        action: operation.action,
+        status: failed ? 'conflict' : 'success',
+        ...(failed ? { code: 'PARTIAL_BULK_RESULT' } : {}),
+        data,
+      }
+    }
+
     const token = String(Netlify.env.get('SCHEDULE_ASSISTANT_TOKEN') || '').trim()
     if (!token) {
       return {
