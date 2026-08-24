@@ -15,6 +15,7 @@ const tests = [
   ['scripts/portal-admin-history-test.mjs', true],
   ['scripts/portal-admin-bulk-attendance-test.mjs', false],
   ['scripts/portal-admin-history-rebind-test.mjs', false],
+  ['scripts/portal-admin-history-rebind-audit-test.mjs', false],
   ['scripts/portal-admin-client-planner-test.mjs', false],
   ['scripts/portal-admin-bulk-schedule-test.mjs', false],
   ['scripts/portal-admin-schedule-attendance-integration-test.mjs', false],
