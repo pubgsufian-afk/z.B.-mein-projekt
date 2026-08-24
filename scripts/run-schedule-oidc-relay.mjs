@@ -112,6 +112,8 @@ const employeeCount = count(result?.employeeCount ?? 0)
 const publishedCount = count(result?.publishedCount ?? 0)
 const duplicateCount = count(result?.duplicateCount ?? 0)
 const rejectedCount = count(result?.rejectedCount ?? 0)
+const hasPortalAdminCounts = result?.succeededCount !== undefined
+const succeededCount = hasPortalAdminCounts ? count(result?.succeededCount ?? 0) : 0
 const directoryDiagnostics = result?.directoryDiagnostics && typeof result.directoryDiagnostics === 'object'
   ? result.directoryDiagnostics
   : {}
@@ -125,6 +127,9 @@ const encryptedResult = safeEncryptedResult(result?.encryptedResult)
 
 console.log(`Habun schedule OIDC relay: employees=${employeeCount} published=${publishedCount} duplicate=${duplicateCount} rejected=${rejectedCount}`)
 console.log(`Habun schedule OIDC relay: directory identity=${identityUserCount} access=${accessCount} registrations=${registrationCount} combined=${combinedAccessCount} employees=${employeeCount} requested=${requestedCount} identityOk=${identityLookupSucceeded}`)
+if (hasPortalAdminCounts) {
+  console.log(`Habun portal admin OIDC relay: succeeded=${succeededCount} rejected=${rejectedCount}`)
+}
 
 if (encryptedResult) {
   const resultPath = requiredEnv('SCHEDULE_ENCRYPTED_RESULT_PATH')
