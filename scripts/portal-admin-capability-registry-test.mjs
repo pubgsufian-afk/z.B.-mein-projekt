@@ -18,18 +18,40 @@ for (const row of registry) {
 }
 
 for (const id of [
+  'portal.inspect-employee-history',
+  'portal.rebind-employee-history',
+  'employees.get',
+  'employees.update-profile',
+  'registrations.list',
+  'registrations.approve',
   'schedule.publish-shifts',
   'schedule.list-shifts',
   'schedule.update-shift',
+  'schedule.bulk-update-shifts',
   'schedule.delete-shift',
   'attendance.list',
   'attendance.update-session',
+  'attendance.bulk-update-sessions',
+  'attendance.create-session',
   'attendance.delete-events',
+  'worksites.list',
+  'worksites.save',
+  'company.get',
+  'company.update',
+  'reports.timesheet-export',
+  'reports.schedule-export',
+  'reports.daily-list',
+  'reports.daily-export',
 ]) assert.ok(registry.some((row) => row.id === id), `missing ${id}`)
 
 assert.equal(portalAdminActionAllowed('schedule', 'publish-shifts'), true)
 assert.equal(portalAdminActionAllowed('attendance', 'update-session'), true)
-assert.equal(portalAdminActionAllowed('employees', 'get'), false)
+assert.equal(portalAdminActionAllowed('employees', 'get'), true)
+assert.equal(portalAdminActionAllowed('registrations', 'approve'), true)
+assert.equal(portalAdminActionAllowed('worksites', 'save'), true)
+assert.equal(portalAdminActionAllowed('company', 'update'), true)
+assert.equal(portalAdminActionAllowed('reports', 'timesheet-export'), true)
 assert.equal(portalAdminCapability('attendance', 'list')?.id, 'attendance.list')
+assert.equal(portalAdminCapability('reports', 'daily-export')?.id, 'reports.daily-export')
 
 console.log('portal admin capability registry tests passed')
