@@ -50,6 +50,20 @@ export function createReportsPortalAdminHandler(): PortalAdminHandler {
           data: await spoolGenerated(await generateTimesheetAdminExport(operation.input), context.responseKey),
         }
       }
+      if (operation.action === 'stamp-comparison-export') {
+        const generated = await generateTimesheetAdminExport(operation.input)
+        const renamed = {
+          ...generated,
+          filename: generated.filename.replace(/^Habun-Stundenzettel/, 'Habun-Stempelprotokoll'),
+        }
+        return {
+          itemId: operation.itemId,
+          domain: operation.domain,
+          action: operation.action,
+          status: 'success',
+          data: await spoolGenerated(renamed, context.responseKey),
+        }
+      }
       if (operation.action === 'schedule-export') {
         return {
           itemId: operation.itemId,
