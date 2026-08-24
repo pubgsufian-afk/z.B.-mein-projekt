@@ -51,6 +51,7 @@ jobs:
           SCHEDULE_ENVELOPE_COMMENT: ${{ github.event.comment.body }}
           SCHEDULE_ENCRYPTED_RESULT_PATH: ${{ runner.temp }}/habun-schedule-result.json
           SCHEDULE_PUBLIC_KEY_RESULT_PATH: ${{ runner.temp }}/habun-schedule-public-key.pem
+          PORTAL_ADMIN_EXPORT_DIR: ${{ runner.temp }}/habun-portal-admin-exports
       - name: Publish safe relay status
         if: always()
         env:
@@ -99,6 +100,14 @@ jobs:
         with:
           name: habun-schedule-encrypted-result
           path: ${{ runner.temp }}/habun-schedule-result.json
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload encrypted portal admin exports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: habun-portal-admin-exports
+          path: ${{ runner.temp }}/habun-portal-admin-exports
           if-no-files-found: ignore
           retention-days: 1
       - name: Fail relay job when processing failed
