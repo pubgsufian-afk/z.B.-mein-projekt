@@ -34,8 +34,10 @@ export function createSchedulePortalAdminHandler(context: Context): PortalAdminH
       }
     }
 
+    const reason = String(operation.input.reason || commandContext.reason || '').trim()
     const body = {
       ...operation.input,
+      ...(reason ? { reason } : {}),
       action: operation.action,
       requestId: `${commandContext.commandId}:${operation.itemId}`,
     }
