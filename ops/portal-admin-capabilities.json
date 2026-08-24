@@ -18,6 +18,78 @@
     "relay": { "domain": "portal", "action": "rebind-employee-history" }
   },
   {
+    "id": "employees.get",
+    "surface": "Mitarbeiter",
+    "endpoint": "/api/registrations",
+    "method": "PATCH",
+    "action": "get",
+    "classification": "relay-read-only",
+    "relay": { "domain": "employees", "action": "get" }
+  },
+  {
+    "id": "employees.list",
+    "surface": "Mitarbeiter",
+    "endpoint": "/api/registrations",
+    "method": "GET",
+    "action": "list",
+    "classification": "relay-read-only",
+    "relay": { "domain": "employees", "action": "list" }
+  },
+  {
+    "id": "employees.update-profile",
+    "surface": "Mitarbeiter",
+    "endpoint": "/api/registrations",
+    "method": "PATCH",
+    "action": "update-profile",
+    "classification": "relay-supported",
+    "relay": { "domain": "employees", "action": "update-profile" }
+  },
+  {
+    "id": "employees.update-role",
+    "surface": "Mitarbeiter",
+    "endpoint": "/api/registrations",
+    "method": "PATCH",
+    "action": "update-role",
+    "classification": "relay-supported",
+    "relay": { "domain": "employees", "action": "update-role" }
+  },
+  {
+    "id": "employees.deactivate-account",
+    "surface": "Mitarbeiter",
+    "endpoint": "/api/registrations",
+    "method": "PATCH",
+    "action": "deactivate-account",
+    "classification": "relay-supported",
+    "relay": { "domain": "employees", "action": "deactivate-account" }
+  },
+  {
+    "id": "registrations.list",
+    "surface": "Registrierungen",
+    "endpoint": "/api/registrations",
+    "method": "GET",
+    "action": "list",
+    "classification": "relay-read-only",
+    "relay": { "domain": "registrations", "action": "list" }
+  },
+  {
+    "id": "registrations.approve",
+    "surface": "Registrierungen",
+    "endpoint": "/api/registrations",
+    "method": "PATCH",
+    "action": "approve",
+    "classification": "relay-supported",
+    "relay": { "domain": "registrations", "action": "approve" }
+  },
+  {
+    "id": "registrations.reject",
+    "surface": "Registrierungen",
+    "endpoint": "/api/registrations",
+    "method": "PATCH",
+    "action": "reject",
+    "classification": "relay-supported",
+    "relay": { "domain": "registrations", "action": "reject" }
+  },
+  {
     "id": "schedule.sync-directory",
     "surface": "Dienstplan",
     "endpoint": "/api/schedule-assistant",
@@ -151,5 +223,86 @@
     "action": "delete-attendance-events",
     "classification": "relay-supported",
     "relay": { "domain": "attendance", "action": "delete-events" }
+  },
+  {
+    "id": "worksites.list",
+    "surface": "Einsatzorte",
+    "endpoint": "/api/worksite-v2",
+    "method": "GET",
+    "action": "list",
+    "classification": "relay-read-only",
+    "relay": { "domain": "worksites", "action": "list" }
+  },
+  {
+    "id": "worksites.get",
+    "surface": "Einsatzorte",
+    "endpoint": "/api/worksite-v2",
+    "method": "GET",
+    "action": "get",
+    "classification": "relay-read-only",
+    "relay": { "domain": "worksites", "action": "get" }
+  },
+  {
+    "id": "worksites.save",
+    "surface": "Einsatzorte",
+    "endpoint": "/api/worksite-v2",
+    "method": "POST",
+    "action": "save",
+    "classification": "relay-supported",
+    "relay": { "domain": "worksites", "action": "save" }
+  },
+  {
+    "id": "worksites.resolve-map",
+    "surface": "Einsatzorte",
+    "endpoint": "/api/worksite-v2",
+    "method": "POST",
+    "action": "resolve-map",
+    "classification": "relay-read-only",
+    "relay": { "domain": "worksites", "action": "resolve-map" }
+  },
+  {
+    "id": "worksites.delete",
+    "surface": "Einsatzorte",
+    "endpoint": "/api/schedule-v2",
+    "method": "POST",
+    "action": "delete",
+    "classification": "relay-supported",
+    "relay": { "domain": "worksites", "action": "delete" }
+  },
+  {
+    "id": "company.get",
+    "surface": "Firmeneinstellungen",
+    "endpoint": "/api/company-settings",
+    "method": "GET",
+    "action": "get",
+    "classification": "relay-read-only",
+    "relay": { "domain": "company", "action": "get" }
+  },
+  {
+    "id": "company.update",
+    "surface": "Firmeneinstellungen",
+    "endpoint": "/api/company-settings",
+    "method": "PUT",
+    "action": "update",
+    "classification": "relay-supported",
+    "relay": { "domain": "company", "action": "update" }
+  },
+  {
+    "id": "company.set-logo",
+    "surface": "Firmeneinstellungen",
+    "endpoint": "/api/company-settings",
+    "method": "PUT",
+    "action": "set-logo",
+    "classification": "relay-supported",
+    "relay": { "domain": "company", "action": "set-logo" }
+  },
+  {
+    "id": "company.reset-logo",
+    "surface": "Firmeneinstellungen",
+    "endpoint": "/api/company-settings",
+    "method": "PUT",
+    "action": "reset-logo",
+    "classification": "relay-supported",
+    "relay": { "domain": "company", "action": "reset-logo" }
   }
 ]
