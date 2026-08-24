@@ -8,8 +8,8 @@ for (const needle of [
   "getStore({ name: 'portal-registrations'",
   "getStore({ name: 'portal-access'",
   "status === 'pending'",
-  "action === 'approve'",
-  "action === 'reject'",
+  "input.action === 'reject'",
+  "action: 'approve' as const",
   'upsertScheduleEmployee',
   'Nur der Hauptadmin darf weitere Admins bestimmen.',
 ]) assert.ok(service.includes(needle), `missing ${needle}`)
