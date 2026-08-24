@@ -1,5 +1,10 @@
 import type { Context } from '@netlify/functions'
 import attendanceAssistant from '../attendance-assistant.mts'
+import {
+  AttendanceMaintenanceAdminError,
+  attendanceMaintenanceAdminService,
+  type AttendanceMaintenanceAdminActor,
+} from './attendance-maintenance-admin-service.mts'
 import type { PortalAdminHandler } from './portal-admin-router.mts'
 
 const ATTENDANCE_ACTIONS = new Map([
@@ -11,14 +16,69 @@ const ATTENDANCE_ACTIONS = new Map([
   ['delete-events', 'delete-attendance-events'],
 ])
 
+const RELAY_ACTOR: AttendanceMaintenanceAdminActor = {
+  userId: 'portal-admin-relay',
+  email: 'portal-admin-relay@internal.invalid',
+  role: 'owner',
+}
+
 function httpFailureStatus(status: number) {
   if (status === 404) return 'not_found' as const
-  if (status === 409) return 'conflict' as const
+  if (status === 409 || status === 410 || status === 422) return 'conflict' as const
   return 'rejected' as const
 }
 
 export function createAttendancePortalAdminHandler(context: Context): PortalAdminHandler {
   return async (operation, commandContext) => {
+    const maintenance = attendanceMaintenanceAdminService()
+    try {
+      if (operation.action === 'list-corrections') {
+        const corrections = await maintenance.listCorrections()
+        return {
+          itemId: operation.itemId,
+          domain: operation.domain,
+          action: operation.action,
+          status: 'success',
+          data: { corrections, count: corrections.length },
+        }
+      }
+      if (operation.action === 'decide-correction') {
+        const data = await maintenance.decideCorrection(RELAY_ACTOR, {
+          ...operation.input,
+          reason: String(operation.input.reason || commandContext.reason || '').trim(),
+        })
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data }
+      }
+      if (operation.action === 'retention-dry-run') {
+        const data = await maintenance.retention(RELAY_ACTOR, false)
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data }
+      }
+      if (operation.action === 'retention-apply') {
+        if (operation.input.confirm !== true) {
+          return {
+            itemId: operation.itemId,
+            domain: operation.domain,
+            action: operation.action,
+            status: 'rejected',
+            code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED',
+          }
+        }
+        const data = await maintenance.retention(RELAY_ACTOR, true)
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data }
+      }
+    } catch (error) {
+      if (error instanceof AttendanceMaintenanceAdminError) {
+        return {
+          itemId: operation.itemId,
+          domain: operation.domain,
+          action: operation.action,
+          status: httpFailureStatus(error.status),
+          code: error.code,
+        }
+      }
+      throw error
+    }
+
     const assistantAction = ATTENDANCE_ACTIONS.get(operation.action)
     if (!assistantAction) {
       return {
