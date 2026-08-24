@@ -20,7 +20,7 @@ assert.throws(() => normalizeEmployeeHistoryRebind({
   sourceUserId: 'same', targetUserId: 'same', targetFullName: 'A', from: '2026-08-01', to: '2026-08-24', domains: ['schedule'], reason: 'x',
 }), /unterschiedlich/)
 assert.throws(() => normalizeEmployeeHistoryRebind({
-  sourceUserId: 'registered-old', targetUserId: 'registered-new', targetFullName: 'B', from: '2026-08-01', to: '2026-08-24', domains: ['schedule'], reason: 'x',
+  sourceUserId: 'registered-old', targetUserId: 'registered-new', targetFullName: 'B', from: '2026-08-01', to: '2026-08-24', domains: ['schedule'], reason: 'ok',
 }), /provisorisch/)
 assert.throws(() => normalizeEmployeeHistoryRebind({
   sourceUserId: 'guest:a', targetUserId: 'guest:b', targetFullName: 'B', from: '2026-08-01', to: '2026-08-24', domains: ['schedule'], reason: 'x',
