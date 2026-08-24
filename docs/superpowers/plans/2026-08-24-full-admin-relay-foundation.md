@@ -19,6 +19,7 @@
 - Existing schedule and attendance commands remain backward compatible.
 - New portal-admin commands always require a valid 32-byte `responseKey`.
 - Batch size is bounded to 100 operations and item IDs are unique within a command.
+- For schedule/attendance actions already supported by the existing assistants, the portal-admin `relay.action` uses the existing exact assistant action name (`list-shifts`, `update-shift`, `list-attendance`, `update-attendance-session`, `delete-attendance-events`, and so on). Registry IDs may be friendlier labels, but routing keys must be exact and unambiguous.
 - Normal cost target remains `1 targeted read -> 1 batch mutation -> 1 targeted verification`.
 
 ---
@@ -56,7 +57,7 @@ const batch = parsePortalAdminCommand(JSON.stringify({
   action: 'portal-batch',
   operations: [
     { itemId: '1', domain: 'schedule', action: 'update-shift', input: { shiftId: 's1', changes: { pauseMinutes: 30 } } },
-    { itemId: '2', domain: 'attendance', action: 'update-session', input: { clockInEventId: 'i1', clockOutEventId: 'o1' } },
+    { itemId: '2', domain: 'attendance', action: 'update-attendance-session', input: { clockInEventId: 'i1', clockOutEventId: 'o1' } },
   ],
 }), now)
 assert.equal(batch.ok, true)
@@ -220,35 +221,17 @@ export function createPortalAdminRouter(
       for (const operation of operations) {
         const handler = handlers[operation.domain]
         if (!handler) {
-          results.push({
-            itemId: operation.itemId,
-            domain: operation.domain,
-            action: operation.action,
-            status: 'rejected',
-            code: 'DOMAIN_NOT_REGISTERED',
-          })
+          results.push({ itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'rejected', code: 'DOMAIN_NOT_REGISTERED' })
           continue
         }
         try {
           results.push(await handler(operation, { commandId: command.commandId, reason: command.reason || '' }))
         } catch {
-          results.push({
-            itemId: operation.itemId,
-            domain: operation.domain,
-            action: operation.action,
-            status: 'rejected',
-            code: 'HANDLER_FAILED',
-          })
+          results.push({ itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'rejected', code: 'HANDLER_FAILED' })
         }
       }
       const succeeded = results.filter((row) => row.status === 'success' || row.status === 'duplicate').length
-      return {
-        commandId: command.commandId,
-        domain: command.domain,
-        action: command.action,
-        results,
-        counts: { processed: results.length, succeeded, rejected: results.length - succeeded },
-      }
+      return { commandId: command.commandId, domain: command.domain, action: command.action, results, counts: { processed: results.length, succeeded, rejected: results.length - succeeded } }
     },
   }
 }
@@ -281,17 +264,17 @@ git commit -m "feat: add portal admin result and router"
 
 - [ ] **Step 1: Write failing registry tests**
 
-Require unique IDs, valid classifications, and entries for all currently relayed schedule/attendance actions. Use the registry row shape:
+Require unique IDs, valid classifications, and entries for all currently relayed schedule/attendance actions. A row uses this shape:
 
 ```json
 {
-  "id": "schedule.update-shift",
-  "surface": "Dienstplan",
-  "endpoint": "/api/schedule-assistant",
+  "id": "attendance.update-session",
+  "surface": "Stundenzettel",
+  "endpoint": "/api/attendance-assistant",
   "method": "POST",
-  "action": "update-shift",
+  "action": "update-attendance-session",
   "classification": "relay-supported",
-  "relay": { "domain": "schedule", "action": "update-shift" }
+  "relay": { "domain": "attendance", "action": "update-attendance-session" }
 }
 ```
 
@@ -303,7 +286,7 @@ node scripts/portal-admin-capability-registry-test.mjs
 
 - [ ] **Step 3: Add the initial registry**
 
-Include all legacy schedule/attendance actions. Do not add speculative UI actions; the exhaustive inventory belongs to Plan 4.
+Include all legacy schedule/attendance actions using their exact current assistant action names. Do not add speculative UI actions; the exhaustive inventory belongs to Plan 4.
 
 - [ ] **Step 4: Add typed lookup helpers**
 
@@ -318,7 +301,7 @@ export function portalAdminActionAllowed(domain: PortalAdminDomain, action: stri
 }
 ```
 
-Call `portalAdminActionAllowed` in the router before invoking any domain handler.
+Call `portalAdminActionAllowed` in the router before invoking any handler.
 
 - [ ] **Step 5: Run registry + router tests**
 
@@ -355,7 +338,7 @@ node scripts/portal-admin-adapter-source-test.mjs
 
 - [ ] **Step 3: Implement thin internal Request adapters**
 
-For schedule, call `scheduleAssistant` with the existing internal token and body `{ action, requestId, ...input }`. Attendance mirrors this with `attendanceAssistant`. Implement a `mapAssistantResponse` helper that returns only item ID, domain, action, status, code, and bounded safe data; never echo `operation.input`.
+For schedule, call `scheduleAssistant` with the existing internal token and body `{ action: operation.action, requestId: operation.itemId, ...operation.input }`. Attendance mirrors this with `attendanceAssistant`. Because registry action names exactly match the current assistants, no implicit aliasing is needed for legacy actions. `mapAssistantResponse` returns only item ID, domain, action, status, code, and bounded safe data; never echo `operation.input`.
 
 - [ ] **Step 4: Run existing assistant regressions**
 
