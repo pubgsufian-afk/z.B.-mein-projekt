@@ -1,0 +1,110 @@
+[
+  {
+    "id": "schedule.sync-directory",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-assistant",
+    "method": "POST",
+    "action": "sync-directory",
+    "classification": "relay-supported",
+    "relay": { "domain": "schedule", "action": "sync-directory" }
+  },
+  {
+    "id": "schedule.resolve-employees",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-assistant",
+    "method": "POST",
+    "action": "resolve-employees",
+    "classification": "relay-read-only",
+    "relay": { "domain": "schedule", "action": "resolve-employees" }
+  },
+  {
+    "id": "schedule.publish-shifts",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-assistant",
+    "method": "POST",
+    "action": "publish-shifts",
+    "classification": "relay-supported",
+    "relay": { "domain": "schedule", "action": "publish-shifts" }
+  },
+  {
+    "id": "schedule.list-shifts",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-assistant",
+    "method": "POST",
+    "action": "list-shifts",
+    "classification": "relay-read-only",
+    "relay": { "domain": "schedule", "action": "list-shifts" }
+  },
+  {
+    "id": "schedule.get-shift",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-assistant",
+    "method": "POST",
+    "action": "get-shift",
+    "classification": "relay-read-only",
+    "relay": { "domain": "schedule", "action": "get-shift" }
+  },
+  {
+    "id": "schedule.find-duplicates",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-assistant",
+    "method": "POST",
+    "action": "find-duplicates",
+    "classification": "relay-read-only",
+    "relay": { "domain": "schedule", "action": "find-duplicates" }
+  },
+  {
+    "id": "schedule.update-shift",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-assistant",
+    "method": "POST",
+    "action": "update-shift",
+    "classification": "relay-supported",
+    "relay": { "domain": "schedule", "action": "update-shift" }
+  },
+  {
+    "id": "schedule.delete-shift",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-assistant",
+    "method": "POST",
+    "action": "delete-shift",
+    "classification": "relay-supported",
+    "relay": { "domain": "schedule", "action": "delete-shift" }
+  },
+  {
+    "id": "attendance.list",
+    "surface": "Stundenzettel",
+    "endpoint": "/api/attendance-assistant",
+    "method": "POST",
+    "action": "list-attendance",
+    "classification": "relay-read-only",
+    "relay": { "domain": "attendance", "action": "list" }
+  },
+  {
+    "id": "attendance.find-duplicates",
+    "surface": "Stundenzettel",
+    "endpoint": "/api/attendance-assistant",
+    "method": "POST",
+    "action": "find-attendance-duplicates",
+    "classification": "relay-read-only",
+    "relay": { "domain": "attendance", "action": "find-duplicates" }
+  },
+  {
+    "id": "attendance.update-session",
+    "surface": "Stundenzettel",
+    "endpoint": "/api/attendance-assistant",
+    "method": "POST",
+    "action": "update-attendance-session",
+    "classification": "relay-supported",
+    "relay": { "domain": "attendance", "action": "update-session" }
+  },
+  {
+    "id": "attendance.delete-events",
+    "surface": "Stundenzettel",
+    "endpoint": "/api/attendance-assistant",
+    "method": "POST",
+    "action": "delete-attendance-events",
+    "classification": "relay-supported",
+    "relay": { "domain": "attendance", "action": "delete-events" }
+  }
+]
