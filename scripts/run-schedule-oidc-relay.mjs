@@ -1,5 +1,6 @@
 import { createDecipheriv } from 'node:crypto'
-import { writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
 const OIDC_AUDIENCE = 'habun-schedule-assistant'
 const ENVELOPE_MARKER = '<!-- habun-schedule-envelope-v1 -->'
@@ -52,6 +53,23 @@ function safeRelayError(value) {
     .trim()
     .slice(0, 180)
   return { message }
+}
+
+function safePortalExports(value) {
+  if (!Array.isArray(value)) return []
+  if (value.length > 10) throw new Error('Zu viele Portal-Admin-Exporte in einem Auftrag')
+  return value.map((entry, index) => {
+    const item = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : {}
+    const handle = String(item.handle || '').trim()
+    if (!/^[0-9a-f-]{36}$/i.test(handle)) throw new Error('Ungültiger Portal-Admin-Export-Handle')
+    const rawFilename = String(item.filename || `export-${index + 1}`)
+    const filename = rawFilename
+      .replace(/[\\/\r\n\t]+/g, '-')
+      .replace(/[^A-Za-z0-9ÄÖÜäöüß._-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 140) || `export-${index + 1}`
+    return { handle, filename }
+  })
 }
 
 function publicKeyFromEncryptedResult(envelope, encryptedResult) {
@@ -112,6 +130,8 @@ const employeeCount = count(result?.employeeCount ?? 0)
 const publishedCount = count(result?.publishedCount ?? 0)
 const duplicateCount = count(result?.duplicateCount ?? 0)
 const rejectedCount = count(result?.rejectedCount ?? 0)
+const hasPortalAdminCounts = result?.succeededCount !== undefined
+const succeededCount = hasPortalAdminCounts ? count(result?.succeededCount ?? 0) : 0
 const directoryDiagnostics = result?.directoryDiagnostics && typeof result.directoryDiagnostics === 'object'
   ? result.directoryDiagnostics
   : {}
@@ -122,9 +142,13 @@ const combinedAccessCount = count(directoryDiagnostics.combinedAccessCount ?? 0)
 const requestedCount = count(directoryDiagnostics.requestedCount ?? 0)
 const identityLookupSucceeded = directoryDiagnostics.identityLookupSucceeded === true
 const encryptedResult = safeEncryptedResult(result?.encryptedResult)
+const portalExports = safePortalExports(result?.exports)
 
 console.log(`Habun schedule OIDC relay: employees=${employeeCount} published=${publishedCount} duplicate=${duplicateCount} rejected=${rejectedCount}`)
 console.log(`Habun schedule OIDC relay: directory identity=${identityUserCount} access=${accessCount} registrations=${registrationCount} combined=${combinedAccessCount} employees=${employeeCount} requested=${requestedCount} identityOk=${identityLookupSucceeded}`)
+if (hasPortalAdminCounts) {
+  console.log(`Habun portal admin OIDC relay: succeeded=${succeededCount} rejected=${rejectedCount}`)
+}
 
 if (encryptedResult) {
   const resultPath = requiredEnv('SCHEDULE_ENCRYPTED_RESULT_PATH')
@@ -138,4 +162,28 @@ if (encryptedResult) {
     console.log('Habun schedule OIDC relay: public key response prepared')
   }
 }
+
+if (portalExports.length) {
+  const exportDir = requiredEnv('PORTAL_ADMIN_EXPORT_DIR')
+  await mkdir(exportDir, { recursive: true, mode: 0o700 })
+  for (let index = 0; index < portalExports.length; index += 1) {
+    const item = portalExports[index]
+    const exportResponse = await fetch(TRIGGER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/octet-stream',
+      },
+      body: JSON.stringify({ oidcToken, exportHandle: item.handle }),
+      signal: AbortSignal.timeout(25_000),
+    })
+    if (!exportResponse.ok) throw new Error(`Habun portal export fetch failed (${exportResponse.status})`)
+    const encryptedBytes = new Uint8Array(await exportResponse.arrayBuffer())
+    if (!encryptedBytes.byteLength) throw new Error('Habun portal export response is empty')
+    const exportPath = join(exportDir, `${String(index + 1).padStart(2, '0')}-${item.filename}.encrypted.json`)
+    await writeFile(exportPath, encryptedBytes, { mode: 0o600 })
+  }
+  console.log(`Habun portal admin OIDC relay: encrypted exports prepared=${portalExports.length}`)
+}
+
 if (rejectedCount > 0) process.exitCode = 2

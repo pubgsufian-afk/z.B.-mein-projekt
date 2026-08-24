@@ -9,6 +9,7 @@ const fixedReport = read('netlify/functions/unified-reports-fixed.mts')
 const main = read('frontend/src/main.jsx')
 const editorPath = urlFor('frontend/src/admin-time-editing.js')
 const endpointPath = urlFor('netlify/functions/attendance-time-edit.mts')
+const service = read('netlify/functions/_shared/attendance-admin-service.mts')
 
 function expectIncludes(source, marker, message) {
   assert.ok(source.includes(marker), message)
@@ -23,14 +24,20 @@ const endpoint = read('netlify/functions/attendance-time-edit.mts')
 expectIncludes(endpoint, "const DIRECT_TIME_EDIT_ROLES = new Set(['owner', 'admin', 'manager'])", 'direct editing must allow Hauptadmin, Admin and Einsatzleiter')
 expectIncludes(endpoint, 'DIRECT_TIME_EDIT_ROLES.has(current.role)', 'server must enforce the three direct-edit roles')
 expectIncludes(endpoint, 'verifyRequestOrigin', 'direct time edits must verify request origin')
-expectIncludes(endpoint, 'attendance_adjustments', 'direct edit must persist an effective pause adjustment for completed sessions')
-expectIncludes(endpoint, "'admin-time-edit'", 'direct edit must be written to the audit log')
-expectIncludes(endpoint, 'management-clock-out:', 'an open checked-in session must support an administrative clock-out')
-expectIncludes(endpoint, 'Bei einem laufenden Dienst kann die Pause erst zusammen mit einem Arbeitsende korrigiert werden.', 'open sessions must not persist an orphan pause adjustment')
-expectIncludes(endpoint, 'Die Pause darf nicht länger als die Arbeitszeit sein.', 'server must reject pause longer than gross work time')
-expectIncludes(endpoint, 'Das Arbeitsende darf nicht vor dem Arbeitsbeginn liegen.', 'server must reject end before start')
-expectIncludes(endpoint, 'Die neue Arbeitszeit darf bestehende Pausenbuchungen nicht ausschließen.', 'server must keep existing break events inside edited session boundaries')
+expectIncludes(endpoint, 'attendance-admin-service.mts', 'browser time edit must use shared attendance service')
+expectIncludes(endpoint, 'attendanceAdminService().updateSession', 'browser time edit must delegate shared mutation rules')
 expectIncludes(endpoint, "path: '/api/attendance-time-edit'", 'management time edit endpoint must have a dedicated protected route')
+
+for (const marker of [
+  'attendance_adjustments',
+  "'admin-time-edit'",
+  'management-clock-out:',
+  'Bei einem laufenden Dienst kann die Pause erst zusammen mit einem Arbeitsende korrigiert werden.',
+  'Die Pause darf nicht länger als die Arbeitszeit sein.',
+  'Das Arbeitsende darf nicht vor dem Arbeitsbeginn liegen.',
+  'Die neue Arbeitszeit darf bestehende Pausenbuchungen nicht ausschließen.',
+  'attendance_legal_holds',
+]) expectIncludes(service, marker, `shared time edit rule missing: ${marker}`)
 
 expectIncludes(reportDatabase, 'pause_minutes_adjustment', 'production report query must load the effective pause adjustment')
 expectIncludes(reportDatabase, 'attendance_adjustments', 'production report query must read attendance adjustments')

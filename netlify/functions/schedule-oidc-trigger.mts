@@ -3,6 +3,17 @@ import { createCipheriv, createHash, createPrivateKey, createPublicKey, randomBy
 import { verifyScheduleGithubOidc } from './_shared/schedule-github-oidc.mts'
 import { decryptScheduleCommandEnvelopeRuntime } from './_shared/schedule-command-envelope-runtime.mts'
 import { parseScheduleCommand, type ScheduleWorkerCommand } from './_shared/schedule-command-worker-core.mts'
+import { parsePortalAdminCommand } from './_shared/portal-admin-command-core.mts'
+import { createPortalAdminRouter } from './_shared/portal-admin-router.mts'
+import { createSchedulePortalAdminHandler } from './_shared/portal-admin-schedule.mts'
+import { createAttendancePortalAdminHandler } from './_shared/portal-admin-attendance.mts'
+import { createPortalHistoryAdminHandler } from './_shared/portal-admin-history.mts'
+import { createEmployeePortalAdminHandler } from './_shared/portal-admin-employees.mts'
+import { createRegistrationsPortalAdminHandler } from './_shared/portal-admin-registrations.mts'
+import { createWorksitePortalAdminHandler } from './_shared/portal-admin-worksites.mts'
+import { createCompanyPortalAdminHandler } from './_shared/portal-admin-company.mts'
+import { createReportsPortalAdminHandler } from './_shared/portal-admin-reports.mts'
+import { consumePortalAdminExport, PortalAdminExportSpoolError } from './_shared/portal-admin-export-spool.mts'
 import { findScheduleShift } from './_shared/schedule-neon-repository.mts'
 import { syncPublishedScheduleShift } from './_shared/timesheet-schedule-sync.mts'
 import scheduleAssistant from './schedule-assistant.mts'
@@ -108,7 +119,7 @@ function assistantRequestBody(command: ScheduleWorkerCommand) {
   return body
 }
 
-function encryptAssistantResult(data: AssistantResponse, encodedKey: string) {
+function encryptAssistantResult(data: unknown, encodedKey: string) {
   const key = Buffer.from(encodedKey, 'base64')
   if (key.length !== 32) throw new Error('Ungültiger Antwortschlüssel')
   const plaintext = Buffer.from(JSON.stringify(data), 'utf8')
@@ -137,6 +148,30 @@ function deriveRuntimePublicKey(privateKeyDerB64: string) {
   const privateKeyDer = Buffer.from(privateKeyDerB64, 'base64')
   const privateKey = createPrivateKey({ key: privateKeyDer, format: 'der', type: 'pkcs8' })
   return createPublicKey(privateKey).export({ format: 'pem', type: 'spki' }).toString()
+}
+
+function safePublicExports(results: unknown) {
+  if (!Array.isArray(results)) return [] as Array<Record<string, string | number>>
+  return results.flatMap((result) => {
+    const row = result && typeof result === 'object' && !Array.isArray(result)
+      ? result as Record<string, unknown>
+      : {}
+    const data = row.data && typeof row.data === 'object' && !Array.isArray(row.data)
+      ? row.data as Record<string, unknown>
+      : {}
+    const exported = data.export && typeof data.export === 'object' && !Array.isArray(data.export)
+      ? data.export as Record<string, unknown>
+      : null
+    const handle = String(exported?.handle || '').trim()
+    if (!handle) return []
+    return [{
+      handle,
+      filename: String(exported?.filename || '').slice(0, 180),
+      contentType: String(exported?.contentType || '').slice(0, 120),
+      encryptedBytes: number(exported?.encryptedBytes || 0),
+      expiresAt: String(exported?.expiresAt || '').slice(0, 80),
+    }]
+  })
 }
 
 async function syncPublishedRelayResults(data: AssistantResponse) {
@@ -171,6 +206,25 @@ export default async function scheduleOidcTrigger(request: Request, context: Con
     return json({ message: 'Nicht autorisiert.' }, 401)
   }
 
+  const exportHandle = String(body.exportHandle || '').trim()
+  if (exportHandle) {
+    try {
+      const exported = await consumePortalAdminExport(exportHandle)
+      return new Response(exported.bytes as BodyInit, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff',
+          'X-Robots-Tag': 'noindex',
+        },
+      })
+    } catch (error) {
+      if (error instanceof PortalAdminExportSpoolError) return json({ message: 'Export konnte nicht abgerufen werden.' }, error.status)
+      return json({ message: 'Export konnte nicht abgerufen werden.' }, 500)
+    }
+  }
+
   const privateKeyDerB64 = String(Netlify.env.get('SCHEDULE_COMMAND_PRIVATE_KEY_DER_B64') || '').trim()
   if (!privateKeyDerB64) return json({ message: 'Dienstplan-Verbindung ist nicht konfiguriert.' }, 500)
 
@@ -199,6 +253,47 @@ export default async function scheduleOidcTrigger(request: Request, context: Con
     command = decryptScheduleCommandEnvelopeRuntime(body.envelope, privateKeyDer)
   } catch {
     return json({ message: 'Verschlüsselter Dienstplan-Auftrag ist ungültig.' }, 400)
+  }
+
+  if (String(command.domain || '').trim()) {
+    const parsedPortal = parsePortalAdminCommand(JSON.stringify(command), new Date())
+    if (!parsedPortal.ok) return json({ message: parsedPortal.message }, 400)
+
+    const router = createPortalAdminRouter({
+      portal: createPortalHistoryAdminHandler(),
+      employees: createEmployeePortalAdminHandler(),
+      registrations: createRegistrationsPortalAdminHandler('owner'),
+      schedule: createSchedulePortalAdminHandler(context),
+      attendance: createAttendancePortalAdminHandler(context),
+      worksites: createWorksitePortalAdminHandler(),
+      company: createCompanyPortalAdminHandler('owner'),
+      reports: createReportsPortalAdminHandler(),
+    })
+    const data = await router.run(parsedPortal.command)
+    let encryptedResult: ReturnType<typeof encryptAssistantResult>
+    try {
+      encryptedResult = encryptAssistantResult(data, parsedPortal.command.responseKey)
+    } catch {
+      return json({ message: 'Verschlüsselte Portal-Admin-Antwort konnte nicht erzeugt werden.' }, 500)
+    }
+    const commandHash = createHash('sha256').update(parsedPortal.command.commandId).digest('hex').slice(0, 12)
+    const publicResults = data.results.map(({ itemId, domain, action, status, code }) => ({
+      itemId,
+      domain,
+      action,
+      status,
+      ...(code ? { code } : {}),
+    }))
+    const publicExports = safePublicExports(data.results)
+    return json({
+      commandHash,
+      action: parsedPortal.command.action,
+      succeededCount: data.counts.succeeded,
+      rejectedCount: data.counts.rejected,
+      results: publicResults,
+      exports: publicExports,
+      encryptedResult,
+    })
   }
 
   const parsed = parseScheduleCommand(JSON.stringify(command), new Date())

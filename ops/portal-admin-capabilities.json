@@ -1,0 +1,371 @@
+[
+  {
+    "id": "portal.inspect-employee-history",
+    "surface": "Portal Admin",
+    "endpoint": "/api/schedule-oidc-trigger",
+    "method": "POST",
+    "action": "inspect-employee-history",
+    "classification": "relay-read-only",
+    "relay": { "domain": "portal", "action": "inspect-employee-history" }
+  },
+  {
+    "id": "portal.rebind-employee-history",
+    "surface": "Portal Admin",
+    "endpoint": "/api/schedule-oidc-trigger",
+    "method": "POST",
+    "action": "rebind-employee-history",
+    "classification": "relay-supported",
+    "relay": { "domain": "portal", "action": "rebind-employee-history" }
+  },
+  {
+    "id": "employees.get",
+    "surface": "Mitarbeiter",
+    "endpoint": "/api/registrations",
+    "method": "PATCH",
+    "action": "get",
+    "classification": "relay-read-only",
+    "relay": { "domain": "employees", "action": "get" }
+  },
+  {
+    "id": "employees.list",
+    "surface": "Mitarbeiter",
+    "endpoint": "/api/registrations",
+    "method": "GET",
+    "action": "list",
+    "classification": "relay-read-only",
+    "relay": { "domain": "employees", "action": "list" }
+  },
+  {
+    "id": "employees.update-profile",
+    "surface": "Mitarbeiter",
+    "endpoint": "/api/registrations",
+    "method": "PATCH",
+    "action": "update-profile",
+    "classification": "relay-supported",
+    "relay": { "domain": "employees", "action": "update-profile" }
+  },
+  {
+    "id": "employees.update-role",
+    "surface": "Mitarbeiter",
+    "endpoint": "/api/registrations",
+    "method": "PATCH",
+    "action": "update-role",
+    "classification": "relay-supported",
+    "relay": { "domain": "employees", "action": "update-role" }
+  },
+  {
+    "id": "employees.deactivate-account",
+    "surface": "Mitarbeiter",
+    "endpoint": "/api/registrations",
+    "method": "PATCH",
+    "action": "deactivate-account",
+    "classification": "relay-supported",
+    "relay": { "domain": "employees", "action": "deactivate-account" }
+  },
+  {
+    "id": "registrations.list",
+    "surface": "Registrierungen",
+    "endpoint": "/api/registrations",
+    "method": "GET",
+    "action": "list",
+    "classification": "relay-read-only",
+    "relay": { "domain": "registrations", "action": "list" }
+  },
+  {
+    "id": "registrations.approve",
+    "surface": "Registrierungen",
+    "endpoint": "/api/registrations",
+    "method": "PATCH",
+    "action": "approve",
+    "classification": "relay-supported",
+    "relay": { "domain": "registrations", "action": "approve" }
+  },
+  {
+    "id": "registrations.reject",
+    "surface": "Registrierungen",
+    "endpoint": "/api/registrations",
+    "method": "PATCH",
+    "action": "reject",
+    "classification": "relay-supported",
+    "relay": { "domain": "registrations", "action": "reject" }
+  },
+  {
+    "id": "schedule.sync-directory",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-assistant",
+    "method": "POST",
+    "action": "sync-directory",
+    "classification": "relay-supported",
+    "relay": { "domain": "schedule", "action": "sync-directory" }
+  },
+  {
+    "id": "schedule.resolve-employees",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-assistant",
+    "method": "POST",
+    "action": "resolve-employees",
+    "classification": "relay-read-only",
+    "relay": { "domain": "schedule", "action": "resolve-employees" }
+  },
+  {
+    "id": "schedule.publish-shifts",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-assistant",
+    "method": "POST",
+    "action": "publish-shifts",
+    "classification": "relay-supported",
+    "relay": { "domain": "schedule", "action": "publish-shifts" }
+  },
+  {
+    "id": "schedule.list-shifts",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-assistant",
+    "method": "POST",
+    "action": "list-shifts",
+    "classification": "relay-read-only",
+    "relay": { "domain": "schedule", "action": "list-shifts" }
+  },
+  {
+    "id": "schedule.get-shift",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-assistant",
+    "method": "POST",
+    "action": "get-shift",
+    "classification": "relay-read-only",
+    "relay": { "domain": "schedule", "action": "get-shift" }
+  },
+  {
+    "id": "schedule.find-duplicates",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-assistant",
+    "method": "POST",
+    "action": "find-duplicates",
+    "classification": "relay-read-only",
+    "relay": { "domain": "schedule", "action": "find-duplicates" }
+  },
+  {
+    "id": "schedule.update-shift",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-assistant",
+    "method": "POST",
+    "action": "update-shift",
+    "classification": "relay-supported",
+    "relay": { "domain": "schedule", "action": "update-shift" }
+  },
+  {
+    "id": "schedule.bulk-update-shifts",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-oidc-trigger",
+    "method": "POST",
+    "action": "bulk-update-shifts",
+    "classification": "relay-supported",
+    "relay": { "domain": "schedule", "action": "bulk-update-shifts" }
+  },
+  {
+    "id": "schedule.delete-shift",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-assistant",
+    "method": "POST",
+    "action": "delete-shift",
+    "classification": "relay-supported",
+    "relay": { "domain": "schedule", "action": "delete-shift" }
+  },
+  {
+    "id": "attendance.list",
+    "surface": "Stundenzettel",
+    "endpoint": "/api/attendance-assistant",
+    "method": "POST",
+    "action": "list-attendance",
+    "classification": "relay-read-only",
+    "relay": { "domain": "attendance", "action": "list" }
+  },
+  {
+    "id": "attendance.find-duplicates",
+    "surface": "Stundenzettel",
+    "endpoint": "/api/attendance-assistant",
+    "method": "POST",
+    "action": "find-attendance-duplicates",
+    "classification": "relay-read-only",
+    "relay": { "domain": "attendance", "action": "find-duplicates" }
+  },
+  {
+    "id": "attendance.update-session",
+    "surface": "Stundenzettel",
+    "endpoint": "/api/attendance-assistant",
+    "method": "POST",
+    "action": "update-attendance-session",
+    "classification": "relay-supported",
+    "relay": { "domain": "attendance", "action": "update-session" }
+  },
+  {
+    "id": "attendance.bulk-update-sessions",
+    "surface": "Stundenzettel",
+    "endpoint": "/api/attendance-assistant",
+    "method": "POST",
+    "action": "bulk-update-attendance-sessions",
+    "classification": "relay-supported",
+    "relay": { "domain": "attendance", "action": "bulk-update-sessions" }
+  },
+  {
+    "id": "attendance.create-session",
+    "surface": "Stundenzettel",
+    "endpoint": "/api/attendance-assistant",
+    "method": "POST",
+    "action": "create-attendance-session",
+    "classification": "relay-supported",
+    "relay": { "domain": "attendance", "action": "create-session" }
+  },
+  {
+    "id": "attendance.delete-events",
+    "surface": "Stundenzettel",
+    "endpoint": "/api/attendance-assistant",
+    "method": "POST",
+    "action": "delete-attendance-events",
+    "classification": "relay-supported",
+    "relay": { "domain": "attendance", "action": "delete-events" }
+  },
+  {
+    "id": "worksites.list",
+    "surface": "Einsatzorte",
+    "endpoint": "/api/worksite-v2",
+    "method": "GET",
+    "action": "list",
+    "classification": "relay-read-only",
+    "relay": { "domain": "worksites", "action": "list" }
+  },
+  {
+    "id": "worksites.get",
+    "surface": "Einsatzorte",
+    "endpoint": "/api/worksite-v2",
+    "method": "GET",
+    "action": "get",
+    "classification": "relay-read-only",
+    "relay": { "domain": "worksites", "action": "get" }
+  },
+  {
+    "id": "worksites.save",
+    "surface": "Einsatzorte",
+    "endpoint": "/api/worksite-v2",
+    "method": "POST",
+    "action": "save",
+    "classification": "relay-supported",
+    "relay": { "domain": "worksites", "action": "save" }
+  },
+  {
+    "id": "worksites.resolve-map",
+    "surface": "Einsatzorte",
+    "endpoint": "/api/worksite-v2",
+    "method": "POST",
+    "action": "resolve-map",
+    "classification": "relay-read-only",
+    "relay": { "domain": "worksites", "action": "resolve-map" }
+  },
+  {
+    "id": "worksites.delete",
+    "surface": "Einsatzorte",
+    "endpoint": "/api/schedule-v2",
+    "method": "POST",
+    "action": "delete",
+    "classification": "relay-supported",
+    "relay": { "domain": "worksites", "action": "delete" }
+  },
+  {
+    "id": "company.get",
+    "surface": "Firmeneinstellungen",
+    "endpoint": "/api/company-settings",
+    "method": "GET",
+    "action": "get",
+    "classification": "relay-read-only",
+    "relay": { "domain": "company", "action": "get" }
+  },
+  {
+    "id": "company.update",
+    "surface": "Firmeneinstellungen",
+    "endpoint": "/api/company-settings",
+    "method": "PUT",
+    "action": "update",
+    "classification": "relay-supported",
+    "relay": { "domain": "company", "action": "update" }
+  },
+  {
+    "id": "company.set-logo",
+    "surface": "Firmeneinstellungen",
+    "endpoint": "/api/company-settings",
+    "method": "PUT",
+    "action": "set-logo",
+    "classification": "relay-supported",
+    "relay": { "domain": "company", "action": "set-logo" }
+  },
+  {
+    "id": "company.reset-logo",
+    "surface": "Firmeneinstellungen",
+    "endpoint": "/api/company-settings",
+    "method": "PUT",
+    "action": "reset-logo",
+    "classification": "relay-supported",
+    "relay": { "domain": "company", "action": "reset-logo" }
+  },
+  {
+    "id": "reports.timesheet-export",
+    "surface": "Berichte",
+    "endpoint": "/api/timesheet-reports",
+    "method": "POST",
+    "action": "timesheet-export",
+    "classification": "relay-supported",
+    "relay": { "domain": "reports", "action": "timesheet-export" }
+  },
+  {
+    "id": "reports.schedule-export",
+    "surface": "Berichte",
+    "endpoint": "/api/schedule-pdf",
+    "method": "POST",
+    "action": "schedule-export",
+    "classification": "relay-supported",
+    "relay": { "domain": "reports", "action": "schedule-export" }
+  },
+  {
+    "id": "reports.daily-list",
+    "surface": "Tagesberichte",
+    "endpoint": "/api/daily-reports",
+    "method": "GET",
+    "action": "daily-list",
+    "classification": "relay-read-only",
+    "relay": { "domain": "reports", "action": "daily-list" }
+  },
+  {
+    "id": "reports.daily-create",
+    "surface": "Tagesberichte",
+    "endpoint": "/api/daily-reports",
+    "method": "POST",
+    "action": "daily-create",
+    "classification": "relay-supported",
+    "relay": { "domain": "reports", "action": "daily-create" }
+  },
+  {
+    "id": "reports.daily-update",
+    "surface": "Tagesberichte",
+    "endpoint": "/api/daily-reports",
+    "method": "PATCH",
+    "action": "daily-update",
+    "classification": "relay-supported",
+    "relay": { "domain": "reports", "action": "daily-update" }
+  },
+  {
+    "id": "reports.daily-delete",
+    "surface": "Tagesberichte",
+    "endpoint": "/api/daily-reports",
+    "method": "DELETE",
+    "action": "daily-delete",
+    "classification": "relay-supported",
+    "relay": { "domain": "reports", "action": "daily-delete" }
+  },
+  {
+    "id": "reports.daily-export",
+    "surface": "Tagesberichte",
+    "endpoint": "/api/daily-reports-pdf",
+    "method": "GET",
+    "action": "daily-export",
+    "classification": "relay-supported",
+    "relay": { "domain": "reports", "action": "daily-export" }
+  }
+]
