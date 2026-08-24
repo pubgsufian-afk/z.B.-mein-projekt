@@ -304,5 +304,68 @@
     "action": "reset-logo",
     "classification": "relay-supported",
     "relay": { "domain": "company", "action": "reset-logo" }
+  },
+  {
+    "id": "reports.timesheet-export",
+    "surface": "Berichte",
+    "endpoint": "/api/timesheet-reports",
+    "method": "POST",
+    "action": "timesheet-export",
+    "classification": "relay-supported",
+    "relay": { "domain": "reports", "action": "timesheet-export" }
+  },
+  {
+    "id": "reports.schedule-export",
+    "surface": "Berichte",
+    "endpoint": "/api/schedule-pdf",
+    "method": "POST",
+    "action": "schedule-export",
+    "classification": "relay-supported",
+    "relay": { "domain": "reports", "action": "schedule-export" }
+  },
+  {
+    "id": "reports.daily-list",
+    "surface": "Tagesberichte",
+    "endpoint": "/api/daily-reports",
+    "method": "GET",
+    "action": "daily-list",
+    "classification": "relay-read-only",
+    "relay": { "domain": "reports", "action": "daily-list" }
+  },
+  {
+    "id": "reports.daily-create",
+    "surface": "Tagesberichte",
+    "endpoint": "/api/daily-reports",
+    "method": "POST",
+    "action": "daily-create",
+    "classification": "relay-supported",
+    "relay": { "domain": "reports", "action": "daily-create" }
+  },
+  {
+    "id": "reports.daily-update",
+    "surface": "Tagesberichte",
+    "endpoint": "/api/daily-reports",
+    "method": "PATCH",
+    "action": "daily-update",
+    "classification": "relay-supported",
+    "relay": { "domain": "reports", "action": "daily-update" }
+  },
+  {
+    "id": "reports.daily-delete",
+    "surface": "Tagesberichte",
+    "endpoint": "/api/daily-reports",
+    "method": "DELETE",
+    "action": "daily-delete",
+    "classification": "relay-supported",
+    "relay": { "domain": "reports", "action": "daily-delete" }
+  },
+  {
+    "id": "reports.daily-export",
+    "surface": "Tagesberichte",
+    "endpoint": "/api/daily-reports-pdf",
+    "method": "GET",
+    "action": "daily-export",
+    "classification": "relay-supported",
+    "relay": { "domain": "reports", "action": "daily-export" }
   }
 ]
