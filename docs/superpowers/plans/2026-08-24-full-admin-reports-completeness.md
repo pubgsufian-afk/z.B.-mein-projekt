@@ -4,7 +4,7 @@
 
 **Goal:** Add report/daily-report/export administration to the encrypted relay and prove that every current admin-visible Habun portal capability is explicitly supported, read-only, or security-excluded, with CI preventing future unclassified capabilities.
 
-**Architecture:** Extract report data/building and daily-report CRUD into reusable services so the relay does not simulate browser sessions or regenerate the same data repeatedly. Then create a versioned capability inventory that maps admin-visible UI actions/endpoints to typed relay actions/classifications. A build-time test scans the known admin surfaces and fails when a new API surface/action appears without registry classification. Runtime requests use only the static registry and never rescan the UI/repository.
+**Architecture:** Extract report data/building and daily-report CRUD into reusable services. Small report results remain in the normal encrypted response. Large PDF/XLSX results are encrypted inside Netlify, placed briefly in an encrypted export spool under an opaque handle, pulled once by the existing OIDC runner, uploaded as a one-day encrypted GitHub artifact, and deleted from the spool. A build-time capability inventory maps every admin-visible UI action/endpoint to the typed relay registry; runtime never scans frontend/repo files.
 
 **Tech Stack:** TypeScript/Netlify Functions, PDF-Lib, ExcelJS, Netlify Blobs/Database, Node.js 22, GitHub Actions/CI, existing Node assertion and Playwright tests.
 
@@ -14,13 +14,14 @@
 
 - Complete Plans 1–3 before declaring the whole portal relay complete.
 - Reports are read/export operations unless daily-report CRUD explicitly mutates data.
-- Do not log report contents, employee rows, PDF/XLSX bytes, or decrypted results.
-- Avoid building the same report twice within one command. Data projection/read occurs once, then requested format(s) are rendered from that snapshot.
-- Binary exports must respect the encrypted-result size limit. Large PDF/XLSX outputs must use a short-retention protected artifact/file result mechanism rather than stuffing oversized bytes into the encrypted JSON result.
-- Daily-report writes preserve existing owner/admin authorization, audit author/timestamps, and word limits.
-- Capability inventory is build/test-time only. Normal relay requests never scan `frontend/src` or repo files.
+- Do not log report contents, employee rows, PDF/XLSX bytes, export handles, response keys, or decrypted results.
+- Load a report dataset once per logical command and reuse the snapshot for requested formats.
+- The normal encrypted JSON result remains capped at 400 KB.
+- Large export bytes are encrypted before temporary storage; plaintext export bytes never enter GitHub comments/logs/artifacts or the Netlify export spool.
+- Daily-report writes preserve existing owner/admin authorization, author/update metadata, and word limits.
+- Capability inventory is build/test-time only.
 - Every current admin-visible capability has exactly one classification: `relay-supported`, `relay-read-only`, or `excluded-security`.
-- No normal admin capability may remain unclassified when the project is marked complete.
+- No normal admin capability may remain unclassified at completion.
 
 ---
 
@@ -35,9 +36,7 @@
 - Modify: `scripts/report-production-v2-test.mjs`
 - Modify: `scripts/report-download-contract-test.mjs`
 
-- [ ] **Step 1: Write failing service tests**
-
-Use pure/fake readers to prove one data load can feed multiple renderers.
+- [ ] **Step 1: Write failing service tests proving one load can feed multiple renderers**
 
 ```js
 import assert from 'node:assert/strict'
@@ -49,10 +48,10 @@ const service = createReportAdminService({
     loads += 1
     return [{ employeeName: 'A', date: input.from, pauseMinutes: 30, netMinutes: 450 }]
   },
-  async buildPdf(rows) { return Buffer.from('%PDF-test') },
-  async buildXlsx(rows) { return Buffer.from('PK-test') },
+  async buildPdf() { return Buffer.from('%PDF-test') },
+  async buildXlsx() { return Buffer.from('PK-test') },
 })
-const snapshot = await service.inspect({ from: '2026-08-01', to: '2026-08-24', userIds: ['u1'] })
+const snapshot = await service.inspect({ from: '2026-08-01', to: '2026-08-24', userIds: ['u1'], scope: 'unified' })
 await service.render(snapshot, 'pdf')
 await service.render(snapshot, 'xlsx')
 assert.equal(loads, 1)
@@ -81,21 +80,13 @@ export type ReportAdminSnapshot = {
 }
 ```
 
-Expose:
+Expose `inspect(input)`, `render(snapshot, format)`, and `renderSchedulePdf(input)`. Extract row-building/data loading from current production endpoints while preserving company settings, central logo/watermark, PDF and Excel output contracts.
 
-- `inspect(input)` -> projected rows/counts.
-- `render(snapshot, 'pdf' | 'xlsx')` -> bytes + content type + deterministic filename.
-- `renderSchedulePdf(input)` using schedule rows.
+- [ ] **Step 4: Keep data queries targeted**
 
-Extract row-building/data-load logic from the current production endpoints while preserving watermark/company settings logic. Browser endpoints still perform their current session/origin checks and call service methods.
+Continue using `loadReportEvents(from, to, userIds)`. When `userIds` is non-empty, keep SQL employee predicates. Schedule report reads always include `from`/`to` and, when one employee is selected, `employeeUserId`.
 
-- [ ] **Step 4: Ensure targeted DB queries stay targeted**
-
-Continue using `loadReportEvents(from, to, userIds)` from `_shared/report-database.mts`. When `userIds` is non-empty, SQL must keep exact placeholders rather than load-all/filter-client-side.
-
-Schedule row reads must specify `from`/`to`; one employee selection should additionally push `employeeUserId` where the underlying schedule repository supports it.
-
-- [ ] **Step 5: Run report tests**
+- [ ] **Step 5: Run report regressions**
 
 ```bash
 node --experimental-strip-types scripts/report-admin-service-test.mjs
@@ -114,103 +105,108 @@ git commit -m "refactor: share report data and rendering services"
 
 ---
 
-## Task 2: Add report relay adapter and efficient export handling
+## Task 2: Add report relay adapter with a one-time encrypted export spool
 
 **Files:**
 - Create: `netlify/functions/_shared/portal-admin-reports.mts`
+- Create: `netlify/functions/_shared/portal-admin-export-spool.mts`
+- Create: `netlify/functions/portal-admin-export-pull.mts`
 - Modify: `netlify/functions/schedule-oidc-trigger.mts`
+- Modify: `scripts/run-schedule-oidc-relay.mjs`
+- Modify: `.github/workflows/schedule-oidc-publish.yml`
 - Modify: `ops/portal-admin-capabilities.json`
 - Create: `scripts/portal-admin-report-test.mjs`
+- Create: `scripts/portal-admin-export-spool-test.mjs`
+- Modify: `scripts/schedule-oidc-workflow-source-test.mjs`
 
-- [ ] **Step 1: Write failing adapter tests**
+- [ ] **Step 1: Write failing report adapter tests**
 
-Cover:
+Cover exact relay actions: `reports.inspect`, `reports.render-unified`, `reports.render-timesheet`, and `reports.render-schedule-pdf`. Use `input.format` of `pdf` or `xlsx` where applicable. Assert invalid range/format rejection and one underlying snapshot load for a command rendering both formats.
 
-- `inspect` targeted report rows/counts.
-- `render-unified` pdf/xlsx.
-- `render-timesheet` pdf/xlsx.
-- `render-schedule-pdf`.
-- reject invalid date range/format.
-- same command requesting PDF+XLSX uses one data snapshot.
+- [ ] **Step 2: Implement the report adapter**
 
-- [ ] **Step 2: Implement report adapter using `report-admin-service`**
+For inspection, return projected rows/counts in encrypted detail. For export, render bytes once. If the complete result is comfortably below 400,000 bytes, return an inline encrypted export package; otherwise spool it.
 
-Actions:
-
-```ts
-'report-inspect'
-'render-unified'
-'render-timesheet'
-'render-schedule-pdf'
-```
-
-For small binary results, encrypted detail may carry:
-
-```ts
-{
-  filename: string,
-  contentType: string,
-  bytesBase64: bytes.toString('base64'),
-  size: bytes.length,
-}
-```
-
-Only allow this when encoded result remains safely below the existing 400 KB encrypted response limit.
-
-- [ ] **Step 3: Add protected export artifact result for large files**
-
-Create a short-retention artifact payload path rather than weakening the 400 KB JSON guard. The OIDC workflow already uploads one encrypted JSON result; extend the result model so a report handler may return a **separately encrypted binary artifact** written to the runner artifact directory by `run-schedule-oidc-relay.mjs`.
-
-Use AES-256-GCM with the same caller `responseKey`, but a fresh IV/tag and a metadata JSON containing filename/contentType/size. Do not place plaintext export bytes in GitHub artifacts.
-
-Suggested encrypted file envelope:
+Registry row example:
 
 ```json
 {
-  "version": 1,
-  "algorithm": "A256GCM",
-  "kind": "portal-admin-export",
-  "filename": "Habun-Stundenzettel-2026-08.pdf",
-  "contentType": "application/pdf",
-  "iv": "...",
-  "ciphertext": "...",
-  "tag": "..."
+  "id": "reports.inspect",
+  "surface": "Berichte",
+  "endpoint": "/api/unified-reports",
+  "method": "GET",
+  "action": "inspect",
+  "classification": "relay-read-only",
+  "relay": { "domain": "reports", "action": "inspect" }
 }
 ```
 
-Artifact retention stays 1 day. Add a separate artifact name `habun-portal-admin-encrypted-export` only when an export exists.
+- [ ] **Step 3: Implement encrypted spool storage**
 
-- [ ] **Step 4: Register report capabilities**
+Store only ciphertext in Netlify Blobs store `portal-admin-export-spool`. The response key is available inside `schedule-oidc-trigger` after decrypting the command.
 
-Add:
+```ts
+export type PortalAdminExportPackage = {
+  filename: string
+  contentType: string
+  bytesBase64: string
+}
 
-- `reports.inspect` -> relay-read-only.
-- `reports.unified-pdf` -> relay-read-only.
-- `reports.unified-xlsx` -> relay-read-only.
-- `reports.timesheet-pdf` -> relay-read-only.
-- `reports.timesheet-xlsx` -> relay-read-only.
-- `reports.schedule-pdf` -> relay-read-only.
+export type EncryptedExportEnvelope = {
+  version: 1
+  algorithm: 'A256GCM'
+  kind: 'portal-admin-export'
+  createdAt: string
+  expiresAt: string
+  iv: string
+  ciphertext: string
+  tag: string
+}
+```
 
-These are read-only because generation does not mutate portal business data.
+Encrypt the entire `PortalAdminExportPackage` with a fresh 12-byte IV and AES-256-GCM using the 32-byte response key. Generate `handle = crypto.randomUUID()`, store envelope at `exports/<handle>`, and set `expiresAt` to 10 minutes later. On every spool write, remove stale entries discovered under `exports/`; the pull endpoint also deletes a requested record after successful read. Never store the response key, plaintext filename, content type, or plaintext bytes outside the encrypted package.
 
-- [ ] **Step 5: Register reports handler in OIDC router**
+- [ ] **Step 4: Return only opaque handles publicly**
 
-Add `reports: createReportsPortalAdminHandler(context)`.
+The public trigger response may include:
 
-- [ ] **Step 6: Run focused tests**
+```ts
+const exportHandles = data.exportHandles.map((handle) => String(handle))
+```
+
+Do not print handles. Detailed private metadata stays inside the encrypted result/export package.
+
+- [ ] **Step 5: Add an OIDC-protected one-time pull endpoint**
+
+`portal-admin-export-pull.mts` accepts POST JSON `{ oidcToken, handle }`, calls `verifyScheduleGithubOidc`, validates UUID syntax, fetches `exports/<handle>`, rejects expired/missing records, deletes the blob, and returns the encrypted envelope JSON with `Cache-Control: no-store`. It never decrypts the export.
+
+- [ ] **Step 6: Extend the runner to pull encrypted exports**
+
+If `exportHandles` is non-empty, `run-schedule-oidc-relay.mjs` calls `/api/portal-admin-export-pull` once per handle with the same OIDC token and writes each returned encrypted envelope to generic files `/tmp/habun-portal-admin-export-1.json`, `/tmp/habun-portal-admin-export-2.json`, and so on. The runner never prints handles or response bodies.
+
+- [ ] **Step 7: Extend workflow artifact upload**
+
+Keep `habun-schedule-encrypted-result` unchanged. Add a conditional upload for `/tmp/habun-portal-admin-export-*.json` named `habun-portal-admin-encrypted-export`, retention 1 day. This stays within the same issue-comment/OIDC workflow, not a second control path.
+
+- [ ] **Step 8: Register report capabilities and handler**
+
+Add read-only registry rows for `reports.inspect`, `reports.render-unified`, `reports.render-timesheet`, and `reports.render-schedule-pdf`; register `reports: createReportsPortalAdminHandler(context)`.
+
+- [ ] **Step 9: Run focused tests**
 
 ```bash
 node --experimental-strip-types scripts/portal-admin-report-test.mjs
+node --experimental-strip-types scripts/portal-admin-export-spool-test.mjs
 node scripts/portal-admin-oidc-source-test.mjs
 node scripts/schedule-oidc-workflow-source-test.mjs
 node scripts/report-production-v2-test.mjs
 node scripts/final-export-logo-test.mjs
 ```
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add netlify/functions/_shared/portal-admin-reports.mts netlify/functions/schedule-oidc-trigger.mts scripts/run-schedule-oidc-relay.mjs .github/workflows/schedule-oidc-publish.yml ops/portal-admin-capabilities.json scripts/portal-admin-report-test.mjs scripts/schedule-oidc-workflow-source-test.mjs
+git add netlify/functions/_shared/portal-admin-reports.mts netlify/functions/_shared/portal-admin-export-spool.mts netlify/functions/portal-admin-export-pull.mts netlify/functions/schedule-oidc-trigger.mts scripts/run-schedule-oidc-relay.mjs .github/workflows/schedule-oidc-publish.yml ops/portal-admin-capabilities.json scripts/portal-admin-report-test.mjs scripts/portal-admin-export-spool-test.mjs scripts/schedule-oidc-workflow-source-test.mjs
 git commit -m "feat: export reports through encrypted portal relay"
 ```
 
@@ -228,27 +224,13 @@ git commit -m "feat: export reports through encrypted portal relay"
 - Modify: `scripts/daily-report-crud-test.mjs`
 - Modify: `scripts/daily-report-pdf-test.mjs`
 
-- [ ] **Step 1: Write failing service tests**
+- [ ] **Step 1: Write failing CRUD service tests**
 
-Test create/update/delete/list using an in-memory store and deterministic actor/time.
+Use an in-memory report store and deterministic actor/time. Verify create/update/delete/list and the existing 1000-word maximum.
 
-```js
-const actor = { userId: 'portal-admin-relay', fullName: 'Portal Admin Relay', role: 'owner' }
-const created = await service.create({ text: 'Schicht ohne besondere Vorkommnisse.' }, actor)
-assert.equal(created.authorId, actor.userId)
-const updated = await service.update(created.id, { text: 'Korrigierter Bericht.' }, actor)
-assert.equal(updated.updatedById, actor.userId)
-await service.delete(created.id, actor)
-assert.equal((await service.get(created.id)), null)
-```
+- [ ] **Step 2: Extract shared business logic**
 
-Also prove >1000-word report is rejected by the same validation used by the browser endpoint.
-
-- [ ] **Step 2: Extract CRUD business logic**
-
-Service uses `_shared/daily-report-model.mts` store/list/find helpers and `validateDailyReportText`. To avoid circular import, move `MAX_REPORT_WORDS`, `countWords`, and `validateDailyReportText` into the shared service/model module and import them from `daily-reports.mts`.
-
-Actor contract:
+Move `MAX_REPORT_WORDS`, `countWords`, and `validateDailyReportText` into the shared service/model layer. Define:
 
 ```ts
 export type DailyReportAdminActor = {
@@ -258,24 +240,17 @@ export type DailyReportAdminActor = {
 }
 ```
 
-- [ ] **Step 3: Convert browser endpoint to thin adapter**
+Service methods are `list(date?)`, `get(id)`, `create(input, actor)`, `update(id, input, actor)`, `delete(id, actor)`, and a PDF renderer that reuses the current daily-report PDF rendering logic.
 
-Keep `requirePortalRole(['owner','admin'])` and `verifyRequestOrigin` for browser writes. Derive current author name as today, pass actor to service.
+- [ ] **Step 3: Keep browser security checks in HTTP endpoint**
+
+`daily-reports.mts` retains `requirePortalRole(['owner','admin'])`, current author-name derivation, and `verifyRequestOrigin` for POST/PATCH/DELETE, then delegates to the service.
 
 - [ ] **Step 4: Add relay actions**
 
-Register and implement:
+Register exact actions: `reports.daily-list`, `reports.daily-get`, `reports.daily-create`, `reports.daily-update`, `reports.daily-delete`, and `reports.daily-pdf`. Delete requires `confirm: true`; list/get/PDF are read-only; create/update/delete are supported mutations. Use stable actor `{ userId:'portal-admin-relay', fullName:'Portal Admin Relay', role:'owner' }`.
 
-- `reports.daily-list` -> relay-read-only.
-- `reports.daily-get` -> relay-read-only.
-- `reports.daily-create` -> relay-supported.
-- `reports.daily-update` -> relay-supported.
-- `reports.daily-delete` -> relay-supported, requires `confirm: true`.
-- `reports.daily-pdf` -> relay-read-only.
-
-Relay mutations use stable actor `{ userId:'portal-admin-relay', fullName:'Portal Admin Relay', role:'owner' }` and preserve created/updated audit fields.
-
-- [ ] **Step 5: Run tests**
+- [ ] **Step 5: Run tests and commit**
 
 ```bash
 node --experimental-strip-types scripts/portal-admin-daily-report-test.mjs
@@ -283,11 +258,6 @@ node scripts/daily-report-crud-test.mjs
 node scripts/daily-report-pdf-test.mjs
 node scripts/daily-report-ui-test.mjs
 node scripts/admin-overview-daily-report-test.mjs
-```
-
-- [ ] **Step 6: Commit**
-
-```bash
 git add netlify/functions/_shared/daily-report-admin-service.mts netlify/functions/daily-reports.mts netlify/functions/daily-reports-pdf.mts netlify/functions/_shared/portal-admin-reports.mts ops/portal-admin-capabilities.json scripts/portal-admin-daily-report-test.mjs scripts/daily-report-crud-test.mjs scripts/daily-report-pdf-test.mjs
 git commit -m "feat: administer daily reports through encrypted relay"
 ```
@@ -302,9 +272,7 @@ git commit -m "feat: administer daily reports through encrypted relay"
 - Create: `scripts/portal-admin-capability-inventory-test.mjs`
 - Create: `docs/portal-admin-capability-matrix.md`
 
-- [ ] **Step 1: Define the authoritative admin UI source set**
-
-The inventory script must inspect at least these current admin surfaces:
+- [ ] **Step 1: Define authoritative admin surface files**
 
 ```js
 export const ADMIN_SURFACE_FILES = [
@@ -317,170 +285,66 @@ export const ADMIN_SURFACE_FILES = [
 ]
 ```
 
-Do not scan generated bundles in `public/assets`.
+Do not scan generated `public/assets`.
 
 - [ ] **Step 2: Write failing inventory tests**
 
-Tests must:
+Tests must: assert navigation surfaces `Übersicht`, `Zeiterfassung`, `Mitarbeiter`, `Dienstplan`, `Stundenzettel`, `Einsatzorte`, `Berichte`, `Einstellungen`; extract literal `/api/` endpoint strings; ignore only explicit session/auth infrastructure; require every discovered business endpoint in at least one registry row; require unique IDs/exactly one valid classification; require typed relay domain/action for supported/read-only rows; and require a reason for security exclusions.
 
-1. Assert all main admin navigation sections are represented: `Übersicht`, `Zeiterfassung`, `Mitarbeiter`, `Dienstplan`, `Stundenzettel`, `Einsatzorte`, `Berichte`, `Einstellungen`.
-2. Extract literal `/api/...` strings from the authoritative sources.
-3. Apply a small explicit ignore set only for session/auth infrastructure that is not a business admin capability.
-4. Assert every discovered business endpoint is referenced by at least one registry row.
-5. Assert every registry row has exactly one allowed classification and unique ID.
-6. Assert `relay-supported`/`relay-read-only` rows contain a typed relay domain/action.
-7. Assert `excluded-security` rows include a non-empty `reason`.
+- [ ] **Step 3: Inventory multiplexed actions explicitly**
 
-Example:
-
-```js
-const classifications = new Set(['relay-supported', 'relay-read-only', 'excluded-security'])
-for (const row of registry) {
-  assert.ok(classifications.has(row.classification), row.id)
-  if (row.classification !== 'excluded-security') {
-    assert.ok(row.relay?.domain && row.relay?.action, row.id)
-  } else {
-    assert.ok(String(row.reason || '').trim(), row.id)
-  }
-}
-```
-
-- [ ] **Step 3: Inventory current multiplexed actions manually where endpoint extraction is insufficient**
-
-Literal endpoint discovery cannot distinguish actions such as `/api/schedule-v2` `object-delete` or `/api/registrations` `update-profile`. Add explicit registry rows for every admin-visible action verified by existing UI/source tests.
-
-At minimum inventory these current domains/surfaces:
-
-**Übersicht**
-- live attendance read.
-- today's schedule read.
-- daily report CRUD/PDF.
-
-**Zeiterfassung / Stundenzettel**
-- attendance live/history/state reads.
-- admin time create/edit.
-- timesheet PDF/XLSX.
-
-**Mitarbeiter**
-- registrations/employees list.
-- update profile.
-- update role.
-- deactivate account.
-
-**Dienstplan**
-- list/save/update/delete/publish/copy actions currently visible to management.
-- employee directory read.
-- schedule PDF.
-
-**Einsatzorte**
-- list/get/save coordinates.
-- resolve Google Maps location.
-- delete.
-
-**Berichte**
-- unified PDF/XLSX/report data.
-
-**Einstellungen**
-- company settings.
-- company/PDF logo read/set/reset.
-- any distinct legacy `/api/settings` functionality still reachable in the current UI.
+At minimum cover: overview live attendance/today schedule/daily reports; timekeeping history/admin create/edit/timesheet exports; employees list/profile/role/deactivation; schedule list/save/update/delete/publish/copy/directory/PDF; worksites list/get/save/map/delete; unified reports; company settings/logo; and any distinct `/api/settings` action still reachable from current UI.
 
 - [ ] **Step 4: Classify exclusions narrowly**
 
-Do **not** classify ordinary unsupported functions as security exclusions. `excluded-security` is only valid for capabilities such as:
+Only passwords/auth secrets, owner self-protection bypass, legal-hold bypass, secret/environment exposure, arbitrary SQL/server code, and infrastructure mutation qualify as `excluded-security`. A normal unsupported admin function must gain a relay adapter instead.
 
-- password/authentication secret operations.
-- owner self-downgrade/deactivation.
-- secret/environment credential exposure.
-- legal-hold bypass.
-- arbitrary infrastructure/SQL execution.
+- [ ] **Step 5: Generate the matrix deterministically**
 
-If a normal admin-visible function is found without a relay adapter, implementation is incomplete; add the adapter instead of excluding it.
+`portal-admin-capability-inventory.mjs` generates `docs/portal-admin-capability-matrix.md` from JSON with surface, ID, endpoint/action, classification, relay domain/action, and exclusion reason. `--check` exits nonzero if generated content differs.
 
-- [ ] **Step 5: Generate human-readable matrix from JSON**
-
-`portal-admin-capability-inventory.mjs` should render `docs/portal-admin-capability-matrix.md` deterministically from the JSON registry. The matrix includes surface, capability ID, endpoint/action, classification, relay domain/action, and exclusion reason.
-
-Never hand-edit the generated matrix.
-
-- [ ] **Step 6: Run inventory test and fix every gap**
+- [ ] **Step 6: Run and commit**
 
 ```bash
 node scripts/portal-admin-capability-inventory-test.mjs
 node scripts/portal-admin-capability-inventory.mjs --check
-```
-
-Expected: no unclassified endpoint/action and generated file current.
-
-- [ ] **Step 7: Commit**
-
-```bash
 git add ops/portal-admin-capabilities.json scripts/portal-admin-capability-inventory.mjs scripts/portal-admin-capability-inventory-test.mjs docs/portal-admin-capability-matrix.md
 git commit -m "test: inventory every admin portal capability"
 ```
 
 ---
 
-## Task 5: Add CI gate so future admin capabilities cannot silently bypass the relay
+## Task 5: Add the CI completeness gate
 
 **Files:**
 - Modify: `package.json`
-- Modify: `.github/workflows/ci.yml` if present, otherwise the repository's existing verification workflow that runs `npm run verify`
+- Modify: the existing CI/verification workflow that already runs repository verification
 - Create: `scripts/portal-admin-full-verification-test.mjs`
 
 - [ ] **Step 1: Add `verify:portal-admin`**
 
-Compose the focused suites from all four plans:
-
 ```json
-"verify:portal-admin": "npm run verify:portal-admin-foundation && npm run verify:portal-admin-schedule-attendance && npm run verify:portal-admin-domains && node scripts/portal-admin-report-test.mjs && node scripts/portal-admin-daily-report-test.mjs && node scripts/portal-admin-capability-inventory-test.mjs && node scripts/portal-admin-capability-inventory.mjs --check"
+"verify:portal-admin": "npm run verify:portal-admin-foundation && npm run verify:portal-admin-schedule-attendance && npm run verify:portal-admin-domains && node --experimental-strip-types scripts/portal-admin-report-test.mjs && node --experimental-strip-types scripts/portal-admin-export-spool-test.mjs && node --experimental-strip-types scripts/portal-admin-daily-report-test.mjs && node scripts/portal-admin-capability-inventory-test.mjs && node scripts/portal-admin-capability-inventory.mjs --check"
 ```
 
-- [ ] **Step 2: Add it to the normal CI verification path**
+- [ ] **Step 2: Include it once in normal verification**
 
-Prefer adding `npm run verify:portal-admin` to `verify:unified` or `verify:all` rather than creating a separate expensive workflow. CI should execute once per relevant code change, not duplicate all test suites in multiple jobs.
+Add it to `verify:unified` or `verify:all`; do not duplicate the full suite in a second expensive CI job.
 
-- [ ] **Step 3: Add a source test guarding runtime cost**
+- [ ] **Step 3: Add runtime-cost source guards**
 
-`portal-admin-full-verification-test.mjs` must assert:
+Assert inventory scripts are never imported by Netlify runtime functions, runtime adapters do not read frontend files, targeted directory reads do not full-sync, `MAX_OPERATIONS` remains 100, multi-format reports reuse one snapshot, and export spool stores ciphertext only and deletes on successful pull.
 
-- capability inventory script is not imported by any Netlify runtime function.
-- no portal-admin runtime adapter imports `node:fs` or reads frontend files.
-- OIDC trigger does not scan repo/UI.
-- target directory helpers do not call a full sync as a side effect of normal reads.
-- `MAX_OPERATIONS` remains bounded.
-- report service does not load the same report snapshot twice for multi-format output.
-
-- [ ] **Step 4: Run focused full-admin verification**
+- [ ] **Step 4: Run verification/build/E2E**
 
 ```bash
 npm run verify:portal-admin
-```
-
-Expected: exit 0.
-
-- [ ] **Step 5: Run complete repository verification and build**
-
-```bash
 npm run verify
 npm run build
+npx playwright test tests/e2e/unified-portal.spec.mjs tests/e2e/employee-role-management.spec.mjs tests/e2e/worksite-feature.spec.mjs tests/e2e/admin-time-editing.spec.mjs
 ```
 
-Expected: exit 0 for both.
-
-- [ ] **Step 6: Run key E2E regressions**
-
-```bash
-npx playwright test \
-  tests/e2e/unified-portal.spec.mjs \
-  tests/e2e/employee-role-management.spec.mjs \
-  tests/e2e/worksite-feature.spec.mjs \
-  tests/e2e/admin-time-editing.spec.mjs
-```
-
-Expected: all pass.
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add package.json .github/workflows scripts/portal-admin-full-verification-test.mjs
@@ -489,76 +353,41 @@ git commit -m "ci: require complete portal admin relay coverage"
 
 ---
 
-## Task 6: Final privacy, transport, and call-efficiency acceptance test
+## Task 6: Final privacy, transport, and call-efficiency acceptance
 
 **Files:**
 - Create: `scripts/portal-admin-acceptance-test.mjs`
-- Modify: `docs/portal-admin-capability-matrix.md` only through generator if necessary
 
-- [ ] **Step 1: Build an acceptance harness around the router/client planner**
+- [ ] **Step 1: Build representative acceptance flows**
 
-Run representative commands without production writes:
-
-1. Kwame-style history inspection/rebind/verification.
-2. one monthly pause bulk update.
-3. one employee profile + worksite batch.
-4. one report inspection + PDF export.
-
-Track logical relay calls.
+Test Kwame history correction, monthly pause bulk update, employee-profile + worksite batch, and report inspect + PDF export.
 
 - [ ] **Step 2: Assert sparse call budgets**
 
-For the Kwame correction:
-
 ```js
-assert.deepEqual(actions, ['inspect-employee-history', 'rebind-employee-history', 'inspect-employee-history'])
+assert.deepEqual(kwameActions, ['inspect-employee-history', 'rebind-employee-history', 'inspect-employee-history'])
+assert.deepEqual(monthlyPauseActions, ['inspect-employee-history', 'portal-batch', 'inspect-employee-history'])
+assert.equal(profileWorksiteBatch.operations.length, 2)
 ```
 
-For monthly pause correction:
+- [ ] **Step 3: Assert GitHub-visible privacy**
 
-```js
-assert.deepEqual(actions, ['inspect-employee-history', 'portal-batch', 'inspect-employee-history'])
-```
+Verify marker `<!-- habun-schedule-envelope-v1 -->`, safe status contexts, no runner logging of handles/payloads/keys/names, encrypted artifacts, and one-day artifact retention.
 
-For profile + worksite independent changes:
-
-```js
-assert.equal(batchOperations.length, 2)
-assert.equal(batchRelayCalls, 1)
-```
-
-- [ ] **Step 3: Assert GitHub-visible surfaces remain private**
-
-Source assertions:
-
-- workflow trigger marker remains `<!-- habun-schedule-envelope-v1 -->`.
-- workflow status context contains only classification/run ID.
-- `run-schedule-oidc-relay.mjs` never logs envelope, decrypted payload, responseKey, employeeName/email, report contents, encryptedResult body, or public key body.
-- artifacts are encrypted and retention is 1 day.
-
-- [ ] **Step 4: Assert transport compatibility**
-
-Run:
+- [ ] **Step 4: Run transport compatibility and full acceptance**
 
 ```bash
 node scripts/schedule-oidc-workflow-source-test.mjs
 node scripts/schedule-oidc-trigger-source-test.mjs
 node scripts/attendance-oidc-trigger-source-test.mjs
 node scripts/schedule-command-envelope-test.mjs
-```
-
-Legacy schedule commands must still pass.
-
-- [ ] **Step 5: Run full acceptance suite**
-
-```bash
 node --experimental-strip-types scripts/portal-admin-acceptance-test.mjs
 npm run verify:portal-admin
 npm run verify
 npm run build
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add scripts/portal-admin-acceptance-test.mjs
@@ -567,14 +396,13 @@ git commit -m "test: accept full portal admin relay"
 
 ## Full Portal Done Criteria
 
-The full-admin relay is not considered complete until all are true:
-
-- Every current admin-visible business capability is present in `ops/portal-admin-capabilities.json` with exactly one valid classification.
+- Every current admin-visible business capability is classified exactly once.
 - Every normal business capability is relay-supported or relay-read-only; security exclusions are narrow and documented.
 - Employee, schedule, attendance/timesheet, worksite, company, reports/export, and daily-report actions use typed services/adapters through the encrypted PR #73 relay.
 - Existing browser UI and policy regressions pass.
 - Existing schedule relay commands remain backward compatible.
 - No normal operation requires browser-by-browser entry, direct SQL, or a deployment.
-- Capability scanning happens only in build/test, not runtime.
-- Representative correction flows prove the practical sparse-call target `1 read -> 1 batch -> 1 verification`.
+- Capability scanning happens only in build/test.
+- Large exports use the encrypted one-time spool and never expose plaintext to GitHub.
+- Representative correction flows prove the sparse-call target `1 read -> 1 batch -> 1 verification`.
 - `npm run verify:portal-admin`, `npm run verify`, and `npm run build` pass before completion is claimed.
