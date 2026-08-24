@@ -1,0 +1,146 @@
+[
+  {
+    "id": "attendance.list-corrections",
+    "surface": "Zeiterfassung Korrekturen",
+    "endpoint": "/api/attendance-maintenance",
+    "method": "GET",
+    "action": "list-corrections",
+    "classification": "relay-read-only",
+    "relay": { "domain": "attendance", "action": "list-corrections" }
+  },
+  {
+    "id": "attendance.decide-correction",
+    "surface": "Zeiterfassung Korrekturen",
+    "endpoint": "/api/attendance-maintenance",
+    "method": "POST",
+    "action": "decide-correction",
+    "classification": "relay-supported",
+    "relay": { "domain": "attendance", "action": "decide-correction" }
+  },
+  {
+    "id": "attendance.retention-dry-run",
+    "surface": "Zeiterfassung Aufbewahrung",
+    "endpoint": "/api/attendance-maintenance",
+    "method": "POST",
+    "action": "retention-dry-run",
+    "classification": "relay-read-only",
+    "relay": { "domain": "attendance", "action": "retention-dry-run" }
+  },
+  {
+    "id": "attendance.retention-apply",
+    "surface": "Zeiterfassung Aufbewahrung",
+    "endpoint": "/api/attendance-maintenance",
+    "method": "POST",
+    "action": "retention-apply",
+    "classification": "relay-supported",
+    "relay": { "domain": "attendance", "action": "retention-apply" }
+  },
+  {
+    "id": "schedule.list-templates",
+    "surface": "Dienstplan Assistenz",
+    "endpoint": "/api/schedule-assist-v2",
+    "method": "GET",
+    "action": "list-templates",
+    "classification": "relay-read-only",
+    "relay": { "domain": "schedule", "action": "list-templates" }
+  },
+  {
+    "id": "schedule.suggestions",
+    "surface": "Dienstplan Assistenz",
+    "endpoint": "/api/schedule-assist-v2",
+    "method": "GET",
+    "action": "suggestions",
+    "classification": "relay-read-only",
+    "relay": { "domain": "schedule", "action": "suggestions" }
+  },
+  {
+    "id": "schedule.review-week",
+    "surface": "Dienstplan Assistenz",
+    "endpoint": "/api/schedule-assist-v2",
+    "method": "GET",
+    "action": "review-week",
+    "classification": "relay-read-only",
+    "relay": { "domain": "schedule", "action": "review-week" }
+  },
+  {
+    "id": "schedule.save-template",
+    "surface": "Dienstplan Assistenz",
+    "endpoint": "/api/schedule-assist-v2",
+    "method": "POST",
+    "action": "save-template",
+    "classification": "relay-supported",
+    "relay": { "domain": "schedule", "action": "save-template" }
+  },
+  {
+    "id": "schedule.delete-template",
+    "surface": "Dienstplan Assistenz",
+    "endpoint": "/api/schedule-assist-v2",
+    "method": "POST",
+    "action": "delete-template",
+    "classification": "relay-supported",
+    "relay": { "domain": "schedule", "action": "delete-template" }
+  },
+  {
+    "id": "timesheets.list",
+    "surface": "Monats-Stundenzettel",
+    "endpoint": "/api/timesheets",
+    "method": "GET",
+    "action": "list",
+    "classification": "relay-read-only",
+    "relay": { "domain": "attendance", "action": "timesheet-list" }
+  },
+  {
+    "id": "timesheets.manual-create",
+    "surface": "Monats-Stundenzettel",
+    "endpoint": "/api/timesheets",
+    "method": "POST",
+    "action": "manual-create",
+    "classification": "relay-supported",
+    "relay": { "domain": "attendance", "action": "timesheet-manual-create" }
+  },
+  {
+    "id": "timesheets.manual-update",
+    "surface": "Monats-Stundenzettel",
+    "endpoint": "/api/timesheets",
+    "method": "PATCH",
+    "action": "manual-update",
+    "classification": "relay-supported",
+    "relay": { "domain": "attendance", "action": "timesheet-manual-update" }
+  },
+  {
+    "id": "timesheets.manual-delete",
+    "surface": "Monats-Stundenzettel",
+    "endpoint": "/api/timesheets",
+    "method": "DELETE",
+    "action": "manual-delete",
+    "classification": "relay-supported",
+    "relay": { "domain": "attendance", "action": "timesheet-manual-delete" }
+  },
+  {
+    "id": "timesheets.restore-schedule",
+    "surface": "Monats-Stundenzettel",
+    "endpoint": "/api/timesheets",
+    "method": "POST",
+    "action": "restore-schedule",
+    "classification": "relay-supported",
+    "relay": { "domain": "attendance", "action": "timesheet-restore-schedule" }
+  },
+  {
+    "id": "notifications.send",
+    "surface": "Push Benachrichtigungen",
+    "endpoint": "/api/push",
+    "method": "POST",
+    "action": "send",
+    "classification": "relay-supported",
+    "relay": { "domain": "company", "action": "send-notification" }
+  },
+  {
+    "id": "reports.stamp-comparison-export",
+    "surface": "Stempelprotokoll",
+    "endpoint": "/api/stamp-comparison-reports",
+    "method": "POST",
+    "action": "stamp-comparison-export",
+    "classification": "relay-supported",
+    "relay": { "domain": "reports", "action": "stamp-comparison-export" }
+  }
+]
