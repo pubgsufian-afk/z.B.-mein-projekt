@@ -13,6 +13,7 @@ import {
 export type PortalAdminHandlerContext = {
   commandId: string
   reason: string
+  responseKey: string
 }
 
 export type PortalAdminHandler = (
@@ -34,7 +35,11 @@ export function createPortalAdminRouter(
             input: command.input || {},
           }]
       const results: PortalAdminItemResult[] = []
-      const context = { commandId: command.commandId, reason: command.reason || '' }
+      const context = {
+        commandId: command.commandId,
+        reason: command.reason || '',
+        responseKey: command.responseKey,
+      }
 
       for (const operation of operations) {
         const handler = handlers[operation.domain]
