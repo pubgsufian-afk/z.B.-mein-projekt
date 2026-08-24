@@ -5,6 +5,7 @@ import {
   attendanceMaintenanceAdminService,
   type AttendanceMaintenanceAdminActor,
 } from './attendance-maintenance-admin-service.mts'
+import { TimesheetAdminError, timesheetAdminService } from './timesheet-admin-service.mts'
 import type { PortalAdminHandler } from './portal-admin-router.mts'
 
 const ATTENDANCE_ACTIONS = new Map([
@@ -30,6 +31,45 @@ function httpFailureStatus(status: number) {
 
 export function createAttendancePortalAdminHandler(context: Context): PortalAdminHandler {
   return async (operation, commandContext) => {
+    const reason = String(operation.input.reason || commandContext.reason || '').trim()
+    const timesheets = timesheetAdminService()
+    try {
+      if (operation.action === 'timesheet-list') {
+        const data = await timesheets.list(RELAY_ACTOR, operation.input)
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data }
+      }
+      if (operation.action === 'timesheet-manual-create') {
+        const entry = await timesheets.createManual(RELAY_ACTOR, { ...operation.input, ...(reason ? { reason } : {}) })
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data: { entry } }
+      }
+      if (operation.action === 'timesheet-manual-update') {
+        const entry = await timesheets.updateManual(RELAY_ACTOR, { ...operation.input, ...(reason ? { reason } : {}) })
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data: { entry } }
+      }
+      if (operation.action === 'timesheet-manual-delete') {
+        if (operation.input.confirm !== true) {
+          return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'rejected', code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED' }
+        }
+        const data = await timesheets.deleteEntry(RELAY_ACTOR, { ...operation.input, ...(reason ? { reason } : {}) })
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data }
+      }
+      if (operation.action === 'timesheet-restore-schedule') {
+        const entry = await timesheets.restoreSchedule(RELAY_ACTOR, { ...operation.input, ...(reason ? { reason } : {}) })
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data: { entry } }
+      }
+    } catch (error) {
+      if (error instanceof TimesheetAdminError) {
+        return {
+          itemId: operation.itemId,
+          domain: operation.domain,
+          action: operation.action,
+          status: httpFailureStatus(error.status),
+          code: error.code,
+        }
+      }
+      throw error
+    }
+
     const maintenance = attendanceMaintenanceAdminService()
     try {
       if (operation.action === 'list-corrections') {
@@ -45,7 +85,7 @@ export function createAttendancePortalAdminHandler(context: Context): PortalAdmi
       if (operation.action === 'decide-correction') {
         const data = await maintenance.decideCorrection(RELAY_ACTOR, {
           ...operation.input,
-          reason: String(operation.input.reason || commandContext.reason || '').trim(),
+          ...(reason ? { reason } : {}),
         })
         return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data }
       }
@@ -100,7 +140,6 @@ export function createAttendancePortalAdminHandler(context: Context): PortalAdmi
       }
     }
 
-    const reason = String(operation.input.reason || commandContext.reason || '').trim()
     const body = {
       ...operation.input,
       ...(reason ? { reason } : {}),
