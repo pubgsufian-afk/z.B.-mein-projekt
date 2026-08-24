@@ -9,12 +9,12 @@ const router = createPortalAdminRouter({
       itemId: operation.itemId,
       domain: operation.domain,
       action: operation.action,
-      status: operation.action === 'duplicate' ? 'duplicate' : 'success',
+      status: operation.action === 'find-duplicates' ? 'duplicate' : 'success',
       data: { shiftId: operation.input.shiftId },
     }
   },
   attendance: async (operation) => {
-    if (operation.action === 'explode') throw new Error('private detail')
+    if (operation.input.explode === true) throw new Error('private detail')
     return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success' }
   },
 })
@@ -31,20 +31,23 @@ const result = await router.run({
   operations: [
     { itemId: 'a', domain: 'schedule', action: 'update-shift', input: { shiftId: 's1' } },
     { itemId: 'b', domain: 'employees', action: 'get', input: { userId: 'u1' } },
-    { itemId: 'c', domain: 'attendance', action: 'explode', input: {} },
-    { itemId: 'd', domain: 'schedule', action: 'duplicate', input: { shiftId: 's2' } },
+    { itemId: 'c', domain: 'attendance', action: 'update-session', input: { explode: true } },
+    { itemId: 'd', domain: 'schedule', action: 'find-duplicates', input: { shiftId: 's2' } },
+    { itemId: 'e', domain: 'schedule', action: 'unknown-action', input: {} },
   ],
 })
-assert.deepEqual(result.results.map((row) => row.itemId), ['a', 'b', 'c', 'd'])
+assert.deepEqual(result.results.map((row) => row.itemId), ['a', 'b', 'c', 'd', 'e'])
 assert.equal(result.results[0].status, 'success')
 assert.equal(result.results[1].status, 'rejected')
 assert.equal(result.results[1].code, 'DOMAIN_NOT_REGISTERED')
 assert.equal(result.results[2].status, 'rejected')
 assert.equal(result.results[2].code, 'HANDLER_FAILED')
 assert.equal(result.results[3].status, 'duplicate')
-assert.equal(result.counts.processed, 4)
+assert.equal(result.results[4].status, 'rejected')
+assert.equal(result.results[4].code, 'ACTION_NOT_REGISTERED')
+assert.equal(result.counts.processed, 5)
 assert.equal(result.counts.succeeded, 2)
-assert.equal(result.counts.rejected, 2)
+assert.equal(result.counts.rejected, 3)
 assert.deepEqual(calls, [['a', 'batch-1'], ['d', 'batch-1']])
 assert.equal('input' in result.results[1], false)
 
