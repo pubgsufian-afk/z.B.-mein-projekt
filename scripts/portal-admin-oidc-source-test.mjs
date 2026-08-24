@@ -12,8 +12,10 @@ for (const needle of [
   'parsePortalAdminCommand',
   'parseScheduleCommand',
   'createPortalAdminRouter',
+  'createPortalHistoryAdminHandler',
   'createSchedulePortalAdminHandler',
   'createAttendancePortalAdminHandler',
+  'portal: createPortalHistoryAdminHandler()',
   'succeededCount',
   'encryptedResult',
 ]) assert.ok(source.includes(needle), `missing ${needle}`)
