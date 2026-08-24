@@ -207,6 +207,8 @@ function databaseRepository(client: any): RebindRepository {
       const locationCount = int(updatedLocations.rowCount ?? updatedLocations.rows?.length)
       const adjustmentCount = int(updatedAdjustments.rowCount ?? updatedAdjustments.rows?.length)
       const now = new Date().toISOString()
+      const auditBefore = { note: JSON.stringify({ sourceUserId: input.sourceUserId, from: input.from, to: input.to }) }
+      const auditAfter = { note: JSON.stringify({ targetUserId: input.targetUserId, targetFullName: input.targetFullName, eventCount, locationCount, adjustmentCount }) }
 
       await client.query(
         `INSERT INTO attendance_audit_log
@@ -223,8 +225,8 @@ function databaseRepository(client: any): RebindRepository {
           actor.role,
           `${input.sourceUserId}:${input.targetUserId}:${input.from}:${input.to}`,
           input.reason,
-          JSON.stringify({ sourceUserId: input.sourceUserId, from: input.from, to: input.to }),
-          JSON.stringify({ targetUserId: input.targetUserId, targetFullName: input.targetFullName, eventCount, locationCount, adjustmentCount }),
+          JSON.stringify(auditBefore),
+          JSON.stringify(auditAfter),
         ],
       )
       return { eventCount, locationCount, adjustmentCount }
