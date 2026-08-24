@@ -10,6 +10,7 @@
     "verify:database": "node scripts/netlify-database-config-test.mjs",
     "verify:admin-overview": "node scripts/apply-admin-overview-daily-report.mjs && node scripts/admin-overview-daily-report-test.mjs",
     "verify:daily-reports": "node --experimental-strip-types scripts/daily-report-crud-test.mjs && node scripts/daily-report-pdf-test.mjs && node scripts/daily-report-ui-test.mjs",
+    "verify:portal-admin-foundation": "node --experimental-strip-types scripts/portal-admin-command-test.mjs && node --experimental-strip-types scripts/portal-admin-router-test.mjs && node --experimental-strip-types scripts/portal-admin-capability-registry-test.mjs && node scripts/portal-admin-adapter-source-test.mjs && node scripts/portal-admin-oidc-source-test.mjs && node scripts/schedule-oidc-workflow-source-test.mjs",
     "verify:all": "npm run verify:legacy && npm run verify:v2 && npm run verify:unified && npm run verify:database && npm run verify:daily-reports",
     "verify": "npm run verify:all",
     "build:frontend": "node scripts/apply-admin-overview-daily-report.mjs && node scripts/admin-overview-daily-report-test.mjs && node scripts/build-frontend.mjs",
