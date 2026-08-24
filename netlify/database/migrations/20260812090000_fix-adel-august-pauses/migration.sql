@@ -19,6 +19,10 @@ BEGIN
     AND end_time = TIME '17:00'
     AND lower(btrim(work_area)) = lower('ZuKo GMB');
 
+  IF schedule_rows <> 4 OR schedule_dates <> 4 THEN
+    RAISE EXCEPTION 'Expected exactly 4 Adel schedule rows for pause correction, found % rows across % dates', schedule_rows, schedule_dates;
+  END IF;
+
   SELECT count(*), count(DISTINCT work_date)
     INTO timesheet_rows, timesheet_dates
   FROM timesheet_entries
@@ -32,16 +36,6 @@ BEGIN
     AND start_time = TIME '07:00'
     AND end_time = TIME '17:00'
     AND lower(btrim(work_area)) = lower('ZuKo GMB');
-
-  IF schedule_rows = 0 AND schedule_dates = 0
-     AND timesheet_rows = 0 AND timesheet_dates = 0 THEN
-    RAISE NOTICE 'Skipping Adel pause correction because matching historical rows are absent in this database.';
-    RETURN;
-  END IF;
-
-  IF schedule_rows <> 4 OR schedule_dates <> 4 THEN
-    RAISE EXCEPTION 'Expected exactly 4 Adel schedule rows for pause correction, found % rows across % dates', schedule_rows, schedule_dates;
-  END IF;
 
   IF timesheet_rows <> 4 OR timesheet_dates <> 4 THEN
     RAISE EXCEPTION 'Expected exactly 4 Adel timesheet rows for pause correction, found % rows across % dates', timesheet_rows, timesheet_dates;
