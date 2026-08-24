@@ -57,6 +57,7 @@ export function normalizeEmployeeHistoryRebind(raw: Record<string, unknown>): Em
 
   if (!sourceUserId || !targetUserId) throw new TypeError('Quell- und Zielmitarbeiter sind erforderlich.')
   if (sourceUserId === targetUserId) throw new TypeError('Quell- und Zielmitarbeiter müssen unterschiedlich sein.')
+  if (!isProvisionalEmployeeUserId(sourceUserId)) throw new TypeError('Die Quelle muss eine provisorische Mitarbeiteridentität sein.')
   if (isProvisionalEmployeeUserId(targetUserId)) throw new TypeError('Das Ziel muss ein registrierter Mitarbeiter sein.')
   if (!targetFullName) throw new TypeError('Der registrierte Mitarbeitername ist erforderlich.')
   if (!validDate(from) || !validDate(to) || to < from) throw new TypeError('Zeitraum ist ungültig.')
