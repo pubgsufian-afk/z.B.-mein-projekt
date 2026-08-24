@@ -1,11 +1,18 @@
 import type { Context } from '@netlify/functions'
 import scheduleAssistant from '../schedule-assistant.mts'
 import { bulkUpdateScheduleShifts } from './portal-admin-bulk-schedule.mts'
+import {
+  ScheduleAssistAdminError,
+  scheduleAssistAdminService,
+  type ScheduleAssistAdminActor,
+} from './schedule-assist-admin-service.mts'
 import type { PortalAdminHandler } from './portal-admin-router.mts'
+
+const RELAY_ACTOR: ScheduleAssistAdminActor = { userId: 'portal-admin-relay', role: 'owner' }
 
 function httpFailureStatus(status: number) {
   if (status === 404) return 'not_found' as const
-  if (status === 409) return 'conflict' as const
+  if (status === 409 || status === 410 || status === 422) return 'conflict' as const
   return 'rejected' as const
 }
 
@@ -39,6 +46,44 @@ export function createSchedulePortalAdminHandler(context: Context): PortalAdminH
         ...(failed ? { code: 'PARTIAL_BULK_RESULT' } : {}),
         data,
       }
+    }
+
+    const assist = scheduleAssistAdminService()
+    try {
+      if (operation.action === 'list-templates') {
+        const templates = await assist.listTemplates()
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data: { templates, count: templates.length } }
+      }
+      if (operation.action === 'suggestions') {
+        const suggestions = await assist.suggestions(operation.input)
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data: { suggestions } }
+      }
+      if (operation.action === 'review-week') {
+        const data = await assist.reviewWeek(operation.input)
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data }
+      }
+      if (operation.action === 'save-template') {
+        const template = await assist.saveTemplate(RELAY_ACTOR, operation.input)
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data: { template } }
+      }
+      if (operation.action === 'delete-template') {
+        if (operation.input.confirm !== true) {
+          return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'rejected', code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED' }
+        }
+        const data = await assist.deleteTemplate(operation.input)
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data }
+      }
+    } catch (error) {
+      if (error instanceof ScheduleAssistAdminError) {
+        return {
+          itemId: operation.itemId,
+          domain: operation.domain,
+          action: operation.action,
+          status: httpFailureStatus(error.status),
+          code: error.code,
+        }
+      }
+      throw error
     }
 
     const token = String(Netlify.env.get('SCHEDULE_ASSISTANT_TOKEN') || '').trim()
