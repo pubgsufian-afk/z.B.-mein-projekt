@@ -175,6 +175,45 @@ async function listOrDiagnose(action: string, body: Record<string, unknown>) {
   return json({ action, from, to, diagnostics, counts: data.counts })
 }
 
+function itemStatus(error: AttendanceAdminError) {
+  if (error.status === 404) return 'not_found'
+  if (error.status === 409) return 'conflict'
+  return 'rejected'
+}
+
+async function bulkUpdateAttendanceSessions(body: Record<string, unknown>) {
+  const updates = Array.isArray(body.updates) ? body.updates.slice(0, 100) : []
+  if (!updates.length) return json({ message: 'Mindestens eine Zeiterfassungskorrektur ist erforderlich.' }, 400)
+  const results: Array<Record<string, unknown>> = []
+  for (let index = 0; index < updates.length; index += 1) {
+    const raw = updates[index]
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      results.push({ itemId: String(index), status: 'rejected', code: 'INVALID_UPDATE' })
+      continue
+    }
+    const update = raw as Record<string, unknown>
+    const itemId = text(update.itemId) || String(index)
+    try {
+      const result = await attendanceAdminService().updateSession({
+        clockInEventId: text(update.clockInEventId),
+        clockOutEventId: text(update.clockOutEventId) || null,
+        clockInAt: text(update.clockInAt),
+        clockOutAt: text(update.clockOutAt) || null,
+        pauseMinutes: Number(update.pauseMinutes),
+        reason: text(update.reason || body.reason),
+      }, RELAY_ACTOR)
+      results.push({ itemId, status: 'success', data: result })
+    } catch (error) {
+      if (error instanceof AttendanceAdminError) {
+        results.push({ itemId, status: itemStatus(error), code: error.code })
+        continue
+      }
+      results.push({ itemId, status: 'rejected', code: 'UPDATE_FAILED' })
+    }
+  }
+  return json({ action: 'bulk-update-attendance-sessions', results })
+}
+
 export default async function attendanceAssistant(request: Request, _context: Context) {
   if (request.method !== 'POST') return json({ message: 'Methode nicht erlaubt.' }, 405)
   if (!authorized(request)) return json({ message: 'Nicht autorisiert.' }, 401)
@@ -197,6 +236,24 @@ export default async function attendanceAssistant(request: Request, _context: Co
         reason: text(body.reason),
       }, RELAY_ACTOR)
       return json({ action, ...result })
+    }
+    if (action === 'bulk-update-attendance-sessions') {
+      return await bulkUpdateAttendanceSessions(body)
+    }
+    if (action === 'create-attendance-session') {
+      const input = body.input && typeof body.input === 'object' && !Array.isArray(body.input)
+        ? body.input as Record<string, unknown>
+        : body
+      const result = await attendanceAdminService().createSession({
+        userId: text(input.userId),
+        clockInAt: text(input.clockInAt),
+        clockOutAt: text(input.clockOutAt),
+        pauseMinutes: Number(input.pauseMinutes),
+        scheduleId: input.scheduleId == null ? null : text(input.scheduleId),
+        objectId: input.objectId == null ? null : text(input.objectId),
+        reason: text(input.reason || body.reason) || 'Manueller Stundenzettel-Eintrag',
+      }, RELAY_ACTOR)
+      return json({ action, ...result }, 201)
     }
     if (action === 'delete-attendance-events') {
       const eventIds = Array.isArray(body.eventIds) ? body.eventIds.map(text).filter(Boolean) : []
