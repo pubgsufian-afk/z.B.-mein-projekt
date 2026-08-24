@@ -16,7 +16,7 @@ export type EmployeeHistoryRebindInput = {
 }
 
 type ScheduleRebindResult = { shiftCount: number; timesheetCount: number }
-type AttendanceRebindResult = { eventCount: number; adjustmentCount: number }
+type AttendanceRebindResult = { eventCount: number; locationCount: number; adjustmentCount: number }
 
 type RebindRepository = {
   rebindSchedule(input: EmployeeHistoryRebindInput, actor: AttendanceAdminActor): Promise<ScheduleRebindResult>
@@ -179,6 +179,14 @@ function databaseRepository(client: any): RebindRepository {
         }
       }
 
+      const updatedLocations = await client.query(
+        `UPDATE attendance_locations
+            SET user_id = $2
+          WHERE user_id = $1
+            AND event_id = ANY($3::text[])
+          RETURNING event_id`,
+        [input.sourceUserId, input.targetUserId, eventIds],
+      )
       const updatedEvents = await client.query(
         `UPDATE attendance_events
             SET user_id = $2
@@ -196,6 +204,7 @@ function databaseRepository(client: any): RebindRepository {
         [input.sourceUserId, input.targetUserId, input.from, input.to],
       )
       const eventCount = int(updatedEvents.rowCount ?? updatedEvents.rows?.length)
+      const locationCount = int(updatedLocations.rowCount ?? updatedLocations.rows?.length)
       const adjustmentCount = int(updatedAdjustments.rowCount ?? updatedAdjustments.rows?.length)
       const now = new Date().toISOString()
 
@@ -215,10 +224,10 @@ function databaseRepository(client: any): RebindRepository {
           `${input.sourceUserId}:${input.targetUserId}:${input.from}:${input.to}`,
           input.reason,
           JSON.stringify({ sourceUserId: input.sourceUserId, from: input.from, to: input.to }),
-          JSON.stringify({ targetUserId: input.targetUserId, targetFullName: input.targetFullName, eventCount, adjustmentCount }),
+          JSON.stringify({ targetUserId: input.targetUserId, targetFullName: input.targetFullName, eventCount, locationCount, adjustmentCount }),
         ],
       )
-      return { eventCount, adjustmentCount }
+      return { eventCount, locationCount, adjustmentCount }
     },
   }
 }
@@ -256,7 +265,7 @@ export function createEmployeeHistoryRebindService(repository: RebindRepository 
       : { shiftCount: 0, timesheetCount: 0 }
     const attendance = input.domains.includes('attendance')
       ? await scoped.rebindAttendance(input, actor)
-      : { eventCount: 0, adjustmentCount: 0 }
+      : { eventCount: 0, locationCount: 0, adjustmentCount: 0 }
     return { range: input.range, sourceUserId: input.sourceUserId, targetUserId: input.targetUserId, schedule, attendance }
   }
 
