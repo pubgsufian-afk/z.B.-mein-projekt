@@ -5,7 +5,6 @@ import {
   writeCompanySettings,
 } from './company-settings.mts'
 import { resetCustomPdfLogo, saveCustomPdfLogo } from './pdf-branding.mts'
-import { sendPortalPush } from './push-core.mts'
 import type { PortalAdminHandler } from './portal-admin-router.mts'
 
 const RELAY_ACTOR_ID = 'portal-admin-relay'
@@ -24,10 +23,6 @@ function safeSettings(settings: Awaited<ReturnType<typeof readCompanySettings>>)
     updatedAt: settings.updatedAt || '',
     updatedBy: settings.updatedBy || '',
   }
-}
-
-function clean(value: unknown, max = 500) {
-  return String(value ?? '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, max)
 }
 
 export function createCompanyPortalAdminHandler(actorRole: CompanyAdminRole = 'owner'): PortalAdminHandler {
@@ -51,23 +46,6 @@ export function createCompanyPortalAdminHandler(actorRole: CompanyAdminRole = 'o
           action: operation.action,
           status: 'success',
           data: { settings: safeSettings(settings) },
-        }
-      }
-
-      if (operation.action === 'send-notification') {
-        const data = await sendPortalPush({
-          actorRole: 'owner',
-          targetUserId: clean(operation.input.targetUserId, 200) || undefined,
-          title: clean(operation.input.title || 'Habun Mitarbeiterportal', 80),
-          body: clean(operation.input.message ?? operation.input.body, 300),
-          url: clean(operation.input.url || '/', 500) || '/',
-        })
-        return {
-          itemId: operation.itemId,
-          domain: operation.domain,
-          action: operation.action,
-          status: 'success',
-          data,
         }
       }
 
@@ -141,7 +119,7 @@ export function createCompanyPortalAdminHandler(actorRole: CompanyAdminRole = 'o
           domain: operation.domain,
           action: operation.action,
           status: 'rejected',
-          code: operation.action === 'send-notification' ? 'INVALID_NOTIFICATION' : 'INVALID_COMPANY_SETTINGS',
+          code: 'INVALID_COMPANY_SETTINGS',
         }
       }
       throw error
