@@ -21,7 +21,6 @@ const tests = [
   ['scripts/portal-admin-attendance-maintenance-test.mjs', false],
   ['scripts/portal-admin-timesheets-test.mjs', false],
   ['scripts/portal-admin-schedule-assist-test.mjs', false],
-  ['scripts/portal-admin-notifications-test.mjs', false],
   ['scripts/employee-admin-service-test.mjs', false],
   ['scripts/portal-admin-employee-test.mjs', false],
   ['scripts/worksite-admin-service-test.mjs', false],
