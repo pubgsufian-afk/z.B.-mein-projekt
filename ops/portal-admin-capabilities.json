@@ -108,6 +108,24 @@
     "relay": { "domain": "attendance", "action": "update-session" }
   },
   {
+    "id": "attendance.bulk-update-sessions",
+    "surface": "Stundenzettel",
+    "endpoint": "/api/attendance-assistant",
+    "method": "POST",
+    "action": "bulk-update-attendance-sessions",
+    "classification": "relay-supported",
+    "relay": { "domain": "attendance", "action": "bulk-update-sessions" }
+  },
+  {
+    "id": "attendance.create-session",
+    "surface": "Stundenzettel",
+    "endpoint": "/api/attendance-assistant",
+    "method": "POST",
+    "action": "create-attendance-session",
+    "classification": "relay-supported",
+    "relay": { "domain": "attendance", "action": "create-session" }
+  },
+  {
     "id": "attendance.delete-events",
     "surface": "Stundenzettel",
     "endpoint": "/api/attendance-assistant",
