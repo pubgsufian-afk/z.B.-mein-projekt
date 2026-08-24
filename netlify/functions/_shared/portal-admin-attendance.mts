@@ -6,6 +6,8 @@ const ATTENDANCE_ACTIONS = new Map([
   ['list', 'list-attendance'],
   ['find-duplicates', 'find-attendance-duplicates'],
   ['update-session', 'update-attendance-session'],
+  ['bulk-update-sessions', 'bulk-update-attendance-sessions'],
+  ['create-session', 'create-attendance-session'],
   ['delete-events', 'delete-attendance-events'],
 ])
 
