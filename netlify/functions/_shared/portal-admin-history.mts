@@ -15,11 +15,22 @@ import {
   listAttendanceHistory,
   listLegacyTimesheetEntries,
 } from './portal-admin-history-repository.mts'
+import {
+  EmployeeHistoryRebindError,
+  employeeHistoryRebindService,
+  normalizeEmployeeHistoryRebind,
+} from './employee-history-rebind.mts'
+import type { AttendanceAdminActor } from './attendance-admin-service.mts'
 import type { PortalAdminHandler } from './portal-admin-router.mts'
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const HISTORY_RESULT_LIMIT = 350_000
 const HISTORY_DOMAINS = new Set(['schedule', 'attendance'])
+const RELAY_ACTOR: AttendanceAdminActor = {
+  userId: 'portal-admin-relay',
+  email: 'portal-admin-relay@internal.invalid',
+  role: 'owner',
+}
 
 type HistoryDomain = 'schedule' | 'attendance'
 
@@ -198,7 +209,7 @@ export async function inspectPortalEmployeeHistory(rawInput: Record<string, unkn
     matchingProvisionalIdentities(input, employee.fullName),
   ])
 
-  const result = {
+  return {
     employee,
     range: { from: input.from, to: input.to },
     provisionalIdentities,
@@ -212,59 +223,100 @@ export async function inspectPortalEmployeeHistory(rawInput: Record<string, unkn
     },
     truncated: false,
   }
-  return result
+}
+
+function rebindStatus(error: EmployeeHistoryRebindError) {
+  if (error.status === 404) return 'not_found' as const
+  if (error.status === 409) return 'conflict' as const
+  return 'rejected' as const
 }
 
 export function createPortalHistoryAdminHandler(): PortalAdminHandler {
-  return async (operation) => {
-    if (operation.action !== 'inspect-employee-history') {
-      return {
-        itemId: operation.itemId,
-        domain: operation.domain,
-        action: operation.action,
-        status: 'rejected',
-        code: 'ACTION_NOT_MAPPED',
+  return async (operation, commandContext) => {
+    if (operation.action === 'inspect-employee-history') {
+      try {
+        const data = await inspectPortalEmployeeHistory(operation.input)
+        if (portalHistoryResultTooLarge(data)) {
+          return {
+            itemId: operation.itemId,
+            domain: operation.domain,
+            action: operation.action,
+            status: 'conflict',
+            code: 'RANGE_RESULT_TOO_LARGE',
+            data: { range: data.range, counts: data.counts },
+          }
+        }
+        return {
+          itemId: operation.itemId,
+          domain: operation.domain,
+          action: operation.action,
+          status: 'success',
+          data,
+        }
+      } catch (error) {
+        if (error instanceof PortalHistoryError) {
+          return {
+            itemId: operation.itemId,
+            domain: operation.domain,
+            action: operation.action,
+            status: error.status,
+            code: error.code,
+          }
+        }
+        if (error instanceof TypeError || error instanceof RangeError) {
+          return {
+            itemId: operation.itemId,
+            domain: operation.domain,
+            action: operation.action,
+            status: 'rejected',
+            code: 'INVALID_HISTORY_REQUEST',
+          }
+        }
+        throw error
       }
     }
-    try {
-      const data = await inspectPortalEmployeeHistory(operation.input)
-      if (portalHistoryResultTooLarge(data)) {
+
+    if (operation.action === 'rebind-employee-history') {
+      try {
+        const reason = text(operation.input.reason || commandContext.reason, 1000)
+        const input = normalizeEmployeeHistoryRebind({ ...operation.input, reason })
+        const data = await employeeHistoryRebindService().rebind(input, RELAY_ACTOR)
         return {
           itemId: operation.itemId,
           domain: operation.domain,
           action: operation.action,
-          status: 'conflict',
-          code: 'RANGE_RESULT_TOO_LARGE',
-          data: { range: data.range, counts: data.counts },
+          status: 'success',
+          data,
         }
-      }
-      return {
-        itemId: operation.itemId,
-        domain: operation.domain,
-        action: operation.action,
-        status: 'success',
-        data,
-      }
-    } catch (error) {
-      if (error instanceof PortalHistoryError) {
-        return {
-          itemId: operation.itemId,
-          domain: operation.domain,
-          action: operation.action,
-          status: error.status,
-          code: error.code,
+      } catch (error) {
+        if (error instanceof EmployeeHistoryRebindError) {
+          return {
+            itemId: operation.itemId,
+            domain: operation.domain,
+            action: operation.action,
+            status: rebindStatus(error),
+            code: error.code,
+          }
         }
-      }
-      if (error instanceof TypeError || error instanceof RangeError) {
-        return {
-          itemId: operation.itemId,
-          domain: operation.domain,
-          action: operation.action,
-          status: 'rejected',
-          code: 'INVALID_HISTORY_REQUEST',
+        if (error instanceof TypeError || error instanceof RangeError) {
+          return {
+            itemId: operation.itemId,
+            domain: operation.domain,
+            action: operation.action,
+            status: 'rejected',
+            code: 'INVALID_REBIND_REQUEST',
+          }
         }
+        throw error
       }
-      throw error
+    }
+
+    return {
+      itemId: operation.itemId,
+      domain: operation.domain,
+      action: operation.action,
+      status: 'rejected',
+      code: 'ACTION_NOT_MAPPED',
     }
   }
 }
