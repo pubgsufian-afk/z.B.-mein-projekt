@@ -3,6 +3,10 @@ import { createCipheriv, createHash, createPrivateKey, createPublicKey, randomBy
 import { verifyScheduleGithubOidc } from './_shared/schedule-github-oidc.mts'
 import { decryptScheduleCommandEnvelopeRuntime } from './_shared/schedule-command-envelope-runtime.mts'
 import { parseScheduleCommand, type ScheduleWorkerCommand } from './_shared/schedule-command-worker-core.mts'
+import { parsePortalAdminCommand } from './_shared/portal-admin-command-core.mts'
+import { createPortalAdminRouter } from './_shared/portal-admin-router.mts'
+import { createSchedulePortalAdminHandler } from './_shared/portal-admin-schedule.mts'
+import { createAttendancePortalAdminHandler } from './_shared/portal-admin-attendance.mts'
 import { findScheduleShift } from './_shared/schedule-neon-repository.mts'
 import { syncPublishedScheduleShift } from './_shared/timesheet-schedule-sync.mts'
 import scheduleAssistant from './schedule-assistant.mts'
@@ -108,7 +112,7 @@ function assistantRequestBody(command: ScheduleWorkerCommand) {
   return body
 }
 
-function encryptAssistantResult(data: AssistantResponse, encodedKey: string) {
+function encryptAssistantResult(data: unknown, encodedKey: string) {
   const key = Buffer.from(encodedKey, 'base64')
   if (key.length !== 32) throw new Error('Ungültiger Antwortschlüssel')
   const plaintext = Buffer.from(JSON.stringify(data), 'utf8')
@@ -199,6 +203,39 @@ export default async function scheduleOidcTrigger(request: Request, context: Con
     command = decryptScheduleCommandEnvelopeRuntime(body.envelope, privateKeyDer)
   } catch {
     return json({ message: 'Verschlüsselter Dienstplan-Auftrag ist ungültig.' }, 400)
+  }
+
+  if (String(command.domain || '').trim()) {
+    const parsedPortal = parsePortalAdminCommand(JSON.stringify(command), new Date())
+    if (!parsedPortal.ok) return json({ message: parsedPortal.message }, 400)
+
+    const router = createPortalAdminRouter({
+      schedule: createSchedulePortalAdminHandler(context),
+      attendance: createAttendancePortalAdminHandler(context),
+    })
+    const data = await router.run(parsedPortal.command)
+    let encryptedResult: ReturnType<typeof encryptAssistantResult>
+    try {
+      encryptedResult = encryptAssistantResult(data, parsedPortal.command.responseKey)
+    } catch {
+      return json({ message: 'Verschlüsselte Portal-Admin-Antwort konnte nicht erzeugt werden.' }, 500)
+    }
+    const commandHash = createHash('sha256').update(parsedPortal.command.commandId).digest('hex').slice(0, 12)
+    const publicResults = data.results.map(({ itemId, domain, action, status, code }) => ({
+      itemId,
+      domain,
+      action,
+      status,
+      ...(code ? { code } : {}),
+    }))
+    return json({
+      commandHash,
+      action: parsedPortal.command.action,
+      succeededCount: data.counts.succeeded,
+      rejectedCount: data.counts.rejected,
+      results: publicResults,
+      encryptedResult,
+    })
   }
 
   const parsed = parseScheduleCommand(JSON.stringify(command), new Date())
