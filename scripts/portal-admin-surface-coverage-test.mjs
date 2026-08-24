@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { extname, join, relative } from 'node:path'
 
 const roots = ['public', 'frontend/src']
@@ -29,10 +29,12 @@ function apiEndpoints(source) {
   return found
 }
 
-const [registry, policy] = await Promise.all([
+const [baseRegistry, extraRegistry, policy] = await Promise.all([
   readFile('ops/portal-admin-capabilities.json', 'utf8').then(JSON.parse),
+  readFile('ops/portal-admin-capabilities-extra.json', 'utf8').then(JSON.parse),
   readFile('ops/portal-admin-surface-policy.json', 'utf8').then(JSON.parse),
 ])
+const registry = [...baseRegistry, ...extraRegistry]
 const capabilityIds = new Set(registry.map((entry) => entry.id))
 const coveredAliases = policy.coveredAliases || {}
 const excluded = policy.excluded || {}
