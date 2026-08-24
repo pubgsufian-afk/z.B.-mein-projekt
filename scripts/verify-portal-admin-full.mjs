@@ -36,6 +36,7 @@ const tests = [
   ['scripts/portal-admin-export-transport-test.mjs', false],
   ['scripts/portal-admin-daily-report-test.mjs', false],
   ['scripts/portal-admin-surface-coverage-test.mjs', false],
+  ['scripts/portal-admin-adel-migration-test.mjs', false],
 ]
 
 for (const [path] of tests) await access(path)
