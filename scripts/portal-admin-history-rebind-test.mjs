@@ -31,7 +31,7 @@ const service = createEmployeeHistoryRebindService({
   },
   async rebindAttendance(input) {
     calls.push(['attendance', input.from, input.to])
-    return { eventCount: 4, adjustmentCount: 1 }
+    return { eventCount: 4, adjustmentCount: 1, locationCount: 2 }
   },
 })
 const result = await service.rebind(normalized, {
@@ -43,6 +43,7 @@ assert.deepEqual(calls, [
 ])
 assert.equal(result.schedule.shiftCount, 2)
 assert.equal(result.attendance.eventCount, 4)
+assert.equal(result.attendance.locationCount, 2)
 
 const source = await readFile('netlify/functions/_shared/employee-history-rebind.mts', 'utf8')
 for (const needle of [
@@ -51,9 +52,11 @@ for (const needle of [
   'event_date BETWEEN',
   'attendance_legal_holds',
   'attendance_adjustments',
+  'UPDATE attendance_locations',
   'attendance_audit_log',
   'schedule_audit_log',
   'admin-employee-rebind',
+  'locationCount',
 ]) assert.ok(source.includes(needle), `missing ${needle}`)
 
 console.log('portal admin history rebind tests passed')
