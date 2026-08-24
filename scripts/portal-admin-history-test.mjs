@@ -33,13 +33,13 @@ assert.throws(() => normalizeHistoryInspection({ employeeUserId: 'u1', from: '20
 assert.equal(portalHistoryResultTooLarge({ rows: ['x'] }), false)
 assert.equal(portalHistoryResultTooLarge({ rows: ['x'.repeat(390000)] }), true)
 
-const repository = await readFile('netlify/functions/_shared/schedule-neon-repository.mts', 'utf8')
+const repository = await readFile('netlify/functions/_shared/portal-admin-history-repository.mts', 'utf8')
 assert.match(repository, /listLegacyTimesheetEntries/)
 assert.match(repository, /work_date BETWEEN/)
 assert.match(repository, /employee_user_id =/)
+assert.match(repository, /event_date BETWEEN/)
 
 const history = await readFile('netlify/functions/_shared/portal-admin-history.mts', 'utf8')
-assert.match(history, /event_date BETWEEN/)
 assert.match(history, /employeeUserId/)
 assert.match(history, /inspect-employee-history/)
 assert.match(history, /RANGE_RESULT_TOO_LARGE/)
