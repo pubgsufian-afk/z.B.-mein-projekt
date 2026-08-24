@@ -7,6 +7,7 @@ import { parsePortalAdminCommand } from './_shared/portal-admin-command-core.mts
 import { createPortalAdminRouter } from './_shared/portal-admin-router.mts'
 import { createSchedulePortalAdminHandler } from './_shared/portal-admin-schedule.mts'
 import { createAttendancePortalAdminHandler } from './_shared/portal-admin-attendance.mts'
+import { createPortalHistoryAdminHandler } from './_shared/portal-admin-history.mts'
 import { findScheduleShift } from './_shared/schedule-neon-repository.mts'
 import { syncPublishedScheduleShift } from './_shared/timesheet-schedule-sync.mts'
 import scheduleAssistant from './schedule-assistant.mts'
@@ -210,6 +211,7 @@ export default async function scheduleOidcTrigger(request: Request, context: Con
     if (!parsedPortal.ok) return json({ message: parsedPortal.message }, 400)
 
     const router = createPortalAdminRouter({
+      portal: createPortalHistoryAdminHandler(),
       schedule: createSchedulePortalAdminHandler(context),
       attendance: createAttendancePortalAdminHandler(context),
     })
