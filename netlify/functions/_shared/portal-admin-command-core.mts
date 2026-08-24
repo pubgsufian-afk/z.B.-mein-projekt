@@ -1,6 +1,7 @@
 export type PortalAdminDomain =
   | 'portal'
   | 'employees'
+  | 'registrations'
   | 'schedule'
   | 'attendance'
   | 'worksites'
@@ -35,7 +36,7 @@ const CLOCK_SKEW_MS = 60 * 1000
 const MAX_OPERATIONS = 100
 const MAX_COMMAND_BYTES = 400_000
 const DOMAINS = new Set<PortalAdminDomain>([
-  'portal', 'employees', 'schedule', 'attendance', 'worksites', 'company', 'reports',
+  'portal', 'employees', 'registrations', 'schedule', 'attendance', 'worksites', 'company', 'reports',
 ])
 
 function text(value: unknown, max = 180) {
