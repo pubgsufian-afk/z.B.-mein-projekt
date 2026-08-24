@@ -3,6 +3,7 @@ import type {
   PortalAdminDomain,
   PortalAdminOperation,
 } from './portal-admin-command-core.mts'
+import { portalAdminActionAllowed } from './portal-admin-capabilities.mts'
 import {
   portalAdminCounts,
   type PortalAdminItemResult,
@@ -44,6 +45,16 @@ export function createPortalAdminRouter(
             action: operation.action,
             status: 'rejected',
             code: 'DOMAIN_NOT_REGISTERED',
+          })
+          continue
+        }
+        if (!portalAdminActionAllowed(operation.domain, operation.action)) {
+          results.push({
+            itemId: operation.itemId,
+            domain: operation.domain,
+            action: operation.action,
+            status: 'rejected',
+            code: 'ACTION_NOT_REGISTERED',
           })
           continue
         }
