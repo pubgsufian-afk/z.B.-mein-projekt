@@ -126,15 +126,6 @@
     "relay": { "domain": "attendance", "action": "timesheet-restore-schedule" }
   },
   {
-    "id": "notifications.send",
-    "surface": "Push Benachrichtigungen",
-    "endpoint": "/api/push",
-    "method": "POST",
-    "action": "send",
-    "classification": "relay-supported",
-    "relay": { "domain": "company", "action": "send-notification" }
-  },
-  {
     "id": "reports.stamp-comparison-export",
     "surface": "Stempelprotokoll",
     "endpoint": "/api/stamp-comparison-reports",
