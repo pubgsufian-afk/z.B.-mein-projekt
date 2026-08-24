@@ -19,8 +19,7 @@
     "/api/schedule-pdf-fixed": ["reports.schedule-export"],
     "/api/daily-reports": ["reports.daily-list", "reports.daily-create", "reports.daily-update", "reports.daily-delete"],
     "/api/daily-reports-pdf": ["reports.daily-export"],
-    "/api/company-settings": ["company.get", "company.update", "company.set-logo", "company.reset-logo"],
-    "/api/push": ["notifications.send"]
+    "/api/company-settings": ["company.get", "company.update", "company.set-logo", "company.reset-logo"]
   },
   "excluded": {
     "/api/session": "Authentifizierungs- und Sitzungsstatus; kein administratives Datenobjekt.",
@@ -31,10 +30,11 @@
     "/api/attendance-live": "Read-only Live-/Self-Service-Ansicht; administrative Änderungen laufen über attendance-Domain.",
     "/api/schedule-live-check": "Read-only Laufzeitprüfung; kein eigenständiger administrativer Mutationsbereich.",
     "/api/schedule-directory": "Read-only Hilfsverzeichnis; Mitarbeiterverwaltung läuft über employees/registrations.",
+    "/api/push": "Der Produktions-Finalizer entfernt den manuellen Admin-Sender; der verbleibende Endpunkt dient Geräte-/Self-Service-Funktionen.",
     "/api/push-register": "Gerätebezogene Push-Registrierung; Sicherheits-/Self-Service-Funktion.",
     "/api/push-subscribe": "Gerätebezogene Push-Registrierung; Sicherheits-/Self-Service-Funktion.",
     "/api/push-unsubscribe": "Gerätebezogene Push-Registrierung; Sicherheits-/Self-Service-Funktion.",
-    "/api/push-test": "Gerätebezogene Diagnosefunktion; zentraler Nachrichtenversand läuft über notifications.send.",
+    "/api/push-test": "Gerätebezogene Diagnosefunktion; keine zentrale Admin-Verwaltungsfunktion im finalen Portal.",
     "/api/work": "Legacy-/Self-Service-Arbeitsendpunkt; produktive Admin-Verwaltung läuft über spezialisierte Domains."
   }
 }
