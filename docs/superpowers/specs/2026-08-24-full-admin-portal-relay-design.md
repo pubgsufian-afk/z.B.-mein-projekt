@@ -103,6 +103,29 @@ A capability registry defines which portal domains/actions the encrypted admin r
 
 When a new normal admin function is added to the portal, support is added by registering a typed domain handler rather than creating a second control path or reverting to browser automation.
 
+## Completeness inventory and gate
+
+“Full portal access” means the implementation must inventory the actual portal, not rely only on this document's examples.
+
+Before the relay is declared complete, create a capability matrix from:
+
+- admin-visible frontend routes/navigation
+- admin buttons/forms/actions in those routes
+- current production Netlify functions/endpoints used by those actions
+- existing owner/admin design specs and permission rules
+
+Every discovered admin-visible capability must be classified as exactly one of:
+
+- `relay-supported`: read/write action is available through the encrypted relay
+- `relay-read-only`: the portal function itself is intentionally read-only and the relay can perform the same read/export
+- `excluded-security`: intentionally excluded because it is a secret/credential, protected owner operation, legal-hold bypass or infrastructure-level action
+
+There must be no unclassified current admin-visible capability when the implementation is considered complete.
+
+The capability matrix becomes a versioned registry/test fixture. CI should fail when a newly added admin-visible capability is detected but has no relay classification, so future portal features do not silently become inaccessible to the relay.
+
+This inventory is build/test-time work, not runtime work. Normal user requests must not repeatedly scan the repository or UI to rediscover capabilities.
+
 ## Permission model
 
 The relay operates as a dedicated internal full-admin actor with owner-equivalent business-data privileges for supported actions.
@@ -157,6 +180,8 @@ Initial adapters:
 - company settings
 - reports / exports
 
+Additional adapters are added for any further admin-visible domain found by the completeness inventory.
+
 The router owns protocol validation, authorization, batching, privacy-safe result handling and common audit metadata. Domain handlers own business validation and data consistency.
 
 ## Identity model
@@ -205,6 +230,7 @@ Rules:
 - if batching must be split, use the minimum number of batches
 - return compact results by default; only fetch detailed rows that are needed to decide or verify a change
 - do not generate reports/PDFs repeatedly when one result can be reused
+- never perform the capability inventory at runtime for a normal portal request
 
 The practical target is usually: `1 read -> 1 batch -> 1 verification`.
 
@@ -303,7 +329,14 @@ No per-day loop, no browser entry, no direct SQL and no deploy.
 
 ## Success criteria
 
-The design is complete when ChatGPT can safely handle requests such as:
+The design is complete when:
+
+- the capability inventory has no unclassified current admin-visible portal functions
+- every supported mutation is encrypted, audited and verified
+- normal portal-data tasks do not need browser entry, direct SQL or code deploys
+- bulk/range work uses the minimum practical number of calls
+
+ChatGPT can then safely handle requests such as:
 
 - “Change this employee's profile and worksite.”
 - “Activate/deactivate this employee account.”
