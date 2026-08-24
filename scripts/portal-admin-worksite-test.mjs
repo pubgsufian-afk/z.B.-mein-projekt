@@ -7,7 +7,7 @@ const [adapter, service] = await Promise.all([
 ])
 for (const action of ['list','get','save','delete','resolve-map']) assert.ok(adapter.includes(`'${action}'`), `missing ${action}`)
 assert.match(adapter, /DESTRUCTIVE_CONFIRMATION_REQUIRED/)
-assert.match(adapter, /confirm === true/)
+assert.match(adapter, /confirm !== true/)
 assert.match(service, /attendance_objects/)
 assert.match(service, /scheduleReferenceCount/)
 assert.doesNotMatch(service, /DELETE FROM schedule_shifts/)
