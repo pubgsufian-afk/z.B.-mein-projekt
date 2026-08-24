@@ -1,0 +1,35 @@
+{
+  "coveredAliases": {
+    "/api/registrations": ["employees.list", "employees.get", "employees.update-profile", "employees.update-role", "employees.deactivate-account", "registrations.list", "registrations.approve", "registrations.reject"],
+    "/api/worksite-v2": ["worksites.list", "worksites.get", "worksites.save", "worksites.resolve-map", "worksites.delete"],
+    "/api/schedule-v2": ["schedule.list-shifts", "schedule.publish-shifts", "schedule.update-shift", "schedule.bulk-update-shifts", "schedule.delete-shift", "worksites.delete"],
+    "/api/schedule-assistant": ["schedule.sync-directory", "schedule.resolve-employees", "schedule.publish-shifts", "schedule.list-shifts", "schedule.get-shift", "schedule.find-duplicates", "schedule.update-shift", "schedule.delete-shift"],
+    "/api/attendance-time-edit": ["attendance.update-session", "attendance.bulk-update-sessions"],
+    "/api/attendance-time-create": ["attendance.create-session"],
+    "/api/attendance-assistant": ["attendance.list", "attendance.find-duplicates", "attendance.update-session", "attendance.bulk-update-sessions", "attendance.create-session", "attendance.delete-events"],
+    "/api/reports-v2": ["reports.timesheet-export"],
+    "/api/timesheet-reports": ["reports.timesheet-export"],
+    "/api/unified-reports": ["reports.timesheet-export"],
+    "/api/unified-reports-fixed": ["reports.timesheet-export"],
+    "/api/schedule-pdf": ["reports.schedule-export"],
+    "/api/schedule-pdf-fixed": ["reports.schedule-export"],
+    "/api/daily-reports": ["reports.daily-list", "reports.daily-create", "reports.daily-update", "reports.daily-delete"],
+    "/api/daily-reports-pdf": ["reports.daily-export"],
+    "/api/company-settings": ["company.get", "company.update", "company.set-logo", "company.reset-logo"]
+  },
+  "excluded": {
+    "/api/session": "Authentifizierungs- und Sitzungsstatus; kein administratives Datenobjekt.",
+    "/api/settings": "Benutzerbezogene lokale Portal-Einstellungen; keine zentrale Admin-Verwaltung.",
+    "/api/company-logo": "Read-only Bildauslieferung des Logos; Änderungen laufen über company.set-logo/reset-logo.",
+    "/api/attendance": "Mitarbeiter-Self-Service für Ein-/Ausstempeln; Admin-Korrekturen laufen über attendance-Domain.",
+    "/api/attendance-v2": "Mitarbeiter-Self-Service für Ein-/Ausstempeln; Admin-Korrekturen laufen über attendance-Domain.",
+    "/api/attendance-live": "Read-only Live-/Self-Service-Ansicht; administrative Änderungen laufen über attendance-Domain.",
+    "/api/schedule-live-check": "Read-only Laufzeitprüfung; kein eigenständiger administrativer Mutationsbereich.",
+    "/api/schedule-directory": "Read-only Hilfsverzeichnis; Mitarbeiterverwaltung läuft über employees/registrations.",
+    "/api/push-register": "Gerätebezogene Push-Registrierung; Sicherheits-/Self-Service-Funktion.",
+    "/api/push-subscribe": "Gerätebezogene Push-Registrierung; Sicherheits-/Self-Service-Funktion.",
+    "/api/push-unsubscribe": "Gerätebezogene Push-Registrierung; Sicherheits-/Self-Service-Funktion.",
+    "/api/push-test": "Diagnosefunktion für Push; keine Portal-Admin-Datenverwaltung.",
+    "/api/work": "Legacy-/Self-Service-Arbeitsendpunkt; produktive Admin-Verwaltung läuft über spezialisierte Domains."
+  }
+}
