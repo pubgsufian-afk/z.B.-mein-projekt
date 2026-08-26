@@ -53,9 +53,9 @@ assert.doesNotMatch(commandWorker, /notifySchedulePublished|notifyScheduleChange
 
 assert.match(reminderWorker, /AT TIME ZONE 'Europe\/Berlin'/, 'reminders must use Europe/Berlin DST-aware time conversion')
 assert.match(reminderWorker, /interval '4 minutes'/)
-assert.match(reminderWorker, /interval '6 minutes'/)
+assert.match(reminderWorker, /interval '9 minutes'/)
 assert.match(reminderWorker, /ON CONFLICT \(reminder_key\) DO NOTHING/, 'reminders must be atomically claimed')
-assert.match(reminderWorker, /schedule:\s*'\* \* \* \* \*'/, 'reminder worker must run every minute')
+assert.match(reminderWorker, /schedule:\s*'\*\/5 \* \* \* \*'/, 'reminder worker must run every five minutes')
 assert.match(reminderWorker, /shouldReleaseReminderClaim\(result\)/)
 assert.match(reminderCore, /result\.targeted === 0/, 'claim is released only when certainly no device was targeted')
 assert.match(migration, /CREATE TABLE schedule_push_reminders/)

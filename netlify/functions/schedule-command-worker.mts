@@ -1,4 +1,4 @@
-import type { Config, Context } from '@netlify/functions'
+import type { Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import scheduleAssistant from './schedule-assistant.mts'
 import { parseScheduleCommand, type ScheduleWorkerCommand } from './_shared/schedule-command-worker-core.mts'
@@ -178,8 +178,4 @@ export default async function scheduleCommandWorker(_request: Request, context: 
   console.log(
     `schedule-command-worker processed ${command.commandId} action=${command.action} published=${result.publishedCount} duplicate=${result.duplicateCount} rejected=${result.rejectedCount} entries=${result.entryCount}`,
   )
-}
-
-export const config: Config = {
-  schedule: '* * * * *',
 }
