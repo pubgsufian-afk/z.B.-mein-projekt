@@ -17,7 +17,7 @@ async function upcomingPublishedShifts(nowIso: string) {
        FROM schedule_shifts
       WHERE status = 'published'
         AND ((shift_date + start_time) AT TIME ZONE 'Europe/Berlin') >= $1::timestamptz + interval '4 minutes'
-        AND ((shift_date + start_time) AT TIME ZONE 'Europe/Berlin') <  $1::timestamptz + interval '6 minutes'
+        AND ((shift_date + start_time) AT TIME ZONE 'Europe/Berlin') <  $1::timestamptz + interval '9 minutes'
       ORDER BY scheduled_start, id`,
     [nowIso],
   )
@@ -87,4 +87,4 @@ export default async function scheduleStartReminders(_request: Request, _context
   }
 }
 
-export const config: Config = { schedule: '* * * * *' }
+export const config: Config = { schedule: '*/5 * * * *' }
