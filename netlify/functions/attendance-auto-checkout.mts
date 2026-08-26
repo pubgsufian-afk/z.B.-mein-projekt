@@ -134,4 +134,4 @@ export default async function attendanceAutoCheckout(_request: Request, _context
   }
 }
 
-export const config: Config = { schedule: '* * * * *' }
+export const config: Config = { schedule: '*/5 * * * *' }
