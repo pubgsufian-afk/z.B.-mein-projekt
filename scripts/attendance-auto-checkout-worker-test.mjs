@@ -29,6 +29,6 @@ assert.match(source, /autoEventId/)
 assert.match(source, /nextPublishedShiftStart/)
 assert.match(source, /finishFlexAutoShift/)
 assert.match(source, /clientOccurredAt:\s*deadline\.toISOString\(\)/)
-assert.match(source, /schedule:\s*'\*\/5 \* \* \* \*'/, 'automatic checkout should run every five minutes')
+assert.match(source, /schedule:\s*'\*\/15 \* \* \* \*'/, 'automatic checkout should run every fifteen minutes')
 
 console.log('automatic checkout worker contract: ok')
