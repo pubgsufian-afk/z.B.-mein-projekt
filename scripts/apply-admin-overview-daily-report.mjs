@@ -29,4 +29,8 @@ assert.match(verified, /import AdminOverview from '\.\/AdminOverview\.jsx'/)
 assert.match(overviewBlock, /<AdminOverview session=\{session\} navigate=\{navigate\} \/>/)
 assert.doesNotMatch(overviewBlock, /Meine Zeiten/)
 assert.doesNotMatch(overviewBlock, /PDF und Excel erstellen/)
+
+await import('./apply-data-refresh.mjs')
+await import('./apply-session-expiry-fix.mjs')
+
 console.log('Admin overview + daily report dashboard applied')
