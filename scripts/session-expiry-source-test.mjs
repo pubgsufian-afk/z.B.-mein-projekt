@@ -10,6 +10,6 @@ assert.match(app, /habun:auth-expired/)
 assert.match(app, /setIdentityUser\(null\)/)
 assert.match(app, /setSession\(null\)/)
 assert.match(app, /Sitzung abgelaufen\. Bitte erneut anmelden\./)
-assert.doesNotMatch(app, /catch \(error\) \{ setNotice\(\{ tone: 'error', text: error\.message \}\) \}\s*finally \{ setLoading\(false\) \}/, '401 must not leave a stale authenticated portal visible')
+assert.match(app, /removeEventListener\('habun:auth-expired'/)
 
 console.log('session expiry source contract: ok')
