@@ -12,6 +12,41 @@ function isIOSWebKit() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 }
 
+function installSessionResumeGuard() {
+  let hiddenAt = document.visibilityState === 'hidden' ? Date.now() : 0
+  let checking = false
+
+  const verifySession = async () => {
+    if (checking || document.visibilityState === 'hidden') return
+    checking = true
+    try {
+      const response = await fetch('/api/session', {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      })
+      if (response.status === 401) window.location.reload()
+    } catch {
+      // Network failures must not force a logout; the next resume can retry.
+    } finally {
+      checking = false
+    }
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      hiddenAt = Date.now()
+      return
+    }
+    if (!hiddenAt || Date.now() - hiddenAt >= 60000) void verifySession()
+    hiddenAt = 0
+  })
+
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) void verifySession()
+  })
+}
+
 function installIOSPdfPreviewFallback() {
   if (!isIOSWebKit()) return
 
@@ -128,8 +163,9 @@ function installIOSPdfPreviewFallback() {
 }
 
 installIOSPdfPreviewFallback()
+installSessionResumeGuard()
 installAdminTimeEditing()
-installDataRefreshTriggers({ intervalMs: 60000 })
+installDataRefreshTriggers({ intervalMs: 300000 })
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/push-sw.js', { scope: '/' }).catch(() => {})
