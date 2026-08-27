@@ -14,7 +14,7 @@ export function subscribeDataRefresh(listener) {
   return () => window.removeEventListener(REFRESH_EVENT, handler)
 }
 
-export function installDataRefreshTriggers({ intervalMs = 60000 } = {}) {
+export function installDataRefreshTriggers() {
   if (installed) return cleanup
   installed = true
   let lastAutomaticAt = 0
@@ -42,16 +42,11 @@ export function installDataRefreshTriggers({ intervalMs = 60000 } = {}) {
   window.addEventListener('focus', onFocus)
   navigator.serviceWorker?.addEventListener('message', onServiceWorkerMessage)
 
-  const timer = window.setInterval(() => {
-    if (document.visibilityState === 'visible') emit('interval', Math.max(0, intervalMs - 1000))
-  }, intervalMs)
-
   cleanup = () => {
     document.removeEventListener('visibilitychange', onVisibility)
     window.removeEventListener('pageshow', onPageShow)
     window.removeEventListener('focus', onFocus)
     navigator.serviceWorker?.removeEventListener('message', onServiceWorkerMessage)
-    window.clearInterval(timer)
     installed = false
   }
   return cleanup
