@@ -61,6 +61,10 @@ export function createEmployeePortalAdminHandler(): PortalAdminHandler {
         const employee = await service.deactivate(RELAY_ACTOR, text(operation.input.userId, 300))
         return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data: safeEmployee(employee) }
       }
+      if (operation.action === 'reactivate-account') {
+        const employee = await service.reactivate(RELAY_ACTOR, text(operation.input.userId, 300))
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data: safeEmployee(employee) }
+      }
       return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'rejected', code: 'ACTION_NOT_MAPPED' }
     } catch (error) {
       if (error instanceof EmployeeAdminError) {
