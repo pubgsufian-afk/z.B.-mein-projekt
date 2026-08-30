@@ -114,6 +114,14 @@ export function createEmployeeAdminService(repository: EmployeeAdminRepository =
     return record
   }
 
+  async function inactiveTarget(userId: string) {
+    const id = text(userId, 300)
+    if (!id) throw new EmployeeAdminError('Mitarbeiter ist erforderlich.', 400, 'EMPLOYEE_REQUIRED')
+    const record = await repository.get(id)
+    if (!record || record.status !== 'inactive') throw new EmployeeAdminError('Inaktiver Mitarbeiter wurde nicht gefunden.', 404, 'EMPLOYEE_NOT_FOUND')
+    return record
+  }
+
   return {
     async getEmployee(_actor: EmployeeAdminActor, userId: string) {
       return target(userId)
@@ -170,6 +178,19 @@ export function createEmployeeAdminService(repository: EmployeeAdminRepository =
       }
       await repository.save(updated)
       await repository.deactivateScheduleEmployee(updated.userId)
+      return updated
+    },
+    async reactivate(actor: EmployeeAdminActor, userId: string) {
+      const current = await inactiveTarget(userId)
+      assertPolicy(actor, current, 'reactivate-account')
+      const updated: EmployeeAdminRecord = {
+        ...current,
+        status: 'active',
+        grantedAt: new Date().toISOString(),
+        grantedBy: actor.userId,
+      }
+      await repository.save(updated)
+      await repository.syncScheduleEmployee(updated)
       return updated
     },
   }

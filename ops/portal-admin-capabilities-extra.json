@@ -133,5 +133,14 @@
     "action": "stamp-comparison-export",
     "classification": "relay-supported",
     "relay": { "domain": "reports", "action": "stamp-comparison-export" }
+  },
+  {
+    "id": "employees.reactivate-account",
+    "surface": "Mitarbeiter",
+    "endpoint": "/api/registrations",
+    "method": "PATCH",
+    "action": "reactivate-account",
+    "classification": "relay-supported",
+    "relay": { "domain": "employees", "action": "reactivate-account" }
   }
 ]
