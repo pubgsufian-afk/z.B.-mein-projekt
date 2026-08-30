@@ -1,4 +1,4 @@
-export type EmployeeManagementAction = 'update-role' | 'deactivate-account' | 'update-profile'
+export type EmployeeManagementAction = 'update-role' | 'deactivate-account' | 'reactivate-account' | 'update-profile'
 
 export function employeeManagementPolicy(input: {
   actorRole: string
