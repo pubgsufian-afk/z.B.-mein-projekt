@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { buildActualSessions, buildPlannedRows, sumMinutes, totalsByEmployee } from './timesheet-utils.js'
+import { buildActualSessions, buildPlannedRows } from './timesheet-utils.js'
 import { berlinDate } from './berlin-date.mjs'
 import { mergeTimesheetRows } from './timesheet-unified.js'
+import { TimesheetPagination, TimesheetSummary } from './TimesheetSummary.jsx'
 import './timesheet.css'
 
 const MANAGEMENT = new Set(['owner', 'admin', 'manager'])
@@ -101,15 +102,6 @@ function InlineNotice({ tone = 'info', children }) {
   return <div className={`notice notice-${tone}`} role="status">{children}</div>
 }
 
-function Summary({ rows }) {
-  const employeeTotals = totalsByEmployee(rows)
-  const grandTotal = sumMinutes(rows)
-  return <div className="timesheet-summary" aria-label="Stundenzettel Summen">
-    {employeeTotals.map((item) => <div key={item.employeeName}><span>{item.employeeName}</span><strong>{formatDuration(item.minutes)}</strong></div>)}
-    <div className="timesheet-grand-total"><span>Gesamtdauer</span><strong>{formatDuration(grandTotal)}</strong></div>
-  </div>
-}
-
 export default function TimesheetPage({ session }) {
   const management = MANAGEMENT.has(session.role)
   const today = berlinDate(new Date())
@@ -122,6 +114,8 @@ export default function TimesheetPage({ session }) {
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState(null)
   const [editor, setEditor] = useState(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
   const sessionUserId = session.userId || session.id || ''
 
   const employeeNames = useMemo(() => {
@@ -133,6 +127,8 @@ export default function TimesheetPage({ session }) {
 
   const rows = useMemo(() => mergeTimesheetRows(actual.rows, planned.rows), [actual.rows, planned.rows])
   const closedRows = useMemo(() => rows.filter((row) => !row.open), [rows])
+  const safePage = Math.min(page, Math.max(1, Math.ceil(rows.length / pageSize)))
+  const visibleRows = useMemo(() => rows.slice((safePage - 1) * pageSize, safePage * pageSize), [pageSize, rows, safePage])
 
   const loadDirectory = useCallback(async () => {
     if (!management) return
@@ -177,6 +173,7 @@ export default function TimesheetPage({ session }) {
 
   useEffect(() => { loadDirectory() }, [loadDirectory])
   useEffect(() => { reload() }, [reload])
+  useEffect(() => { setPage(1) }, [from, pageSize, to, userId])
 
   function openNewActual() {
     setEditor({
@@ -276,7 +273,7 @@ export default function TimesheetPage({ session }) {
 
   return <div className="timesheet-page">
     <section className="panel filter-panel timesheet-filter">
-      <div className="page-heading"><div><h2>Stundenzettel</h2><p>Dienstplanstunden werden automatisch übernommen. Erfasste oder bearbeitete Arbeitszeiten ersetzen die geplanten Werte.</p></div></div>
+      <div className="page-heading"><div><h2>Stempelprotokoll</h2><p>Dienstplanstunden werden automatisch übernommen. Erfasste oder bearbeitete Arbeitszeiten ersetzen die geplanten Werte.</p></div></div>
       <div className="filter-grid">
         <label>Von<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
         <label>Bis<input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
@@ -303,17 +300,20 @@ export default function TimesheetPage({ session }) {
       </form>
     </section>}
 
+    <TimesheetSummary rows={closedRows} />
+
     <section className="panel">
       <div className="page-heading"><div><h2>Arbeitszeiten</h2><p>Alle Stunden der ausgewählten Person stehen hier vor dem PDF-Export zusammen.</p></div>{management && <button className="primary-button compact" type="button" onClick={openNewActual}>Arbeitszeit eintragen</button>}</div>
       {management && <div className="timesheet-actions"><button className="secondary-button" type="button" disabled={busy.startsWith('export-')} onClick={() => exportTimesheet('pdf')}>Stundenzettel PDF</button><button className="secondary-button" type="button" disabled={busy.startsWith('export-')} onClick={() => exportTimesheet('xlsx')}>Stundenzettel Excel</button></div>}
 
       {rows.length ? <>
-        <div className="timesheet-card-grid unified-timesheet-list">{rows.map((row, index) => <article className="timesheet-card" key={`${row.clockInEventId || row.scheduleId || row.id || row.date}-${index}`}>
+        <TimesheetPagination page={safePage} pageSize={pageSize} totalRows={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
+        <div className="timesheet-card-grid unified-timesheet-list">{visibleRows.map((row, index) => <article className="timesheet-card" key={`${row.clockInEventId || row.scheduleId || row.id || row.date}-${index}`}>
           <header><div><strong>{formatDate(row.date, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}</strong>{management && <span>{row.employeeName}</span>}</div><span className={`status ${row.open || row.source === 'planned' ? 'status-warning' : 'status-success'}`}>{row.open ? 'Offen' : row.source === 'planned' ? 'Aus Dienstplan' : 'Erfasst'}</span></header>
           <div className="timesheet-values"><div><span>Beginn</span><strong>{row.start || '–'}</strong></div><div><span>Ende</span><strong>{row.end || '–'}</strong></div><div><span>Pause</span><strong>{row.source === 'planned' ? row.pauseMinutes : row.breakMinutes || 0} Min.</strong></div><div><span>Dauer</span><strong>{row.open ? '–' : formatDuration(row.netMinutes)}</strong></div><div className="timesheet-wide-value"><span>Einsatzort</span><strong>{row.location || '–'}</strong></div><div className="timesheet-wide-value"><span>Arbeitsbereich</span><strong>{row.workArea || '–'}</strong></div></div>
           {management && <footer><span>{row.source === 'planned' ? 'Noch keine Ist-Zeit gebucht' : 'Im Stundenzettel gespeichert'}</span><button className="secondary-button compact" type="button" onClick={() => openExisting(row)}>Bearbeiten</button></footer>}
         </article>)}</div>
-        <Summary rows={closedRows} />
+        <TimesheetPagination page={safePage} pageSize={pageSize} totalRows={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
       </> : <div className="empty-state">In diesem Zeitraum wurden keine Dienstplan- oder Arbeitszeiten gefunden.</div>}
     </section>
   </div>

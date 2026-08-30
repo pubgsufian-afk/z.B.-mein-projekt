@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { buildActualSessions, buildPlannedRows, plannedNetMinutes, sumMinutes, totalsByEmployee } from '../frontend/src/timesheet-utils.js'
+import { buildActualSessions, buildPlannedRows, plannedNetMinutes, summarizeTimesheetRows, sumMinutes, totalsByEmployee } from '../frontend/src/timesheet-utils.js'
 import { mergeTimesheetRows } from '../frontend/src/timesheet-unified.js'
 
 assert.equal(plannedNetMinutes('2026-08-08', '22:00', '06:00', 30), 450)
@@ -39,12 +39,37 @@ assert.deepEqual(totalsByEmployee(planned), [
   { employeeName: 'B', minutes: 570 },
 ])
 
+const summaries = summarizeTimesheetRows([
+  { userId: 'a', employeeName: 'A', date: '2026-08-08', netMinutes: 450, pauseMinutes: 30, source: 'planned' },
+  { userId: 'a', employeeName: 'A', date: '2026-08-08', netMinutes: 120, breakMinutes: 0, source: 'actual' },
+  { userId: 'b', employeeName: 'B', date: '2026-08-09', netMinutes: 570, pauseMinutes: 30, source: 'planned' },
+])
+assert.deepEqual(summaries.employees, [
+  { userId: 'a', employeeName: 'A', workDays: 1, shifts: 2, pauseMinutes: 30, minutes: 570 },
+  { userId: 'b', employeeName: 'B', workDays: 1, shifts: 1, pauseMinutes: 30, minutes: 570 },
+])
+assert.deepEqual(summaries.total, { employees: 2, workDays: 2, shifts: 3, pauseMinutes: 60, minutes: 1140 })
+
+const sameNameDifferentIds = summarizeTimesheetRows([
+  { employeeUserId: 'person-1', employeeName: 'Gleicher Name', workDate: '2026-08-10', netMinutes: 60, pauseMinutes: 0 },
+  { employeeUserId: 'person-2', employeeName: 'Gleicher Name', workDate: '2026-08-10', netMinutes: 120, pauseMinutes: 0 },
+])
+assert.equal(sameNameDifferentIds.employees.length, 2)
+assert.deepEqual(sameNameDifferentIds.employees.map((item) => item.userId), ['person-1', 'person-2'])
+
 const unified = mergeTimesheetRows([sessions.find((row) => row.userId === 'a')], planned)
 assert.equal(unified.length, 2)
 assert.equal(unified.find((row) => row.userId === 'a').source, 'actual')
 assert.equal(unified.find((row) => row.userId === 'a').scheduleId, 'p1')
 assert.equal(unified.find((row) => row.userId === 'a').workArea, 'Brandwache')
 assert.equal(unified.find((row) => row.userId === 'b').source, 'planned')
+
+const readableLocation = mergeTimesheetRows([{
+  userId: 'a', employeeName: 'A', date: '2026-08-08', scheduleId: 'p1', objectId: 'obj-1',
+  clockInAt: '2026-08-08T20:00:00Z', clockOutAt: '2026-08-09T04:00:00Z',
+  location: 'obj-1', breakMinutes: 30, netMinutes: 450,
+}], planned)
+assert.equal(readableLocation.find((row) => row.userId === 'a').location, 'Objekt 1')
 
 const nearest = mergeTimesheetRows([
   {

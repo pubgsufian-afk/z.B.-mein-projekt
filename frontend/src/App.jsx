@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { plannedNetMinutes } from './timesheet-utils.js'
 import {
   AuthError,
   getUser,
@@ -20,6 +21,18 @@ const ROLE_LABELS = {
 
 const MANAGEMENT = new Set(['owner', 'admin', 'manager'])
 const ADMINISTRATION = new Set(['owner', 'admin'])
+
+const SCHEDULE_TIME_PRESETS = [
+  ['06:00–14:00', '06:00', '14:00'],
+  ['07:00–17:00', '07:00', '17:00'],
+  ['07:30–16:30', '07:30', '16:30'],
+  ['08:00–16:00', '08:00', '16:00'],
+  ['08:30–17:00', '08:30', '17:00'],
+  ['17:00–23:00', '17:00', '23:00'],
+  ['18:00–23:00', '18:00', '23:00'],
+]
+const SCHEDULE_PAUSE_PRESETS = [0, 30, 60]
+const SCHEDULE_WORK_AREAS = ['ZuKo', 'ZuKo GMP', 'GMP Rundgang', 'Brandwache', 'Baureinigung', 'Lagerzelt', 'Aufzug Bediener', 'Bauhelfer', 'Staplerfahrer']
 
 const NAVIGATION = [
   { key: 'overview', label: 'Übersicht', roles: ['owner', 'admin', 'manager'] },
@@ -506,7 +519,29 @@ function SchedulePage({ session }) {
   const sortedEmployeeEntries = useMemo(() => [...visibleEntries].sort((a, b) =>
     `${a.date || ''}-${a.start || ''}`.localeCompare(`${b.date || ''}-${b.start || ''}`)
   ), [visibleEntries])
+  const formNetMinutes = useMemo(() => plannedNetMinutes(form.date, form.start, form.end, Number(form.pauseMinutes || 0)), [form.date, form.end, form.pauseMinutes, form.start])
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }))
+
+  function selectScheduleObject(event) {
+    const objectId = event.target.value
+    const object = objects.find((item) => String(item.id) === String(objectId))
+    setForm((current) => ({ ...current, objectId, location: object ? object.name : '' }))
+  }
+
+  function applyTimePreset(start, end) {
+    setForm((current) => ({ ...current, start, end }))
+  }
+
+  function selectWeekdays() {
+    setForm((current) => ({
+      ...current,
+      repeatDays: days.filter((date) => {
+        if (date === current.date) return false
+        const weekday = new Date(`${date}T12:00:00`).getDay()
+        return weekday >= 1 && weekday <= 5
+      }),
+    }))
+  }
 
   function startNew(date) {
     setForm({ ...emptyForm, date })
@@ -583,7 +618,48 @@ function SchedulePage({ session }) {
     {!management && <section className="panel employee-schedule-intro"><PageHeader title="Mein Dienstplan" subtitle="Hier siehst du ausschließlich deine freigegebenen Dienste." /></section>}
     <section className="panel schedule-toolbar"><div className="toolbar-row"><label>Woche ab<input type="date" value={week} onChange={(event) => setWeek(mondayOf(event.target.value))} /></label><div className="toolbar-actions"><button className="secondary-button" onClick={() => setWeek(mondayOf(addDays(week, -7)))}>‹ Vorherige</button><button className="secondary-button" onClick={() => setWeek(mondayOf())}>Aktuelle Woche</button><button className="secondary-button" onClick={() => setWeek(mondayOf(addDays(week, 7)))}>Nächste ›</button></div></div>{management && <div className="toolbar-actions"><button className="secondary-button" disabled={Boolean(busy)} onClick={() => post('copy-previous-week')}>Vorwoche kopieren</button><button className="secondary-button" disabled={Boolean(busy)} onClick={downloadSchedulePdf}>{busy === 'schedule-pdf' ? 'PDF wird erstellt …' : 'Dienstplan als PDF'}</button><button className="primary-button" disabled={Boolean(busy)} onClick={() => window.confirm('Diesen Wochenplan jetzt für Mitarbeiter freigeben?') && post('publish')}>Entwurf prüfen und freigeben</button></div>}</section>
     {management ? <div className="week-cards management-week-cards">{days.map((date) => { const dayEntries = visibleEntries.filter((entry) => entry.date === date); return <section className="day-card" key={date}><header><div><span>{formatDate(date, { weekday: 'long' })}</span><strong>{formatDate(date, { day: '2-digit', month: '2-digit' })}</strong></div><button aria-label={`Dienst am ${formatDate(date)} hinzufügen`} onClick={() => startNew(date)}>＋</button></header><div>{dayEntries.length ? dayEntries.map((entry) => <button type="button" className="shift-item" key={entry.id} onClick={() => edit(entry)}><strong>{entry.start}–{entry.end}</strong><span>{entry.employeeName}</span><small>{entry.location} · {entry.workArea}</small><em>{entry.pauseMinutes || 0} Min. Pause · {entry.status === 'published' ? 'Freigegeben' : 'Entwurf'}</em></button>) : <span className="day-empty">Kein Dienst</span>}</div></section> })}</div> : sortedEmployeeEntries.length ? <div className="employee-shift-list">{sortedEmployeeEntries.map((entry) => <article className="employee-shift-card" key={entry.id}><header><div><span>{formatDate(entry.date, { weekday: 'long' })}</span><strong>{formatDate(entry.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong></div><strong className="employee-shift-time">{entry.start}–{entry.end}</strong></header><div className="employee-shift-details"><strong>{entry.location || 'Einsatzort nicht angegeben'}</strong><span>{entry.workArea || 'Arbeitsbereich nicht angegeben'}</span><small>{entry.pauseMinutes || 0} Min. Pause</small></div></article>)}</div> : <section className="panel employee-schedule-empty"><Empty>Für diese Woche ist kein freigegebener Dienst eingetragen.</Empty></section>}
-    {management && editing && <section className="panel editor-panel" ref={editorRef}><PageHeader title={form.id ? 'Dienst bearbeiten' : 'Dienst erstellen'} subtitle="Auf dem Handy in wenigen einfachen Feldern." action={<button className="secondary-button compact" onClick={() => setEditing(false)}>Schließen</button>} /><form className="schedule-form" onSubmit={save}><div className="form-grid three"><label>Mitarbeiter<select value={form.employeeUserId} onChange={update('employeeUserId')} required><option value="">Bitte wählen</option>{employees.map((employee) => <option key={employee.userId || employee.id} value={employee.userId || employee.id}>{employee.fullName}</option>)}</select></label><label>Datum<input type="date" value={form.date} onChange={update('date')} required /></label><label>Einsatzort<select value={form.objectId} onChange={update('objectId')}><option value="">Ohne gespeicherten Einsatzort</option>{objects.map((object) => <option value={object.id} key={object.id}>{object.name}</option>)}</select></label></div><div className="form-grid three"><label>Beginn<input type="time" value={form.start} onChange={update('start')} required /></label><label>Ende<input type="time" value={form.end} onChange={update('end')} required /></label><label>Pause in Minuten<input type="number" min="0" step="1" value={form.pauseMinutes} onChange={update('pauseMinutes')} required /></label></div><div className="form-grid"><label>Bezeichnung des Einsatzortes<input value={form.location} onChange={update('location')} required={!form.objectId} /></label><label>Arbeitsbereich<input value={form.workArea} onChange={update('workArea')} required /></label></div><label>Bemerkung<textarea rows="3" value={form.note || ''} onChange={update('note')} /></label><fieldset className="repeat-field"><legend>Zusätzlich auf andere Tage dieser Woche übernehmen</legend>{days.filter((date) => date !== form.date).map((date) => <label key={date}><input type="checkbox" checked={form.repeatDays?.includes(date) || false} onChange={(event) => setForm((current) => ({ ...current, repeatDays: event.target.checked ? [...(current.repeatDays || []), date] : (current.repeatDays || []).filter((item) => item !== date) }))} /><span>{formatDate(date, { weekday: 'short', day: '2-digit', month: '2-digit' })}</span></label>)}</fieldset><div className="form-actions"><button className="primary-button" disabled={Boolean(busy)}>{busy === 'save' ? 'Wird gespeichert …' : 'Als Entwurf speichern'}</button>{form.id && <button type="button" className="danger-outline" disabled={Boolean(busy)} onClick={remove}>Dienst löschen</button>}<button type="button" className="secondary-button" onClick={() => { setForm({ ...emptyForm }); setEditing(false) }}>Abbrechen</button></div></form></section>}
+    {management && editing && <section className="panel editor-panel" ref={editorRef}>
+      <PageHeader title={form.id ? 'Dienst bearbeiten' : 'Dienst erstellen'} subtitle="Häufige Zeiten schnell auswählen und vor dem Speichern prüfen." action={<button className="secondary-button compact" onClick={() => setEditing(false)}>Schließen</button>} />
+      <form className="schedule-form" onSubmit={save}>
+        <div className="form-grid three">
+          <label>Mitarbeiter<select value={form.employeeUserId} onChange={update('employeeUserId')} required><option value="">Bitte wählen</option>{employees.map((employee) => <option key={employee.userId || employee.id} value={employee.userId || employee.id}>{employee.fullName}</option>)}</select></label>
+          <label>Datum<input type="date" value={form.date} onChange={update('date')} required /></label>
+          <label>Einsatzort<select value={form.objectId} onChange={selectScheduleObject}><option value="">Ohne gespeicherten Einsatzort</option>{objects.map((object) => <option value={object.id} key={object.id}>{object.name}</option>)}</select></label>
+        </div>
+
+        <div className="schedule-quick-section">
+          <strong>Schnellwahl Zeit</strong>
+          <div className="schedule-preset-row">{SCHEDULE_TIME_PRESETS.map(([label, start, end]) => <button key={label} className={form.start === start && form.end === end ? 'schedule-preset active' : 'schedule-preset'} type="button" aria-pressed={form.start === start && form.end === end} onClick={() => applyTimePreset(start, end)}>{label}</button>)}</div>
+        </div>
+
+        <div className="form-grid three">
+          <label>Beginn<input type="time" value={form.start} onChange={update('start')} required /></label>
+          <label>Ende<input type="time" value={form.end} onChange={update('end')} required /></label>
+          <label>Pause in Minuten<input type="number" min="0" step="1" value={form.pauseMinutes} onChange={update('pauseMinutes')} required /></label>
+        </div>
+
+        <div className="schedule-quick-section">
+          <strong>Schnellwahl Pause</strong>
+          <div className="schedule-preset-row">{SCHEDULE_PAUSE_PRESETS.map((minutes) => <button key={minutes} className={Number(form.pauseMinutes) === minutes ? 'schedule-preset active' : 'schedule-preset'} type="button" aria-pressed={Number(form.pauseMinutes) === minutes} onClick={() => setForm((current) => ({ ...current, pauseMinutes: minutes }))}>{minutes} Min.</button>)}</div>
+        </div>
+
+        <div className="form-grid">
+          <label>Bezeichnung des Einsatzortes<input value={form.location} onChange={update('location')} required={!form.objectId} /></label>
+          <label>Arbeitsbereich<input list="schedule-work-areas" value={form.workArea} onChange={update('workArea')} placeholder="Arbeitsbereich auswählen oder eingeben" required /><datalist id="schedule-work-areas">{SCHEDULE_WORK_AREAS.map((area) => <option value={area} key={area} />)}</datalist></label>
+        </div>
+
+        <div className="schedule-net-preview" aria-live="polite"><span>Netto-Arbeitszeit</span><strong>{formatDuration(formNetMinutes)}</strong><small>{form.start}–{form.end} · {Number(form.pauseMinutes || 0)} Min. Pause</small></div>
+        <label>Bemerkung <span className="optional">optional</span><textarea rows="3" value={form.note || ''} onChange={update('note')} /></label>
+
+        <fieldset className="repeat-field">
+          <legend>Zusätzlich auf andere Tage dieser Woche übernehmen</legend>
+          <div className="repeat-actions"><button className="text-button" type="button" onClick={selectWeekdays}>Alle Werktage</button><button className="text-button light" type="button" onClick={() => setForm((current) => ({ ...current, repeatDays: [] }))}>Auswahl löschen</button></div>
+          {days.filter((date) => date !== form.date).map((date) => <label key={date}><input type="checkbox" checked={form.repeatDays?.includes(date) || false} onChange={(event) => setForm((current) => ({ ...current, repeatDays: event.target.checked ? [...(current.repeatDays || []), date] : (current.repeatDays || []).filter((item) => item !== date) }))} /><span>{formatDate(date, { weekday: 'short', day: '2-digit', month: '2-digit' })}</span></label>)}
+        </fieldset>
+
+        <div className="form-actions"><button className="primary-button" disabled={Boolean(busy)}>{busy === 'save' ? 'Wird gespeichert …' : 'Als Entwurf speichern'}</button>{form.id && <button type="button" className="danger-outline" disabled={Boolean(busy)} onClick={remove}>Dienst löschen</button>}<button type="button" className="secondary-button" onClick={() => { setForm({ ...emptyForm }); setEditing(false) }}>Abbrechen</button></div>
+      </form>
+    </section>}
   </>
 }
 

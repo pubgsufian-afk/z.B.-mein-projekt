@@ -112,3 +112,52 @@ export function totalsByEmployee(rows = [], field = 'netMinutes') {
   }
   return [...totals.entries()].map(([employeeName, minutes]) => ({ employeeName, minutes })).sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'de'))
 }
+
+export function summarizeTimesheetRows(rows = []) {
+  const summaries = new Map()
+
+  for (const row of rows) {
+    if (!row || row.open) continue
+    const userId = String(row.userId || row.employeeUserId || '').trim()
+    const employeeName = String(row.employeeName || 'Mitarbeiter').trim() || 'Mitarbeiter'
+    // Records without an account stay in their own exact-name bucket. They are never
+    // mapped to a registered account merely because a name looks similar.
+    const key = userId ? `id:${userId}` : `unregistered:${employeeName}`
+    const current = summaries.get(key) || {
+      userId,
+      employeeName,
+      dates: new Set(),
+      shifts: 0,
+      pauseMinutes: 0,
+      minutes: 0,
+    }
+    const workDate = String(row.date || row.workDate || '').trim()
+    if (workDate) current.dates.add(workDate)
+    current.shifts += 1
+    current.pauseMinutes += safeMinutes(row.breakMinutes ?? row.pauseMinutes)
+    current.minutes += safeMinutes(row.netMinutes)
+    summaries.set(key, current)
+  }
+
+  const employees = [...summaries.values()]
+    .map((item) => ({
+      userId: item.userId,
+      employeeName: item.employeeName,
+      workDays: item.dates.size,
+      shifts: item.shifts,
+      pauseMinutes: item.pauseMinutes,
+      minutes: item.minutes,
+    }))
+    .sort((left, right) => left.employeeName.localeCompare(right.employeeName, 'de') || left.userId.localeCompare(right.userId))
+
+  return {
+    employees,
+    total: employees.reduce((total, item) => ({
+      employees: total.employees + 1,
+      workDays: total.workDays + item.workDays,
+      shifts: total.shifts + item.shifts,
+      pauseMinutes: total.pauseMinutes + item.pauseMinutes,
+      minutes: total.minutes + item.minutes,
+    }), { employees: 0, workDays: 0, shifts: 0, pauseMinutes: 0, minutes: 0 }),
+  }
+}

@@ -102,7 +102,8 @@ mark('netlify/functions/timesheet-reports.mts', await replaceInFile(
   'Stundenzettel-Report-Parameter',
 ))
 
-mark('frontend/src/TimesheetPage.jsx', await replaceInFile(
+const timesheetSource = await readFile('frontend/src/TimesheetPage.jsx', 'utf8')
+mark('frontend/src/TimesheetPage.jsx', timesheetSource.includes("import { berlinDate } from './berlin-date.mjs'") ? false : await replaceInFile(
   'frontend/src/TimesheetPage.jsx',
   "import { buildActualSessions, buildPlannedRows, sumMinutes, totalsByEmployee } from './timesheet-utils.js'\n",
   "import { buildActualSessions, buildPlannedRows, sumMinutes, totalsByEmployee } from './timesheet-utils.js'\nimport { berlinDate } from './berlin-date.mjs'\n",
@@ -123,7 +124,7 @@ mark('frontend/src/TimesheetPage.jsx', await replaceInFile(
   'Stundenzettel-Berlin-Heute',
 ))
 
-mark('frontend/src/TimesheetPage.jsx', await replaceInFile(
+mark('frontend/src/TimesheetPage.jsx', timesheetSource.includes("const sessionUserId = session.userId || session.id || ''") ? false : await replaceInFile(
   'frontend/src/TimesheetPage.jsx',
   "  const [editor, setEditor] = useState(null)\n\n  const employeeNames = useMemo(() => {",
   "  const [editor, setEditor] = useState(null)\n  const sessionUserId = session.userId || session.id || ''\n\n  const employeeNames = useMemo(() => {",

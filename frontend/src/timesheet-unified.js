@@ -18,6 +18,16 @@ function rowKey(row) {
   return `${row.userId || ''}|${row.date || ''}`
 }
 
+function readableLocation(actual, planned) {
+  const actualLocation = String(actual?.location || '').trim()
+  const objectId = String(actual?.objectId || '').trim()
+  const plannedLocation = String(planned?.location || '').trim()
+  const looksInternal = actualLocation && (actualLocation === objectId || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(actualLocation))
+  if (plannedLocation && plannedLocation !== '–' && looksInternal) return plannedLocation
+  if (actualLocation && actualLocation !== '–') return actualLocation
+  return plannedLocation || '–'
+}
+
 function chooseFallbackPlan(actual, plans, used) {
   const candidates = plans.filter((plan, index) => !used.has(index) && rowKey(plan) === rowKey(actual))
   if (!candidates.length) return null
@@ -60,7 +70,7 @@ export function mergeTimesheetRows(actualRows = [], plannedRows = []) {
       objectId: actual.objectId || matched?.objectId || null,
       start: berlinClock(actual.clockInAt) || matched?.start || '',
       end: berlinClock(actual.clockOutAt) || matched?.end || '',
-      location: actual.location && actual.location !== '–' ? actual.location : matched?.location || '–',
+      location: readableLocation(actual, matched),
       workArea: matched?.workArea || actual.workArea || '',
     })
   }

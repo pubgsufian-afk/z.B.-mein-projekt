@@ -67,6 +67,11 @@ test('Stundenzettel reads persisted rows and never mixes attendance history', as
   })
 
   await loginAndOpenTimesheet(page, user)
+  const summary = page.locator('.timesheet-overview')
+  await expect(summary.getByRole('heading', { name: 'Stundenübersicht' })).toBeVisible()
+  await expect(summary).toContainText('1 Arbeitstag · 1 Schicht')
+  await expect(summary).toContainText('6:00 Std.')
+  await expect(page.getByLabel('Seitennavigation').first()).toContainText('1–1 von 1 Einträgen')
   const { mobile, desktop } = visibleTimesheetRow(page)
   const visibleRow = await mobile.isVisible() ? mobile : desktop
   await expect(visibleRow.getByText('Anna Beispiel', { exact: true })).toBeVisible()

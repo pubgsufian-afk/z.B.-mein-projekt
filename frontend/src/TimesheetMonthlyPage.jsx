@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { peekCachedJson, refreshCachedJson } from './read-cache.js'
+import { TimesheetPagination, TimesheetSummary } from './TimesheetSummary.jsx'
 import './timesheet.css'
 
 const REGISTRATIONS_CACHE_KEY = '/api/registrations'
@@ -87,9 +88,13 @@ export default function TimesheetMonthlyPage() {
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState(null)
   const [editor, setEditor] = useState(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
 
   const totalMinutes = useMemo(() => rows.reduce((sum, row) => sum + Math.max(0, Number(row.netMinutes) || 0), 0), [rows])
   const selectedEmployee = useMemo(() => employees.find((employee) => String(employee.userId || employee.id || '') === userId) || null, [employees, userId])
+  const safePage = Math.min(page, Math.max(1, Math.ceil(rows.length / pageSize)))
+  const visibleRows = useMemo(() => rows.slice((safePage - 1) * pageSize, safePage * pageSize), [pageSize, rows, safePage])
 
   const loadDirectory = useCallback(async () => {
     try {
@@ -118,6 +123,7 @@ export default function TimesheetMonthlyPage() {
 
   useEffect(() => { loadDirectory() }, [loadDirectory])
   useEffect(() => { loadTimesheet() }, [loadTimesheet])
+  useEffect(() => { setPage(1) }, [from, pageSize, to, userId])
 
   function openExisting(row) {
     setEditor({
@@ -209,6 +215,8 @@ export default function TimesheetMonthlyPage() {
     {notice && <InlineNotice tone={notice.tone}>{notice.text}</InlineNotice>}
     {closedMonths.length > 0 && <InlineNotice>Bei abgeschlossenen Monaten ändern spätere Dienstplanänderungen den Stundenzettel nicht mehr. Manuelle Korrekturen bleiben möglich.</InlineNotice>}
 
+    <TimesheetSummary rows={rows} />
+
     {editor && <section className="panel editor-panel timesheet-editor">
       <div className="page-heading"><div><h2>{editor.mode === 'edit' ? 'Stundenzettel korrigieren' : 'Stundenzettel-Eintrag hinzufügen'}</h2></div><button type="button" className="secondary-button compact" onClick={() => setEditor(null)}>Schließen</button></div>
       <form className="schedule-form" onSubmit={saveEditor}>
@@ -232,9 +240,11 @@ export default function TimesheetMonthlyPage() {
     <section className="panel">
       <div className="page-heading"><div><h2>Arbeitszeiten</h2><p>{rows.length} Einträge · Gesamt {formatDuration(totalMinutes)}</p></div></div>
 
+      {rows.length > 0 && <TimesheetPagination page={safePage} pageSize={pageSize} totalRows={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />}
+
       <div className="timesheet-mobile-list">
         {rows.length === 0 && <div className="timesheet-empty">Für den ausgewählten Zeitraum sind keine Stundenzettel-Einträge vorhanden.</div>}
-        {rows.map((row) => <article className="timesheet-mobile-card" key={`mobile-${row.id}`}>
+        {visibleRows.map((row) => <article className="timesheet-mobile-card" key={`mobile-${row.id}`}>
           <header><strong>{row.employeeName}</strong><span>{formatDate(row.workDate)}</span></header>
           <div className="timesheet-values">
             <div><span>Beginn</span><strong>{row.start}</strong></div>
@@ -256,10 +266,11 @@ export default function TimesheetMonthlyPage() {
 
       <div className="table-scroll timesheet-desktop-table"><table><thead><tr><th>Mitarbeiter</th><th>Datum</th><th>Beginn</th><th>Ende</th><th>Pause</th><th>Dauer</th><th>Bereich / Einsatzort</th><th></th></tr></thead><tbody>
         {rows.length === 0 && <tr><td colSpan="8">Für den ausgewählten Zeitraum sind keine Stundenzettel-Einträge vorhanden.</td></tr>}
-        {rows.map((row) => <tr key={row.id}>
+        {visibleRows.map((row) => <tr key={row.id}>
           <td>{row.employeeName}</td><td>{formatDate(row.workDate)}</td><td>{row.start}</td><td>{row.end}</td><td>{row.pauseMinutes} Min.</td><td>{formatDuration(row.netMinutes)}</td><td>{row.workArea || '–'} · {row.location || '–'}</td><td><div className="timesheet-compact-actions"><button className="secondary-button compact" type="button" onClick={() => openExisting(row)}>Bearbeiten</button>{row.scheduleShiftId && (row.manualOverride || row.source === 'manual') && <button className="secondary-button compact" type="button" disabled={Boolean(busy)} onClick={() => restoreScheduleRow(row)}>Dienstplan übernehmen</button>}</div></td>
         </tr>)}
       </tbody></table></div>
+      {rows.length > 0 && <TimesheetPagination page={safePage} pageSize={pageSize} totalRows={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />}
     </section>
 
     {suppressedRows.length > 0 && <section className="panel timesheet-suppressed-section">
