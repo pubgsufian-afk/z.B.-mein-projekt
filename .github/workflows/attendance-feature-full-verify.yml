@@ -21,10 +21,8 @@ jobs:
       - run: npm install --no-audit --no-fund
       - name: Existing portal verification
         run: npm run verify
-      - name: Apply feature after existing source finalizers
-        run: |
-          node scripts/apply-attendance-refresh-auto-checkout.mjs
-          node scripts/apply-sparse-attendance-auto-checkout.mjs
+      - name: Apply sparse checkout UI after existing source finalizers
+        run: node scripts/apply-sparse-attendance-auto-checkout.mjs
       - name: Feature unit and source tests
         run: |
           node scripts/data-refresh-source-test.mjs
