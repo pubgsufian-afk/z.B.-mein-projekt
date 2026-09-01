@@ -4,10 +4,23 @@ import { readCompanySettings } from './_shared/company-settings.mts'
 import { listTimesheetEntries, type TimesheetEntry } from './_shared/timesheet-repository.mts'
 import { syncPublishedScheduleRange } from './_shared/timesheet-schedule-sync.mts'
 import { monthKeyForDate } from './_shared/timesheet-month-policy.mts'
+import { pauseDisplay, rollupDailyTimesheetRows } from '../../shared/timesheet-daily-rollup.mjs'
 
 const MANAGEMENT = ['owner', 'admin', 'manager'] as const
 type Format = 'pdf' | 'xlsx'
-type DisplayRow = TimesheetEntry | null
+type DailyTimesheetRow = {
+  id: string
+  employeeUserId: string
+  employeeName: string
+  workDate: string
+  start: string
+  end: string
+  pauseMinutes: number
+  netMinutes: number
+  entries: TimesheetEntry[]
+  entryCount: number
+}
+type DisplayRow = DailyTimesheetRow | null
 
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' } })
@@ -35,6 +48,10 @@ function shortGermanDate(value: string) {
     ? new Intl.DateTimeFormat('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' }).format(date)
     : value
 }
+function isWeekend(value: string) {
+  const day = new Date(`${value}T12:00:00Z`).getUTCDay()
+  return day === 0 || day === 6
+}
 function monthLabel(from: string, to: string) {
   if (from.slice(0, 7) === to.slice(0, 7)) {
     const date = new Date(`${from.slice(0, 7)}-15T12:00:00`)
@@ -46,10 +63,10 @@ function durationText(minutes: number) {
   const total = Math.max(0, Math.round(Number(minutes) || 0))
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
 }
-function groupRows(rows: TimesheetEntry[]) {
-  const groups = new Map<string, TimesheetEntry[]>()
+function groupRows(rows: DailyTimesheetRow[]) {
+  const groups = new Map<string, DailyTimesheetRow[]>()
   for (const row of rows) {
-    const key = `${row.employeeUserId}|${row.employeeName}`
+    const key = row.employeeUserId ? `id:${row.employeeUserId}` : `unregistered:${row.employeeName}`
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key)?.push(row)
   }
@@ -65,8 +82,8 @@ function dateRange(from: string, to: string) {
   }
   return dates
 }
-function rowsWithBlankDates(rows: TimesheetEntry[], from: string, to: string): Array<{ date: string; row: DisplayRow }> {
-  const byDate = new Map<string, TimesheetEntry[]>()
+function rowsWithBlankDates(rows: DailyTimesheetRow[], from: string, to: string): Array<{ date: string; row: DisplayRow }> {
+  const byDate = new Map<string, DailyTimesheetRow[]>()
   for (const row of rows) {
     if (!byDate.has(row.workDate)) byDate.set(row.workDate, [])
     byDate.get(row.workDate)?.push(row)
@@ -79,15 +96,6 @@ function rowsWithBlankDates(rows: TimesheetEntry[], from: string, to: string): A
   }
   return result
 }
-function statusText(row: TimesheetEntry | null) {
-  if (!row) return ''
-  return row.source === 'manual' || row.manualOverride ? 'Manuell' : 'Dienstplan'
-}
-function activityLocation(row: TimesheetEntry | null) {
-  if (!row) return ''
-  const parts = [text(row.workArea, 42), text(row.location, 62)].filter(Boolean)
-  return parts.join(' · ')
-}
 async function embedLogo(pdf: any, request: Request, logoUrl: string) {
   try {
     const response = await fetch(new URL(logoUrl || '/habun-logo.png', request.url), { cache: 'no-store' })
@@ -96,7 +104,7 @@ async function embedLogo(pdf: any, request: Request, logoUrl: string) {
     return response.headers.get('content-type')?.includes('jpeg') ? await pdf.embedJpg(bytes) : await pdf.embedPng(bytes)
   } catch { return null }
 }
-async function buildPdf(request: Request, rows: TimesheetEntry[], from: string, to: string) {
+async function buildPdf(request: Request, rows: DailyTimesheetRow[], from: string, to: string) {
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib')
   const settings = await readCompanySettings()
   const pdf = await PDFDocument.create()
@@ -107,13 +115,15 @@ async function buildPdf(request: Request, rows: TimesheetEntry[], from: string, 
   const width = 595, height = 842, margin = 12
   const dark = rgb(0.08, 0.08, 0.08)
   const line = rgb(0.32, 0.32, 0.32)
-  const pale = rgb(0.96, 0.96, 0.96)
-  const gold = rgb(0.86, 0.65, 0.17)
+  const white = rgb(1, 1, 1)
+  const weekend = rgb(0.89, 0.89, 0.89)
+  const headerGreen = rgb(0.49, 0.67, 0.31)
+  const totalOrange = rgb(0.91, 0.52, 0.24)
   const tableWidth = width - margin * 2
-  const columns = [12, 88, 142, 196, 247, 307, 372, 583]
-  const headers = ['Datum', 'Startzeit', 'Endzeit', 'Pause', 'Dauer', 'Status', 'Tätigkeit / Einsatzort']
+  const columns = [12, 139, 247, 355, 463, 583]
+  const headers = ['Datum', 'Startzeit', 'Endzeit', 'Pause', 'Arbeitsstunden']
 
-  for (const employeeRows of groups.length ? groups : [[] as TimesheetEntry[]]) {
+  for (const employeeRows of groups.length ? groups : [[] as DailyTimesheetRow[]]) {
     const employeeName = employeeRows[0]?.employeeName || 'Keine Einträge'
     const displayRows = rowsWithBlankDates(employeeRows, from, to)
     let page: any
@@ -150,7 +160,7 @@ async function buildPdf(request: Request, rows: TimesheetEntry[], from: string, 
       page.drawText(`Arbeitnehmer: ${safePdfText(employeeName, 70)}`, { x: margin + 8, y: height - 72, size: 9.5, font: bold, color: dark })
       if (pageNo > 1) page.drawText(`Seite ${pageNo}`, { x: width - 62, y: height - 72, size: 7, font: regular, color: dark })
       y = height - 112
-      page.drawRectangle({ x: margin, y: y - 20, width: tableWidth, height: 22, color: gold, borderColor: line, borderWidth: 0.7 })
+      page.drawRectangle({ x: margin, y: y - 20, width: tableWidth, height: 22, color: headerGreen, borderColor: line, borderWidth: 0.7 })
       headers.forEach((header, index) => page.drawText(header, { x: columns[index] + 3, y: y - 13, size: 6.8, font: bold, color: dark }))
       y -= 20
       drawFooter()
@@ -165,26 +175,24 @@ async function buildPdf(request: Request, rows: TimesheetEntry[], from: string, 
         shortGermanDate(item.date),
         row?.start || '',
         row?.end || '',
-        row ? `${row.pauseMinutes} Min.` : '',
+        row ? pauseDisplay(row.pauseMinutes) : '',
         row ? durationText(row.netMinutes) : '',
-        statusText(row),
-        safePdfText(activityLocation(row), 62),
       ]
-      page.drawRectangle({ x: margin, y: y - rowHeight, width: tableWidth, height: rowHeight, color: pale, borderColor: line, borderWidth: 0.35, opacity: 0.35 })
-      values.forEach((value, index) => page.drawText(String(value), { x: columns[index] + 3, y: y - 11, size: index === 6 ? 6.1 : 6.6, font: regular, color: dark }))
+      page.drawRectangle({ x: margin, y: y - rowHeight, width: tableWidth, height: rowHeight, color: isWeekend(item.date) ? weekend : white, borderColor: line, borderWidth: 0.35 })
+      values.forEach((value, index) => page.drawText(safePdfText(value), { x: columns[index] + 3, y: y - 11, size: 7, font: regular, color: dark }))
       y -= rowHeight
     }
 
     const total = employeeRows.reduce((sum, row) => sum + Math.max(0, Number(row.netMinutes) || 0), 0)
     if (y < 128) drawHeader()
     y -= 12
-    page.drawRectangle({ x: margin, y: y - 24, width: 470, height: 24, color: gold, borderColor: line, borderWidth: 0.8 })
+    page.drawRectangle({ x: margin, y: y - 24, width: 470, height: 24, color: totalOrange, borderColor: line, borderWidth: 0.8 })
     page.drawText('Gesamtdauer', { x: margin + 7, y: y - 16, size: 9, font: bold, color: dark })
     page.drawRectangle({ x: 376, y: y - 24, width: 106, height: 24, borderColor: line, borderWidth: 0.8 })
     page.drawText(`${durationText(total)} Std.`, { x: 386, y: y - 16, size: 9, font: bold, color: dark })
     y -= 45
     page.drawRectangle({ x: margin, y: y - 66, width: tableWidth, height: 66, borderColor: line, borderWidth: 0.8 })
-    page.drawText('Anmerkungen', { x: margin + 7, y: y - 13, size: 8, font: regular, color: dark })
+    page.drawText('Platz für weitere Anmerkungen...', { x: margin + 7, y: y - 13, size: 8, font: regular, color: dark })
   }
   return new Uint8Array(await pdf.save())
 }
@@ -194,7 +202,7 @@ function safeSheetName(value: string, used: Set<string>) {
   while (used.has(name)) { const tail = ` ${suffix++}`; name = `${base.slice(0, 31 - tail.length)}${tail}` }
   used.add(name); return name
 }
-async function buildXlsx(rows: TimesheetEntry[], from: string, to: string) {
+async function buildXlsx(rows: DailyTimesheetRow[], from: string, to: string) {
   const ExcelJS = await import('exceljs')
   const workbook = new ExcelJS.Workbook()
   const settings = await readCompanySettings()
@@ -202,15 +210,15 @@ async function buildXlsx(rows: TimesheetEntry[], from: string, to: string) {
   workbook.created = new Date()
   const used = new Set<string>()
   const groups = groupRows(rows)
-  for (const employeeRows of groups.length ? groups : [[] as TimesheetEntry[]]) {
+  for (const employeeRows of groups.length ? groups : [[] as DailyTimesheetRow[]]) {
     const employeeName = employeeRows[0]?.employeeName || 'Stundenzettel'
     const sheet = workbook.addWorksheet(safeSheetName(employeeName, used))
     sheet.addRow([settings.companyName]); sheet.addRow(['Stundenzettel', employeeName]); sheet.addRow(['Zeitraum', `${germanDate(from)} - ${germanDate(to)}`]); sheet.addRow([])
-    sheet.addRow(['Datum', 'Beginn', 'Ende', 'Pause (Min.)', 'Dauer', 'Status', 'Bereich', 'Einsatzort'])
-    for (const row of employeeRows) sheet.addRow([germanDate(row.workDate), row.start, row.end, row.pauseMinutes, durationText(row.netMinutes), statusText(row), row.workArea, row.location])
+    sheet.addRow(['Datum', 'Beginn', 'Ende', 'Pause', 'Arbeitsstunden'])
+    for (const row of employeeRows) sheet.addRow([germanDate(row.workDate), row.start, row.end, pauseDisplay(row.pauseMinutes), durationText(row.netMinutes)])
     const total = employeeRows.reduce((sum, row) => sum + row.netMinutes, 0)
     sheet.addRow([]); sheet.addRow(['Gesamt', '', '', '', durationText(total)])
-    sheet.columns = [{ width: 14 }, { width: 10 }, { width: 10 }, { width: 13 }, { width: 12 }, { width: 14 }, { width: 24 }, { width: 32 }]
+    sheet.columns = [{ width: 16 }, { width: 13 }, { width: 13 }, { width: 14 }, { width: 18 }]
     sheet.getRow(5).font = { bold: true }; sheet.getRow(2).font = { bold: true, size: 14 }
   }
   return new Uint8Array(await workbook.xlsx.writeBuffer())
@@ -226,8 +234,9 @@ export default async function timesheetMonthlyReports(request: Request) {
   const userIds = Array.isArray(body.userIds) ? body.userIds.map((value) => text(value, 120)).filter(Boolean) : []
   try {
     await syncPublishedScheduleRange(from, to, access.current.userId, new Date())
-    let rows = await listTimesheetEntries({ from, to, ...(userIds.length === 1 ? { employeeUserId: userIds[0] } : {}) })
-    if (userIds.length > 1) { const allowed = new Set(userIds); rows = rows.filter((row) => allowed.has(row.employeeUserId)) }
+    let sourceRows = await listTimesheetEntries({ from, to, ...(userIds.length === 1 ? { employeeUserId: userIds[0] } : {}) })
+    if (userIds.length > 1) { const allowed = new Set(userIds); sourceRows = sourceRows.filter((row) => allowed.has(row.employeeUserId)) }
+    const rows = rollupDailyTimesheetRows(sourceRows) as DailyTimesheetRow[]
     const bytes = format === 'pdf' ? await buildPdf(request, rows, from, to) : await buildXlsx(rows, from, to)
     const filename = `Habun-Stundenzettel-${from}-bis-${to}.${format}`
     const contentType = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

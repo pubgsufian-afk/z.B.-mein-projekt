@@ -57,8 +57,8 @@ source = source.replace(
 
 // Keep Excel in the same report layout and make the shield prominent in the same lower section.
 source = source.replace(
-  "tl: { col: 3.05, row: notesEnd + 1.1 },\n        ext: { width: 82, height: 82 },",
-  "tl: { col: 2.55, row: notesStart + 0.65 },\n        ext: { width: 180, height: 150 },",
+  "tl: { col: 1.55, row: notesEnd + 1.1 },\n        ext: { width: 82, height: 82 },",
+  "tl: { col: 1.6, row: notesStart + 0.65 },\n        ext: { width: 180, height: 150 },",
 )
 
 await writeFile(reportPath, source)

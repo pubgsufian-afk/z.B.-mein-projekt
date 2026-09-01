@@ -70,7 +70,7 @@ if (!source.includes('const scale = Math.min(88 / logo.width, 88 / logo.height)'
   source = source.replace(oldWatermark, cleanLogoBlock)
 }
 
-const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: TimesheetEntry[], from: string, to: string) {
+const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: DailyTimesheetRow[], from: string, to: string) {
   const ExcelJSModule = await import('exceljs')
   const ExcelJS = ExcelJSModule.default ?? ExcelJSModule
   const workbook = new ExcelJS.Workbook()
@@ -91,11 +91,12 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Times
   const groups = groupRows(rows)
   const colors = {
     dark: 'FF151515',
-    gold: 'FFDBA62B',
-    pale: 'FFF6F6F6',
+    green: 'FF7EAB4F',
+    orange: 'FFE8843D',
+    weekend: 'FFE3E3E3',
+    white: 'FFFFFFFF',
     line: 'FF777777',
     muted: 'FF666666',
-    white: 'FFFFFFFF',
   }
   const thinBorder = {
     top: { style: 'thin', color: { argb: colors.line } },
@@ -103,13 +104,13 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Times
     bottom: { style: 'thin', color: { argb: colors.line } },
     right: { style: 'thin', color: { argb: colors.line } },
   }
-  const headers = ['Datum', 'Startzeit', 'Endzeit', 'Pause', 'Dauer', 'Status', 'Tätigkeit / Einsatzort']
+  const headers = ['Datum', 'Startzeit', 'Endzeit', 'Pause', 'Arbeitsstunden']
 
-  for (const employeeRows of groups.length ? groups : [[] as TimesheetEntry[]]) {
+  for (const employeeRows of groups.length ? groups : [[] as DailyTimesheetRow[]]) {
     const employeeName = employeeRows[0]?.employeeName || 'Keine Einträge'
     const displayRows = rowsWithBlankDates(employeeRows, from, to)
     const sheet = workbook.addWorksheet(safeSheetName(employeeName, used), {
-      properties: { defaultRowHeight: 15, tabColor: { argb: colors.gold } },
+      properties: { defaultRowHeight: 15, tabColor: { argb: colors.green } },
       views: [{ state: 'frozen', ySplit: 6, topLeftCell: 'A7', activeCell: 'A7', showGridLines: false }],
       pageSetup: {
         paperSize: 9,
@@ -125,29 +126,27 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Times
 
     sheet.columns = [
       { key: 'date', width: 15 },
-      { key: 'start', width: 10 },
-      { key: 'end', width: 10 },
-      { key: 'pause', width: 11 },
-      { key: 'duration', width: 11 },
-      { key: 'status', width: 13 },
-      { key: 'activity', width: 39 },
+      { key: 'start', width: 14 },
+      { key: 'end', width: 14 },
+      { key: 'pause', width: 15 },
+      { key: 'duration', width: 18 },
     ]
 
-    sheet.mergeCells('A1:G1')
+    sheet.mergeCells('A1:E1')
     sheet.getCell('A1').value = 'Stundenzettel'
     sheet.getCell('A1').font = { name: 'Aptos', size: 15, bold: true, color: { argb: colors.dark } }
     sheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' }
     sheet.getCell('A1').border = thinBorder
     sheet.getRow(1).height = 28
 
-    sheet.mergeCells('A2:G2')
+    sheet.mergeCells('A2:E2')
     sheet.getCell('A2').value = monthLabel(from, to)
     sheet.getCell('A2').font = { name: 'Aptos', size: 10, bold: true, color: { argb: colors.dark } }
     sheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' }
     sheet.getCell('A2').border = { left: thinBorder.left, right: thinBorder.right }
     sheet.getRow(2).height = 18
 
-    sheet.mergeCells('A3:G3')
+    sheet.mergeCells('A3:E3')
     sheet.getCell('A3').value = \`Arbeitnehmer: \${employeeName}\`
     sheet.getCell('A3').font = { name: 'Aptos', size: 9.5, bold: true, color: { argb: colors.dark } }
     sheet.getCell('A3').alignment = { horizontal: 'left', vertical: 'middle' }
@@ -162,7 +161,7 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Times
     headerRow.height = 20
     headerRow.eachCell((cell: any) => {
       cell.font = { name: 'Aptos', size: 7.5, bold: true, color: { argb: colors.dark } }
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.gold } }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.green } }
       cell.border = thinBorder
       cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
     })
@@ -173,43 +172,41 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Times
         shortGermanDate(item.date),
         row?.start || '',
         row?.end || '',
-        row ? \`\${row.pauseMinutes} Min.\` : '',
+        row ? pauseDisplay(row.pauseMinutes) : '',
         row ? durationText(row.netMinutes) : '',
-        statusText(row),
-        safePdfText(activityLocation(row), 62),
       ])
       excelRow.height = 16
-      excelRow.eachCell((cell: any, columnNumber: number) => {
-        cell.font = { name: 'Aptos', size: columnNumber === 7 ? 7 : 7.5, color: { argb: colors.dark } }
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.pale } }
+      excelRow.eachCell((cell: any) => {
+        cell.font = { name: 'Aptos', size: 7.5, color: { argb: colors.dark } }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isWeekend(item.date) ? colors.weekend : colors.white } }
         cell.border = thinBorder
-        cell.alignment = { horizontal: columnNumber === 7 ? 'left' : 'center', vertical: 'middle', wrapText: columnNumber === 7 }
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
       })
     }
 
     const total = employeeRows.reduce((sum, row) => sum + Math.max(0, Number(row.netMinutes) || 0), 0)
     const totalRowNumber = sheet.rowCount + 2
-    sheet.mergeCells(\`A\${totalRowNumber}:E\${totalRowNumber}\`)
-    sheet.mergeCells(\`F\${totalRowNumber}:G\${totalRowNumber}\`)
+    sheet.mergeCells(\`A\${totalRowNumber}:C\${totalRowNumber}\`)
+    sheet.mergeCells(\`D\${totalRowNumber}:E\${totalRowNumber}\`)
     const totalLabel = sheet.getCell(\`A\${totalRowNumber}\`)
     totalLabel.value = 'Gesamtdauer'
     totalLabel.font = { name: 'Aptos', size: 9, bold: true, color: { argb: colors.dark } }
-    totalLabel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.gold } }
+    totalLabel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.orange } }
     totalLabel.border = thinBorder
     totalLabel.alignment = { horizontal: 'left', vertical: 'middle' }
-    const totalValue = sheet.getCell(\`F\${totalRowNumber}\`)
+    const totalValue = sheet.getCell(\`D\${totalRowNumber}\`)
     totalValue.value = \`\${durationText(total)} Std.\`
     totalValue.font = { name: 'Aptos', size: 9, bold: true, color: { argb: colors.dark } }
-    totalValue.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.gold } }
+    totalValue.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.orange } }
     totalValue.border = thinBorder
     totalValue.alignment = { horizontal: 'left', vertical: 'middle' }
     sheet.getRow(totalRowNumber).height = 23
 
     const notesStart = totalRowNumber + 2
     const notesEnd = notesStart + 4
-    sheet.mergeCells(\`A\${notesStart}:G\${notesEnd}\`)
+    sheet.mergeCells(\`A\${notesStart}:E\${notesEnd}\`)
     const notes = sheet.getCell(\`A\${notesStart}\`)
-    notes.value = 'Anmerkungen'
+    notes.value = 'Platz für weitere Anmerkungen...'
     notes.font = { name: 'Aptos', size: 8, color: { argb: colors.dark } }
     notes.alignment = { horizontal: 'left', vertical: 'top', wrapText: true }
     notes.border = thinBorder
@@ -217,7 +214,7 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Times
 
     if (logoImageId !== null) {
       sheet.addImage(logoImageId, {
-        tl: { col: 3.05, row: notesEnd + 1.1 },
+        tl: { col: 1.55, row: notesEnd + 1.1 },
         ext: { width: 82, height: 82 },
         editAs: 'oneCell',
       })
@@ -227,14 +224,14 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Times
     sheet.headerFooter.oddFooter = \`&L&8\${text(footerText, 150)}&R&8Seite &P von &N\`
     sheet.headerFooter.evenFooter = sheet.headerFooter.oddFooter
     const printEnd = notesEnd + 8
-    sheet.pageSetup.printArea = \`A1:G\${printEnd}\`
+    sheet.pageSetup.printArea = \`A1:E\${printEnd}\`
     sheet.pageSetup.printTitlesRow = '1:6'
   }
 
   return new Uint8Array(await workbook.xlsx.writeBuffer())
 }`
 
-const buildXlsxPattern = /async function buildXlsx\((?:request: Request, )?rows: TimesheetEntry\[\], from: string, to: string\) \{[\s\S]*?\n\}\n(?=export default async function timesheetMonthlyReports)/
+const buildXlsxPattern = /async function buildXlsx\((?:request: Request, )?rows: DailyTimesheetRow\[\], from: string, to: string\) \{[\s\S]*?\n\}\n(?=export default async function timesheetMonthlyReports)/
 assert.match(source, buildXlsxPattern, 'Excel-Exportfunktion wurde nicht gefunden.')
 source = source.replace(buildXlsxPattern, `${pdfLikeBuildXlsx}\n`)
 source = source.replace("const bytes = format === 'pdf' ? await buildPdf(request, rows, from, to) : await buildXlsx(rows, from, to)", "const bytes = format === 'pdf' ? await buildPdf(request, rows, from, to) : await buildXlsx(request, rows, from, to)")

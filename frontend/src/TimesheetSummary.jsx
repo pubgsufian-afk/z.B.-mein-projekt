@@ -6,7 +6,7 @@ function formatDuration(minutes) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')} Std.`
 }
 
-export function TimesheetSummary({ rows = [] }) {
+export function TimesheetSummary({ rows = [], daily = false }) {
   const summary = useMemo(() => summarizeTimesheetRows(rows), [rows])
   const { total } = summary
 
@@ -15,13 +15,13 @@ export function TimesheetSummary({ rows = [] }) {
     <div className="metric-strip timesheet-overview-metrics" aria-label="Gesamtsummen im Zeitraum">
       <div><span>Mitarbeiter</span><strong>{total.employees}</strong></div>
       <div><span>{total.employees === 1 ? 'Arbeitstage' : 'Mitarbeiter-Tage'}</span><strong>{total.workDays}</strong></div>
-      <div><span>Schichten</span><strong>{total.shifts}</strong></div>
+      <div><span>{daily ? 'Pausen' : 'Schichten'}</span><strong>{daily ? formatDuration(total.pauseMinutes) : total.shifts}</strong></div>
       <div><span>Gesamtstunden</span><strong>{formatDuration(total.minutes)}</strong></div>
     </div>
 
     {summary.employees.length ? <div className="timesheet-employee-summaries" role="list" aria-label="Summen je Mitarbeiter">
       {summary.employees.map((item) => <article key={item.userId || `unregistered-${item.employeeName}`} role="listitem">
-        <div className="timesheet-summary-name"><strong>{item.employeeName}</strong><span>{item.workDays} {item.workDays === 1 ? 'Arbeitstag' : 'Arbeitstage'} · {item.shifts} {item.shifts === 1 ? 'Schicht' : 'Schichten'}</span></div>
+        <div className="timesheet-summary-name"><strong>{item.employeeName}</strong><span>{item.workDays} {item.workDays === 1 ? 'Arbeitstag' : 'Arbeitstage'}{daily ? '' : ` · ${item.shifts} ${item.shifts === 1 ? 'Schicht' : 'Schichten'}`}</span></div>
         <div><span>Pausen</span><strong>{formatDuration(item.pauseMinutes)}</strong></div>
         <div><span>Gesamtstunden</span><strong>{formatDuration(item.minutes)}</strong></div>
       </article>)}

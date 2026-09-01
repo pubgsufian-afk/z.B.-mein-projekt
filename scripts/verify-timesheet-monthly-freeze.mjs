@@ -1,5 +1,6 @@
 await import('./timesheet-month-schema-test.mjs')
 await import('./timesheet-month-policy-test.mjs')
+await import('./timesheet-daily-rollup-test.mjs')
 await import('./timesheet-schedule-sync-test.mjs')
 await import('./timesheet-bootstrap-policy-test.mjs')
 await import('./apply-timesheet-schedule-hooks.mjs')
