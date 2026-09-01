@@ -20,4 +20,5 @@ jobs:
           node-version: 22
       - run: npm install --no-audit --no-fund
       - run: node --experimental-strip-types scripts/attendance-system-actor-test.mjs
+      - run: node scripts/apply-sparse-attendance-auto-checkout.mjs
       - run: node --experimental-strip-types scripts/attendance-auto-checkout-worker-test.mjs
