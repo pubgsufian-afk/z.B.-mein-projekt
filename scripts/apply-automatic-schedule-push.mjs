@@ -88,6 +88,7 @@ await edit('netlify/functions/schedule-assistant.mts', (source) => {
   const batchAnchors = [
     "        results.push(await publishOne(input as PublishInput, index, requestId, employees, worksites, allowUnregistered))\n      }\n",
     "        results.push(await publishOne(input as PublishInput, index, requestId, employees, worksites))\n      }\n",
+    "        results.push(await publishOne(input, index, requestId, employees, worksites, employee))\n      }\n",
   ]
   if (!source.includes('publishedUserIds = results.flatMap')) {
     const batchAnchor = batchAnchors.find((candidate) => source.includes(candidate))

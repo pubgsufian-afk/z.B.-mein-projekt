@@ -18,6 +18,7 @@ export type ScheduleWorkerCommand = {
   action: ScheduleWorkerAction
   shifts?: unknown[]
   allowUnregistered?: boolean
+  approvedUnregisteredNames?: string[]
   from?: string
   to?: string
   employeeName?: string
@@ -106,6 +107,19 @@ export function parseScheduleCommand(raw: unknown, now = new Date()): ParseResul
   if (action === 'publish-shifts' && parsed.allowUnregistered !== undefined && typeof parsed.allowUnregistered !== 'boolean') {
     return { ok: false, message: 'Gastmodus ist ungültig.' }
   }
+  if (action === 'publish-shifts' && parsed.approvedUnregisteredNames !== undefined) {
+    if (!Array.isArray(parsed.approvedUnregisteredNames) || parsed.approvedUnregisteredNames.length > 100) {
+      return { ok: false, message: 'Freigegebene Dienstplan-Namen sind ungültig.' }
+    }
+    const approvedNames = parsed.approvedUnregisteredNames.map(text)
+    const normalizedNames = approvedNames.map((name) => name.toLocaleLowerCase('de'))
+    if (approvedNames.some((name) => !name) || new Set(normalizedNames).size !== approvedNames.length) {
+      return { ok: false, message: 'Freigegebene Dienstplan-Namen sind ungültig.' }
+    }
+    if (approvedNames.length && parsed.allowUnregistered !== true) {
+      return { ok: false, message: 'Freigegebene Dienstplan-Namen benötigen den Gastmodus.' }
+    }
+  }
 
   if (action === 'list-shifts' || action === 'find-duplicates') {
     const from = text(parsed.from)
@@ -181,6 +195,9 @@ export function parseScheduleCommand(raw: unknown, now = new Date()): ParseResul
   if (action === 'publish-shifts') {
     command.shifts = (parsed.shifts as unknown[]).slice(0, 100)
     if (parsed.allowUnregistered === true) command.allowUnregistered = true
+    if (Array.isArray(parsed.approvedUnregisteredNames) && parsed.approvedUnregisteredNames.length) {
+      command.approvedUnregisteredNames = parsed.approvedUnregisteredNames.map(text)
+    }
   }
   if (action === 'list-shifts' || action === 'find-duplicates') {
     command.from = text(parsed.from)

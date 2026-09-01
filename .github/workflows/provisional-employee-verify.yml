@@ -20,6 +20,7 @@ jobs:
           node-version: 22
       - run: npm install --no-audit --no-fund
       - run: node --experimental-strip-types scripts/schedule-provisional-employee-test.mjs
+      - run: node --experimental-strip-types scripts/schedule-safe-name-resolution-test.mjs
       - run: node --experimental-strip-types scripts/schedule-provisional-reconciliation-test.mjs
       - run: node scripts/apply-provisional-employee-reconciliation.mjs
       - run: node scripts/schedule-provisional-reconciliation-source-test.mjs
