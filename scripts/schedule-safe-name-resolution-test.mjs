@@ -4,38 +4,38 @@ import * as assistantCore from '../netlify/functions/_shared/schedule-assistant-
 const { resolveAssistantEmployee } = assistantCore
 
 const employees = [
-  { userId: 'registered-1', fullName: 'Murtada Example', role: 'employee', status: 'active' },
-  { userId: 'registered-2', fullName: 'Mohamed Ahmed Sample', role: 'employee', status: 'active' },
-  { userId: 'registered-3', fullName: 'Ahmad Zarsur', role: 'employee', status: 'active' },
+  { userId: 'registered-1', fullName: 'Lorena Example', role: 'employee', status: 'active' },
+  { userId: 'registered-2', fullName: 'Tomas Nelo Sample', role: 'employee', status: 'active' },
+  { userId: 'registered-3', fullName: 'Ravin Zarsur', role: 'employee', status: 'active' },
 ]
 
-const oneLetterTypo = resolveAssistantEmployee('Murtaza', employees)
+const oneLetterTypo = resolveAssistantEmployee('Lorema', employees)
 assert.equal(oneLetterTypo.status, 'matched')
 assert.equal(oneLetterTypo.employee?.userId, 'registered-1')
 
-const exactTokenWins = resolveAssistantEmployee('Ahmed', employees)
+const exactTokenWins = resolveAssistantEmployee('Nelo', employees)
 assert.equal(exactTokenWins.status, 'matched')
 assert.equal(exactTokenWins.employee?.userId, 'registered-2')
 
-const twoTokenTypos = resolveAssistantEmployee('Ahmed Zersur', employees)
+const twoTokenTypos = resolveAssistantEmployee('Raven Zersur', employees)
 assert.equal(twoTokenTypos.status, 'matched')
 assert.equal(twoTokenTypos.employee?.userId, 'registered-3')
 
 const ambiguousEmployees = [
-  { userId: 'amb-1', fullName: 'Murtada Alpha', role: 'employee', status: 'active' },
-  { userId: 'amb-2', fullName: 'Murtaba Beta', role: 'employee', status: 'active' },
+  { userId: 'amb-1', fullName: 'Karen Alpha', role: 'employee', status: 'active' },
+  { userId: 'amb-2', fullName: 'Miran Beta', role: 'employee', status: 'active' },
 ]
-const ambiguousTypo = resolveAssistantEmployee('Murtaza', ambiguousEmployees)
+const ambiguousTypo = resolveAssistantEmployee('Maren', ambiguousEmployees)
 assert.equal(ambiguousTypo.status, 'ambiguous')
 
 assert.equal(typeof assistantCore.resolveAssistantSchedulePerson, 'function')
 if (typeof assistantCore.resolveAssistantSchedulePerson === 'function') {
   const provisionalEmployees = [
-    { userId: 'guest:known', fullName: 'Kani Example' },
+    { userId: 'guest:known', fullName: 'Guest Example' },
   ]
 
   const registeredWins = assistantCore.resolveAssistantSchedulePerson(
-    'Murtaza',
+    'Lorema',
     employees,
     provisionalEmployees,
     [],
@@ -45,7 +45,7 @@ if (typeof assistantCore.resolveAssistantSchedulePerson === 'function') {
   assert.equal(registeredWins.provisional, false)
 
   const knownProvisional = assistantCore.resolveAssistantSchedulePerson(
-    'Kani Example',
+    'Guest Example',
     employees,
     provisionalEmployees,
     [],
