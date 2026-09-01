@@ -104,14 +104,14 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Daily
     bottom: { style: 'thin', color: { argb: colors.line } },
     right: { style: 'thin', color: { argb: colors.line } },
   }
-  const headers = ['Datum', 'Startzeit', 'Endzeit', 'Pause', 'Arbeitsstunden', 'Urlaub / Krank / unbezahlter Urlaub / Feiertag']
+  const headers = ['Datum', 'Startzeit', 'Endzeit', 'Pause', 'Arbeitsstunden', 'Urlaub\\nKrank\\nunbezahlter Urlaub\\nFeiertag']
 
   for (const employeeRows of groups.length ? groups : [[] as DailyTimesheetRow[]]) {
     const employeeName = employeeRows[0]?.employeeName || 'Keine Einträge'
     const displayRows = rowsWithBlankDates(employeeRows, from, to)
     const sheet = workbook.addWorksheet(safeSheetName(employeeName, used), {
       properties: { defaultRowHeight: 15, tabColor: { argb: colors.green } },
-      views: [{ state: 'frozen', ySplit: 6, topLeftCell: 'A7', activeCell: 'A7', showGridLines: false }],
+      views: [{ state: 'frozen', ySplit: 6, topLeftCell: 'A7', activeCell: 'A1', showGridLines: false, zoomScale: 110, zoomScaleNormal: 110 }],
       pageSetup: {
         paperSize: 9,
         orientation: 'portrait',
@@ -130,7 +130,7 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Daily
       { key: 'end', width: 14 },
       { key: 'pause', width: 15 },
       { key: 'duration', width: 18 },
-      { key: 'absence', width: 24 },
+      { key: 'absence', width: 22 },
     ]
 
     sheet.mergeCells('A1:F1')
@@ -159,9 +159,9 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Daily
 
     const headerRow = sheet.getRow(6)
     headerRow.values = headers
-    headerRow.height = 20
+    headerRow.height = 42
     headerRow.eachCell((cell: any) => {
-      cell.font = { name: 'Aptos', size: 7.5, bold: true, color: { argb: colors.dark } }
+      cell.font = { name: 'Aptos', size: 8, bold: true, color: { argb: colors.dark } }
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.green } }
       cell.border = thinBorder
       cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
@@ -177,9 +177,9 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Daily
         row ? durationText(row.netMinutes) : '',
         '',
       ])
-      excelRow.height = 16
+      excelRow.height = 18
       excelRow.eachCell((cell: any) => {
-        cell.font = { name: 'Aptos', size: 7.5, color: { argb: colors.dark } }
+        cell.font = { name: 'Aptos', size: 8.5, color: { argb: colors.dark } }
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isWeekend(item.date) ? colors.weekend : colors.white } }
         cell.border = thinBorder
         cell.alignment = { horizontal: 'center', vertical: 'middle' }
@@ -208,15 +208,15 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Daily
     sheet.mergeCells(\`A\${notesStart}:F\${notesEnd}\`)
     const notes = sheet.getCell(\`A\${notesStart}\`)
     notes.value = 'Platz für weitere Anmerkungen...'
-    notes.font = { name: 'Aptos', size: 8, color: { argb: colors.dark } }
+    notes.font = { name: 'Aptos', size: 9, color: { argb: colors.dark } }
     notes.alignment = { horizontal: 'left', vertical: 'top', wrapText: true }
     notes.border = thinBorder
     for (let rowNumber = notesStart; rowNumber <= notesEnd; rowNumber += 1) sheet.getRow(rowNumber).height = 16
 
     if (logoImageId !== null) {
       sheet.addImage(logoImageId, {
-        tl: { col: 1.55, row: notesEnd + 1.1 },
-        ext: { width: 82, height: 82 },
+        tl: { col: 3.05, row: notesEnd + 0.8 },
+        ext: { width: 96, height: 80 },
         editAs: 'oneCell',
       })
     }
@@ -224,7 +224,7 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Daily
     const footerText = [settings.companyName, settings.address, settings.phone, settings.email].filter(Boolean).join(' · ')
     sheet.headerFooter.oddFooter = \`&L&8\${text(footerText, 150)}&R&8Seite &P von &N\`
     sheet.headerFooter.evenFooter = sheet.headerFooter.oddFooter
-    const printEnd = notesEnd + 8
+    const printEnd = notesEnd + 7
     sheet.pageSetup.printArea = \`A1:F\${printEnd}\`
     sheet.pageSetup.printTitlesRow = '1:6'
   }

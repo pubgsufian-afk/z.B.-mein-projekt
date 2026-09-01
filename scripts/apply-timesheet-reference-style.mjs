@@ -55,11 +55,13 @@ source = source.replace(
   "sheet.headerFooter.oddFooter = `&L&8${text(footerText, 80)}`",
 )
 
-// Keep Excel in the same report layout and make the shield prominent in the same lower section.
+// Keep the logo compact, centered and below the notes area so it never covers editable cells.
 source = source.replace(
-  "tl: { col: 1.55, row: notesEnd + 1.1 },\n        ext: { width: 82, height: 82 },",
   "tl: { col: 1.6, row: notesStart + 0.65 },\n        ext: { width: 180, height: 150 },",
+  "tl: { col: 3.05, row: notesEnd + 0.8 },\n        ext: { width: 96, height: 80 },",
 )
+assert.ok(source.includes("tl: { col: 3.05, row: notesEnd + 0.8 }"), 'Kompakte Excel-Logoposition fehlt.')
+assert.ok(source.includes("ext: { width: 96, height: 80 }"), 'Kompakte Excel-Logogröße fehlt.')
 
 await writeFile(reportPath, source)
 
