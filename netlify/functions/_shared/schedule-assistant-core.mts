@@ -64,6 +64,64 @@ export function normalizeAssistantName(value: unknown) {
     .trim()
 }
 
+function editDistance(left: string, right: string) {
+  if (left === right) return 0
+  if (!left) return right.length
+  if (!right) return left.length
+
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index)
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    const current = [leftIndex]
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      const substitution = previous[rightIndex - 1] + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1)
+      const insertion = current[rightIndex - 1] + 1
+      const deletion = previous[rightIndex] + 1
+      current.push(Math.min(substitution, insertion, deletion))
+    }
+    previous = current
+  }
+  return previous[right.length]
+}
+
+function tokenTypoBudget(token: string) {
+  if (token.length < 3) return 0
+  if (token.length < 8) return 1
+  return 2
+}
+
+function tokensClose(input: string, candidate: string) {
+  if (!input || !candidate) return false
+  const budget = Math.min(tokenTypoBudget(input), tokenTypoBudget(candidate))
+  if (Math.abs(input.length - candidate.length) > budget) return false
+  return editDistance(input, candidate) <= budget
+}
+
+function fuzzyFullNameCandidates(normalized: string, employees: AssistantDirectoryEmployee[]) {
+  const inputTokens = normalized.split(' ').filter(Boolean)
+  if (inputTokens.length < 2) return [] as AssistantDirectoryEmployee[]
+
+  return employees.filter((employee) => {
+    const employeeTokens = normalizeAssistantName(employee.fullName).split(' ').filter(Boolean)
+    if (employeeTokens.length < inputTokens.length) return false
+    if (!tokensClose(inputTokens[0], employeeTokens[0])) return false
+
+    let employeeIndex = 1
+    for (let inputIndex = 1; inputIndex < inputTokens.length; inputIndex += 1) {
+      let matched = false
+      while (employeeIndex < employeeTokens.length) {
+        if (tokensClose(inputTokens[inputIndex], employeeTokens[employeeIndex])) {
+          matched = true
+          employeeIndex += 1
+          break
+        }
+        employeeIndex += 1
+      }
+      if (!matched) return false
+    }
+    return true
+  })
+}
+
 export function assistantPersonMatch(
   left: AssistantPersonShift,
   right: AssistantPersonShift,
@@ -166,6 +224,37 @@ export function resolveAssistantEmployee(name: unknown, employees: AssistantDire
     }
     if (firstNameCandidates.length > 1) {
       return { status: 'ambiguous' as const, employee: null, candidates: firstNameCandidates }
+    }
+
+    const nonSurnameTokenCandidates = employees.filter((employee) => {
+      const tokens = normalizeAssistantName(employee.fullName).split(' ').filter(Boolean)
+      const tokenIndex = tokens.indexOf(normalized)
+      return tokens.length >= 3 && tokenIndex >= 0 && tokenIndex < tokens.length - 1
+    })
+    if (nonSurnameTokenCandidates.length === 1) {
+      return { status: 'matched' as const, employee: nonSurnameTokenCandidates[0], candidates: nonSurnameTokenCandidates }
+    }
+    if (nonSurnameTokenCandidates.length > 1) {
+      return { status: 'ambiguous' as const, employee: null, candidates: nonSurnameTokenCandidates }
+    }
+
+    const fuzzyFirstNameCandidates = employees.filter((employee) => {
+      const firstName = normalizeAssistantName(employee.fullName).split(' ')[0]
+      return tokensClose(normalized, firstName)
+    })
+    if (fuzzyFirstNameCandidates.length === 1) {
+      return { status: 'matched' as const, employee: fuzzyFirstNameCandidates[0], candidates: fuzzyFirstNameCandidates }
+    }
+    if (fuzzyFirstNameCandidates.length > 1) {
+      return { status: 'ambiguous' as const, employee: null, candidates: fuzzyFirstNameCandidates }
+    }
+  } else {
+    const fuzzyCandidates = fuzzyFullNameCandidates(normalized, employees)
+    if (fuzzyCandidates.length === 1) {
+      return { status: 'matched' as const, employee: fuzzyCandidates[0], candidates: fuzzyCandidates }
+    }
+    if (fuzzyCandidates.length > 1) {
+      return { status: 'ambiguous' as const, employee: null, candidates: fuzzyCandidates }
     }
   }
 
