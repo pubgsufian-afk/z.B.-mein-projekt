@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
-import { resolveAssistantEmployee } from '../netlify/functions/_shared/schedule-assistant-core.mts'
+import * as assistantCore from '../netlify/functions/_shared/schedule-assistant-core.mts'
+
+const { resolveAssistantEmployee } = assistantCore
 
 const employees = [
   { userId: 'registered-1', fullName: 'Murtada Example', role: 'employee', status: 'active' },
@@ -25,5 +27,49 @@ const ambiguousEmployees = [
 ]
 const ambiguousTypo = resolveAssistantEmployee('Murtaza', ambiguousEmployees)
 assert.equal(ambiguousTypo.status, 'ambiguous')
+
+assert.equal(typeof assistantCore.resolveAssistantSchedulePerson, 'function')
+if (typeof assistantCore.resolveAssistantSchedulePerson === 'function') {
+  const provisionalEmployees = [
+    { userId: 'guest:known', fullName: 'Kani Example' },
+  ]
+
+  const registeredWins = assistantCore.resolveAssistantSchedulePerson(
+    'Murtaza',
+    employees,
+    provisionalEmployees,
+    [],
+  )
+  assert.equal(registeredWins.status, 'matched')
+  assert.equal(registeredWins.employee?.userId, 'registered-1')
+  assert.equal(registeredWins.provisional, false)
+
+  const knownProvisional = assistantCore.resolveAssistantSchedulePerson(
+    'Kani Example',
+    employees,
+    provisionalEmployees,
+    [],
+  )
+  assert.equal(knownProvisional.status, 'matched')
+  assert.equal(knownProvisional.employee?.userId, 'guest:known')
+  assert.equal(knownProvisional.provisional, true)
+
+  const unknown = assistantCore.resolveAssistantSchedulePerson(
+    'Completely New Person',
+    employees,
+    provisionalEmployees,
+    [],
+  )
+  assert.equal(unknown.status, 'not_found')
+
+  const explicitlyApproved = assistantCore.resolveAssistantSchedulePerson(
+    'Completely New Person',
+    employees,
+    provisionalEmployees,
+    ['Completely New Person'],
+  )
+  assert.equal(explicitlyApproved.status, 'approved_unregistered')
+  assert.equal(explicitlyApproved.fullName, 'Completely New Person')
+}
 
 console.log('Safe schedule name resolution tests passed')
