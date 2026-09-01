@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { access, readFile } from 'node:fs/promises'
 
 await import('./apply-automatic-schedule-push.mjs')
 
-const [client, api, core, schedulePush, portalSchedule, assistantSchedule, commandWorker, reminderWorker, reminderCore, migration] = await Promise.all([
+const [client, api, core, schedulePush, portalSchedule, assistantSchedule, commandWorker, reminderCore, migration] = await Promise.all([
   readFile('frontend/src/push-notifications.js', 'utf8'),
   readFile('netlify/functions/push.mts', 'utf8'),
   readFile('netlify/functions/_shared/push-core.mts', 'utf8'),
@@ -11,7 +11,6 @@ const [client, api, core, schedulePush, portalSchedule, assistantSchedule, comma
   readFile('netlify/functions/schedule-v2-neon.mts', 'utf8'),
   readFile('netlify/functions/schedule-assistant.mts', 'utf8'),
   readFile('netlify/functions/schedule-command-worker.mts', 'utf8'),
-  readFile('netlify/functions/schedule-start-reminders.mts', 'utf8'),
   readFile('netlify/functions/_shared/schedule-reminder-core.mts', 'utf8'),
   readFile('netlify/database/migrations/20260816132000_create-schedule-push-reminders/migration.sql', 'utf8'),
 ])
@@ -50,13 +49,8 @@ assert.match(assistantSchedule, /notifySchedulePublished/)
 assert.match(assistantSchedule, /notifyScheduleChanged/)
 assert.match(assistantSchedule, /publishedUserIds = results\.flatMap/, 'assistant batch must aggregate successful publication recipients')
 assert.doesNotMatch(commandWorker, /notifySchedulePublished|notifyScheduleChanged|notifyShiftStartingSoon/, 'batch worker must inherit push from schedule assistant instead of double sending')
+await assert.rejects(() => access('netlify/functions/schedule-start-reminders.mts'), { code: 'ENOENT' }, 'no recurring start-reminder function may be deployed')
 
-assert.match(reminderWorker, /AT TIME ZONE 'Europe\/Berlin'/, 'reminders must use Europe/Berlin DST-aware time conversion')
-assert.match(reminderWorker, /interval '14 minutes'/)
-assert.match(reminderWorker, /interval '29 minutes'/)
-assert.match(reminderWorker, /ON CONFLICT \(reminder_key\) DO NOTHING/, 'reminders must be atomically claimed')
-assert.match(reminderWorker, /schedule:\s*'\*\/15 \* \* \* \*'/, 'reminder worker should leave database idle windows between runs')
-assert.match(reminderWorker, /shouldReleaseReminderClaim\(result\)/)
 assert.match(reminderCore, /result\.targeted === 0/, 'claim is released only when certainly no device was targeted')
 assert.match(migration, /CREATE TABLE schedule_push_reminders/)
 assert.match(migration, /reminder_key text PRIMARY KEY/)
