@@ -261,6 +261,71 @@ export function resolveAssistantEmployee(name: unknown, employees: AssistantDire
   return { status: 'not_found' as const, employee: null, candidates: [] as AssistantDirectoryEmployee[] }
 }
 
+export function resolveAssistantSchedulePerson(
+  name: unknown,
+  employees: AssistantDirectoryEmployee[],
+  provisionalEmployees: Array<Pick<AssistantDirectoryEmployee, 'userId' | 'fullName'>>,
+  approvedUnregisteredNames: unknown[] = [],
+) {
+  const registered = resolveAssistantEmployee(name, employees)
+  if (registered.status === 'matched' && registered.employee) {
+    return {
+      status: 'matched' as const,
+      employee: registered.employee,
+      candidates: registered.candidates,
+      provisional: false,
+    }
+  }
+  if (registered.status === 'ambiguous') {
+    return {
+      status: 'ambiguous' as const,
+      employee: null,
+      candidates: registered.candidates,
+      provisional: false,
+    }
+  }
+
+  const normalized = normalizeAssistantName(name)
+  if (!normalized) {
+    return { status: 'not_found' as const, employee: null, candidates: [] as Array<Pick<AssistantDirectoryEmployee, 'userId' | 'fullName'>> }
+  }
+
+  const knownProvisional = provisionalEmployees.filter(
+    (employee) => normalizeAssistantName(employee.fullName) === normalized,
+  )
+  if (knownProvisional.length === 1) {
+    return {
+      status: 'matched' as const,
+      employee: knownProvisional[0],
+      candidates: knownProvisional,
+      provisional: true,
+    }
+  }
+  if (knownProvisional.length > 1) {
+    return {
+      status: 'ambiguous' as const,
+      employee: null,
+      candidates: knownProvisional,
+      provisional: true,
+    }
+  }
+
+  const approved = approvedUnregisteredNames
+    .map((value) => text(value))
+    .find((value) => normalizeAssistantName(value) === normalized)
+  if (approved) {
+    return {
+      status: 'approved_unregistered' as const,
+      employee: null,
+      candidates: [] as Array<Pick<AssistantDirectoryEmployee, 'userId' | 'fullName'>>,
+      provisional: true,
+      fullName: approved,
+    }
+  }
+
+  return { status: 'not_found' as const, employee: null, candidates: [] as Array<Pick<AssistantDirectoryEmployee, 'userId' | 'fullName'>> }
+}
+
 export function defaultAssistantLocation(employee: Pick<AssistantDirectoryEmployee, 'location'>) {
   return text(employee.location) || 'Abbott'
 }
