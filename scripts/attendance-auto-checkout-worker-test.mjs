@@ -60,10 +60,10 @@ assert.equal(
   'a shift belonging to another employee must never be used',
 )
 
-const [source, attendance, app] = await Promise.all([
+const [source, attendance, patch] = await Promise.all([
   readFile('netlify/functions/attendance-auto-checkout.mts', 'utf8'),
   readFile('netlify/functions/attendance.mts', 'utf8'),
-  readFile('frontend/src/App.jsx', 'utf8'),
+  readFile('scripts/apply-sparse-attendance-auto-checkout.mjs', 'utf8'),
 ])
 
 assert.match(source, /listOpenSessions/)
@@ -85,11 +85,13 @@ assert.match(attendance, /runAutoCheckoutForUser\(actor\.userId/,
 assert.match(attendance, /autoCheckoutAt/,
   'state responses must expose the exact per-shift deadline to the visible app')
 
-assert.match(app, /state\.autoCheckoutAt/,
-  'the attendance page must consume the exact server-calculated deadline')
-assert.match(app, /window\.setTimeout/,
-  'the visible app should schedule one local wake-up instead of polling the backend')
-assert.match(app, /await\s+load\(\)/,
+assert.match(patch, /state\.autoCheckoutAt/,
+  'the sparse UI patch must consume the exact server-calculated deadline')
+assert.match(patch, /window\.setTimeout/,
+  'the sparse UI patch must schedule one local wake-up instead of polling the backend')
+assert.match(patch, /await\s+load\(\)/,
   'the local wake-up should reuse the existing state load instead of adding another API')
+assert.doesNotMatch(patch, /setInterval/,
+  'the sparse UI patch must not introduce another recurring browser poll')
 
 console.log('sparse automatic checkout contract: ok')
