@@ -23,7 +23,7 @@ assert.equal(twoTokenTypos.employee?.userId, 'registered-3')
 
 const ambiguousEmployees = [
   { userId: 'amb-1', fullName: 'Karen Alpha', role: 'employee', status: 'active' },
-  { userId: 'amb-2', fullName: 'Miran Beta', role: 'employee', status: 'active' },
+  { userId: 'amb-2', fullName: 'Paren Beta', role: 'employee', status: 'active' },
 ]
 const ambiguousTypo = resolveAssistantEmployee('Maren', ambiguousEmployees)
 assert.equal(ambiguousTypo.status, 'ambiguous')
