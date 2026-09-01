@@ -104,7 +104,7 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Daily
     bottom: { style: 'thin', color: { argb: colors.line } },
     right: { style: 'thin', color: { argb: colors.line } },
   }
-  const headers = ['Datum', 'Startzeit', 'Endzeit', 'Pause', 'Arbeitsstunden']
+  const headers = ['Datum', 'Startzeit', 'Endzeit', 'Pause', 'Arbeitsstunden', 'Urlaub / Krank / unbezahlter Urlaub / Feiertag']
 
   for (const employeeRows of groups.length ? groups : [[] as DailyTimesheetRow[]]) {
     const employeeName = employeeRows[0]?.employeeName || 'Keine Einträge'
@@ -130,23 +130,24 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Daily
       { key: 'end', width: 14 },
       { key: 'pause', width: 15 },
       { key: 'duration', width: 18 },
+      { key: 'absence', width: 24 },
     ]
 
-    sheet.mergeCells('A1:E1')
+    sheet.mergeCells('A1:F1')
     sheet.getCell('A1').value = 'Stundenzettel'
     sheet.getCell('A1').font = { name: 'Aptos', size: 15, bold: true, color: { argb: colors.dark } }
     sheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' }
     sheet.getCell('A1').border = thinBorder
     sheet.getRow(1).height = 28
 
-    sheet.mergeCells('A2:E2')
+    sheet.mergeCells('A2:F2')
     sheet.getCell('A2').value = monthLabel(from, to)
     sheet.getCell('A2').font = { name: 'Aptos', size: 10, bold: true, color: { argb: colors.dark } }
     sheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' }
     sheet.getCell('A2').border = { left: thinBorder.left, right: thinBorder.right }
     sheet.getRow(2).height = 18
 
-    sheet.mergeCells('A3:E3')
+    sheet.mergeCells('A3:F3')
     sheet.getCell('A3').value = \`Arbeitnehmer: \${employeeName}\`
     sheet.getCell('A3').font = { name: 'Aptos', size: 9.5, bold: true, color: { argb: colors.dark } }
     sheet.getCell('A3').alignment = { horizontal: 'left', vertical: 'middle' }
@@ -174,6 +175,7 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Daily
         row?.end || '',
         row ? pauseDisplay(row.pauseMinutes) : '',
         row ? durationText(row.netMinutes) : '',
+        '',
       ])
       excelRow.height = 16
       excelRow.eachCell((cell: any) => {
@@ -186,15 +188,14 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Daily
 
     const total = employeeRows.reduce((sum, row) => sum + Math.max(0, Number(row.netMinutes) || 0), 0)
     const totalRowNumber = sheet.rowCount + 2
-    sheet.mergeCells(\`A\${totalRowNumber}:C\${totalRowNumber}\`)
-    sheet.mergeCells(\`D\${totalRowNumber}:E\${totalRowNumber}\`)
+    sheet.mergeCells(\`A\${totalRowNumber}:D\${totalRowNumber}\`)
     const totalLabel = sheet.getCell(\`A\${totalRowNumber}\`)
     totalLabel.value = 'Gesamtdauer'
     totalLabel.font = { name: 'Aptos', size: 9, bold: true, color: { argb: colors.dark } }
     totalLabel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.orange } }
     totalLabel.border = thinBorder
     totalLabel.alignment = { horizontal: 'left', vertical: 'middle' }
-    const totalValue = sheet.getCell(\`D\${totalRowNumber}\`)
+    const totalValue = sheet.getCell(\`E\${totalRowNumber}\`)
     totalValue.value = \`\${durationText(total)} Std.\`
     totalValue.font = { name: 'Aptos', size: 9, bold: true, color: { argb: colors.dark } }
     totalValue.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.orange } }
@@ -204,7 +205,7 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Daily
 
     const notesStart = totalRowNumber + 2
     const notesEnd = notesStart + 4
-    sheet.mergeCells(\`A\${notesStart}:E\${notesEnd}\`)
+    sheet.mergeCells(\`A\${notesStart}:F\${notesEnd}\`)
     const notes = sheet.getCell(\`A\${notesStart}\`)
     notes.value = 'Platz für weitere Anmerkungen...'
     notes.font = { name: 'Aptos', size: 8, color: { argb: colors.dark } }
@@ -224,7 +225,7 @@ const pdfLikeBuildXlsx = `async function buildXlsx(request: Request, rows: Daily
     sheet.headerFooter.oddFooter = \`&L&8\${text(footerText, 150)}&R&8Seite &P von &N\`
     sheet.headerFooter.evenFooter = sheet.headerFooter.oddFooter
     const printEnd = notesEnd + 8
-    sheet.pageSetup.printArea = \`A1:E\${printEnd}\`
+    sheet.pageSetup.printArea = \`A1:F\${printEnd}\`
     sheet.pageSetup.printTitlesRow = '1:6'
   }
 

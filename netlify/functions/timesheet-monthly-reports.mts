@@ -120,8 +120,9 @@ async function buildPdf(request: Request, rows: DailyTimesheetRow[], from: strin
   const headerGreen = rgb(0.49, 0.67, 0.31)
   const totalOrange = rgb(0.91, 0.52, 0.24)
   const tableWidth = width - margin * 2
-  const columns = [12, 139, 247, 355, 463, 583]
+  const columns = [12, 117, 197, 277, 357, 437, 583]
   const headers = ['Datum', 'Startzeit', 'Endzeit', 'Pause', 'Arbeitsstunden']
+  const absenceHeaders = ['Urlaub', 'Krank', 'unbezahlter Urlaub', 'Feiertag']
 
   for (const employeeRows of groups.length ? groups : [[] as DailyTimesheetRow[]]) {
     const employeeName = employeeRows[0]?.employeeName || 'Keine Einträge'
@@ -160,9 +161,11 @@ async function buildPdf(request: Request, rows: DailyTimesheetRow[], from: strin
       page.drawText(`Arbeitnehmer: ${safePdfText(employeeName, 70)}`, { x: margin + 8, y: height - 72, size: 9.5, font: bold, color: dark })
       if (pageNo > 1) page.drawText(`Seite ${pageNo}`, { x: width - 62, y: height - 72, size: 7, font: regular, color: dark })
       y = height - 112
-      page.drawRectangle({ x: margin, y: y - 20, width: tableWidth, height: 22, color: headerGreen, borderColor: line, borderWidth: 0.7 })
-      headers.forEach((header, index) => page.drawText(header, { x: columns[index] + 3, y: y - 13, size: 6.8, font: bold, color: dark }))
-      y -= 20
+      page.drawRectangle({ x: margin, y: y - 36, width: tableWidth, height: 38, color: headerGreen, borderColor: line, borderWidth: 0.7 })
+      columns.slice(1, -1).forEach((x) => page.drawLine({ start: { x, y: y + 2 }, end: { x, y: y - 36 }, thickness: 0.35, color: line }))
+      headers.forEach((header, index) => page.drawText(header, { x: columns[index] + 3, y: y - 28, size: 6.8, font: bold, color: dark }))
+      absenceHeaders.forEach((header, index) => page.drawText(header, { x: columns[5] + 3, y: y - 7 - index * 8, size: 5.8, font: bold, color: dark }))
+      y -= 36
       drawFooter()
     }
 
@@ -177,8 +180,10 @@ async function buildPdf(request: Request, rows: DailyTimesheetRow[], from: strin
         row?.end || '',
         row ? pauseDisplay(row.pauseMinutes) : '',
         row ? durationText(row.netMinutes) : '',
+        '',
       ]
       page.drawRectangle({ x: margin, y: y - rowHeight, width: tableWidth, height: rowHeight, color: isWeekend(item.date) ? weekend : white, borderColor: line, borderWidth: 0.35 })
+      columns.slice(1, -1).forEach((x) => page.drawLine({ start: { x, y }, end: { x, y: y - rowHeight }, thickness: 0.35, color: line }))
       values.forEach((value, index) => page.drawText(safePdfText(value), { x: columns[index] + 3, y: y - 11, size: 7, font: regular, color: dark }))
       y -= rowHeight
     }
@@ -186,10 +191,10 @@ async function buildPdf(request: Request, rows: DailyTimesheetRow[], from: strin
     const total = employeeRows.reduce((sum, row) => sum + Math.max(0, Number(row.netMinutes) || 0), 0)
     if (y < 128) drawHeader()
     y -= 12
-    page.drawRectangle({ x: margin, y: y - 24, width: 470, height: 24, color: totalOrange, borderColor: line, borderWidth: 0.8 })
+    page.drawRectangle({ x: margin, y: y - 24, width: 425, height: 24, color: totalOrange, borderColor: line, borderWidth: 0.8 })
     page.drawText('Gesamtdauer', { x: margin + 7, y: y - 16, size: 9, font: bold, color: dark })
-    page.drawRectangle({ x: 376, y: y - 24, width: 106, height: 24, borderColor: line, borderWidth: 0.8 })
-    page.drawText(`${durationText(total)} Std.`, { x: 386, y: y - 16, size: 9, font: bold, color: dark })
+    page.drawRectangle({ x: 357, y: y - 24, width: 80, height: 24, borderColor: line, borderWidth: 0.8 })
+    page.drawText(`${durationText(total)} Std.`, { x: 365, y: y - 16, size: 9, font: bold, color: dark })
     y -= 45
     page.drawRectangle({ x: margin, y: y - 66, width: tableWidth, height: 66, borderColor: line, borderWidth: 0.8 })
     page.drawText('Platz für weitere Anmerkungen...', { x: margin + 7, y: y - 13, size: 8, font: regular, color: dark })
@@ -214,11 +219,11 @@ async function buildXlsx(rows: DailyTimesheetRow[], from: string, to: string) {
     const employeeName = employeeRows[0]?.employeeName || 'Stundenzettel'
     const sheet = workbook.addWorksheet(safeSheetName(employeeName, used))
     sheet.addRow([settings.companyName]); sheet.addRow(['Stundenzettel', employeeName]); sheet.addRow(['Zeitraum', `${germanDate(from)} - ${germanDate(to)}`]); sheet.addRow([])
-    sheet.addRow(['Datum', 'Beginn', 'Ende', 'Pause', 'Arbeitsstunden'])
-    for (const row of employeeRows) sheet.addRow([germanDate(row.workDate), row.start, row.end, pauseDisplay(row.pauseMinutes), durationText(row.netMinutes)])
+    sheet.addRow(['Datum', 'Beginn', 'Ende', 'Pause', 'Arbeitsstunden', 'Urlaub / Krank / unbezahlter Urlaub / Feiertag'])
+    for (const row of employeeRows) sheet.addRow([germanDate(row.workDate), row.start, row.end, pauseDisplay(row.pauseMinutes), durationText(row.netMinutes), ''])
     const total = employeeRows.reduce((sum, row) => sum + row.netMinutes, 0)
-    sheet.addRow([]); sheet.addRow(['Gesamt', '', '', '', durationText(total)])
-    sheet.columns = [{ width: 16 }, { width: 13 }, { width: 13 }, { width: 14 }, { width: 18 }]
+    sheet.addRow([]); sheet.addRow(['Gesamt', '', '', '', durationText(total), ''])
+    sheet.columns = [{ width: 16 }, { width: 13 }, { width: 13 }, { width: 14 }, { width: 18 }, { width: 24 }]
     sheet.getRow(5).font = { bold: true }; sheet.getRow(2).font = { bold: true, size: 14 }
   }
   return new Uint8Array(await workbook.xlsx.writeBuffer())
