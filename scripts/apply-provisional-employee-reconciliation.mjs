@@ -40,3 +40,4 @@ await writeFile(path, source)
 console.log('Provisional employee reconciliation applied')
 
 await import('./apply-schedule-publish-user-id.mjs')
+await import('./apply-schedule-safe-relay-approvals.mjs')
