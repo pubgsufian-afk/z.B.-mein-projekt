@@ -6,6 +6,7 @@ await import('./display-snapshots-test.mjs')
 await import('./admin-overview-performance-test.mjs')
 await import('./instant-page-snapshots-test.mjs')
 await import('./apply-attendance-refresh-auto-checkout.mjs')
+await import('./apply-sparse-attendance-auto-checkout.mjs')
 
 await mkdir('public/assets', { recursive: true })
 await build({

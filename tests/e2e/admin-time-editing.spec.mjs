@@ -145,7 +145,7 @@ test('admin edits a completed session and corrected totals are shown', async ({ 
   await expect(page.getByText(/Arbeitszeit wurde aktualisiert/)).toBeVisible()
   await expect(card.getByText('15 Min.', { exact: true })).toBeVisible()
   await expect(card.getByText('0:45 Std.', { exact: true })).toBeVisible()
-  await expect(page.locator('.timesheet-grand-total').getByText('0:45 Std.', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Gesamtsummen im Zeitraum').getByText('0:45 Std.', { exact: true })).toBeVisible()
 
   expect(portal.getLastEditBody()).toMatchObject({
     clockInEventId: 'clock-in-1',

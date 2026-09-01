@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/attendance-refresh-auto-checkout-20260817
+      - fix/sparse-attendance-auto-checkout-20260901
 
 permissions:
   contents: read
@@ -18,5 +19,6 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
+      - run: node scripts/sparse-auto-checkout-build-order-test.mjs
       - run: node --experimental-strip-types scripts/attendance-system-actor-test.mjs
       - run: node --experimental-strip-types scripts/attendance-auto-checkout-worker-test.mjs

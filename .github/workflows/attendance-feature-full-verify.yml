@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/attendance-refresh-auto-checkout-20260817
+      - fix/sparse-attendance-auto-checkout-20260901
 
 permissions:
   contents: read
@@ -20,10 +21,9 @@ jobs:
       - run: npm install --no-audit --no-fund
       - name: Existing portal verification
         run: npm run verify
-      - name: Apply feature after existing source finalizers
-        run: node scripts/apply-attendance-refresh-auto-checkout.mjs
       - name: Feature unit and source tests
         run: |
+          node scripts/sparse-auto-checkout-build-order-test.mjs
           node scripts/data-refresh-source-test.mjs
           node --experimental-strip-types scripts/attendance-automation-policy-test.mjs
           node --experimental-strip-types scripts/attendance-auto-shift-test.mjs
@@ -34,10 +34,12 @@ jobs:
         run: npm run build
       - name: Feature contracts after production build
         run: |
+          node scripts/sparse-auto-checkout-build-order-test.mjs
           node scripts/data-refresh-source-test.mjs
           node --experimental-strip-types scripts/attendance-system-actor-test.mjs
           node --experimental-strip-types scripts/attendance-flex-clock-test.mjs
           node --experimental-strip-types scripts/attendance-auto-checkout-worker-test.mjs
+          node scripts/attendance-auto-checkout-ui-applied-test.mjs
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
       - name: Browser regression suite

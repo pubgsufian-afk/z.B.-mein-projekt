@@ -39,13 +39,14 @@ export function automaticActionsForPhase(phase: string) {
   return phase === 'paused' ? ['break-end', 'clock-out'] : ['clock-out']
 }
 
-async function listOpenSessions(): Promise<OpenSession[]> {
+async function listOpenSessions(userId: string | null = null): Promise<OpenSession[]> {
   const database = getDatabase()
   const result = await database.pool.query(
     `WITH latest AS (
        SELECT DISTINCT ON (e.user_id)
               e.user_id, e.action, e.client_occurred_at, e.schedule_id, e.object_id
          FROM attendance_events e
+        WHERE ($1::text IS NULL OR e.user_id = $1::text)
         ORDER BY e.user_id, e.client_occurred_at DESC, e.server_occurred_at DESC, e.id DESC
      )
      SELECT l.user_id, l.action, l.client_occurred_at AS latest_at, l.schedule_id, l.object_id,
@@ -62,6 +63,7 @@ async function listOpenSessions(): Promise<OpenSession[]> {
        ) start_event ON true
       WHERE l.action IN ('clock-in', 'break-start', 'break-end')
       ORDER BY l.user_id`,
+    [userId],
   )
   return result.rows.map((row) => ({
     userId: String(row.user_id),
@@ -73,23 +75,24 @@ async function listOpenSessions(): Promise<OpenSession[]> {
   }))
 }
 
-export default async function attendanceAutoCheckout(_request: Request, _context: Context) {
+async function runAutoCheckout(userId: string | null, now = new Date()) {
   const connectionString = databaseConnectionString()
   if (!connectionString) {
     console.error('Attendance auto-checkout skipped: database is not configured')
-    return
+    return { checked: 0, checkedOut: 0 }
   }
+
   const repository = await createAttendanceRepository(connectionString)
   const service = createAttendanceService({ repository })
   let sessions: OpenSession[] = []
   try {
-    sessions = await listOpenSessions()
+    sessions = await listOpenSessions(userId)
   } catch (error) {
     console.error('Attendance auto-checkout open-session lookup failed', error)
-    return
+    return { checked: 0, checkedOut: 0 }
   }
 
-  const now = new Date()
+  let checkedOut = 0
   for (const session of sessions) {
     if (!session.scheduleId) continue
     try {
@@ -128,10 +131,22 @@ export default async function attendanceAutoCheckout(_request: Request, _context
       if (timing.source === 'attendance-flex') {
         await finishFlexAutoShift(timing.id, session.userId, deadline)
       }
+      checkedOut += 1
     } catch (error) {
       console.error('Attendance auto-checkout session failed', { userId: session.userId, scheduleId: session.scheduleId, error })
     }
   }
+  return { checked: sessions.length, checkedOut }
 }
 
-export const config: Config = { schedule: '*/15 * * * *' }
+export async function runAutoCheckoutForUser(userId: string, now = new Date()) {
+  const normalizedUserId = String(userId || '').trim()
+  if (!normalizedUserId) throw new TypeError('Benutzer-ID ist erforderlich.')
+  return runAutoCheckout(normalizedUserId, now)
+}
+
+export default async function attendanceAutoCheckout(_request: Request, _context: Context) {
+  await runAutoCheckout(null, new Date())
+}
+
+export const config: Config = { schedule: '@daily' }
