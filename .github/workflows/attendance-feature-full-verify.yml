@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/attendance-refresh-auto-checkout-20260817
+      - fix/sparse-attendance-auto-checkout-20260901
 
 permissions:
   contents: read
@@ -21,7 +22,9 @@ jobs:
       - name: Existing portal verification
         run: npm run verify
       - name: Apply feature after existing source finalizers
-        run: node scripts/apply-attendance-refresh-auto-checkout.mjs
+        run: |
+          node scripts/apply-attendance-refresh-auto-checkout.mjs
+          node scripts/apply-sparse-attendance-auto-checkout.mjs
       - name: Feature unit and source tests
         run: |
           node scripts/data-refresh-source-test.mjs
