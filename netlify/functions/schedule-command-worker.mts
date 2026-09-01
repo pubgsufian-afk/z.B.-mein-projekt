@@ -34,6 +34,7 @@ function assistantBodyFromCommand(command: ScheduleWorkerCommand) {
   if (command.action === 'publish-shifts') {
     body.shifts = command.shifts
     body.allowUnregistered = command.allowUnregistered === true
+    body.approvedUnregisteredNames = command.approvedUnregisteredNames || []
   }
   if (command.action === 'list-shifts' || command.action === 'find-duplicates') {
     body.from = command.from
