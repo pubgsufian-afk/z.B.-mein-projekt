@@ -7,6 +7,8 @@ import {
 } from './_shared/daily-attendance-service.mts'
 import { createAttendanceRepository } from './_shared/neon-attendance.mts'
 import { databaseConnectionString } from './_shared/database-connection.mts'
+import { flexCheckoutDeadline, normalCheckoutDeadline } from './_shared/attendance-automation-policy.mts'
+import { findScheduleTiming } from './_shared/attendance-auto-shift.mts'
 
 type PortalRole = 'owner' | 'admin' | 'manager' | 'employee' | 'pending'
 type AccessRecord = { role?: PortalRole; status?: string } | null
@@ -23,6 +25,18 @@ type ScheduleEntry = {
   pauseMinutes?: number
   objectId?: string
   status?: string
+}
+
+type AutoCheckoutState = {
+  phase?: string | null
+  clockInAt?: string | Date | null
+  events?: Array<Record<string, unknown>>
+}
+
+type AutoCheckoutTiming = {
+  employeeUserId: string
+  source: string
+  scheduledEndAt: string
 }
 
 const VALID_ROLES = new Set<PortalRole>(['owner', 'admin', 'manager', 'employee', 'pending'])
@@ -103,6 +117,29 @@ export function displayAttendancePhase(
   return phase || 'idle'
 }
 
+export function autoCheckoutAtForState(
+  state: AutoCheckoutState | null | undefined,
+  timing: AutoCheckoutTiming | null | undefined,
+  userId: string,
+) {
+  if (!state || !timing || !['working', 'paused'].includes(String(state.phase || ''))) return null
+  if (String(timing.employeeUserId || '') !== String(userId || '')) return null
+  if (!state.clockInAt) return null
+  return timing.source === 'attendance-flex'
+    ? flexCheckoutDeadline(state.clockInAt)
+    : normalCheckoutDeadline(timing.scheduledEndAt)
+}
+
+function openScheduleIdFromState(state: AutoCheckoutState | null | undefined) {
+  if (!state || !['working', 'paused'].includes(String(state.phase || ''))) return null
+  const events = Array.isArray(state.events) ? state.events : []
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const scheduleId = String(events[index]?.scheduleId || '').trim()
+    if (scheduleId) return scheduleId
+  }
+  return null
+}
+
 export function plannedSchedules(entries: ScheduleEntry[], userId: string, date: string) {
   return (Array.isArray(entries) ? entries : [])
     .filter((entry) => String(entry.employeeUserId || '') === userId && entry.date === date && entry.status !== 'draft')
@@ -149,6 +186,7 @@ export function attendanceFunctionMarkers() {
     reopensCompletedShift: true,
     requiresInsideWorksite: true,
     clockOutAllowedAfterShiftEnd: true,
+    sparseAutoCheckout: true,
   }
 }
 
@@ -267,21 +305,45 @@ export default async function attendance(request: Request, _context: Context) {
     if (request.method === 'GET') {
       const resource = url.searchParams.get('resource') || 'state'
       if (resource === 'state') {
-        const state = await service.getState(actor)
+        let state = await service.getState(actor)
         const schedules = await loadSchedules()
         const now = new Date()
+        let autoCheckoutAt: Date | null = null
+        const openScheduleId = openScheduleIdFromState(state)
+
+        if (openScheduleId) {
+          try {
+            const timing = await findScheduleTiming(openScheduleId)
+            autoCheckoutAt = autoCheckoutAtForState(state, timing, actor.userId)
+            if (autoCheckoutAt && now.getTime() >= autoCheckoutAt.getTime()) {
+              const { runAutoCheckoutForUser } = await import('./attendance-auto-checkout.mts')
+              const result = await runAutoCheckoutForUser(actor.userId, now)
+              if (result.checkedOut > 0) state = await service.getState(actor)
+              autoCheckoutAt = null
+            }
+          } catch (error) {
+            console.error('Attendance sparse auto-checkout reconciliation skipped', {
+              userId: actor.userId,
+              scheduleId: openScheduleId,
+              error,
+            })
+          }
+        }
+
         const today = eventDateInBerlin(now)
         const requestedScheduleId = url.searchParams.get('scheduleId')
         const candidates = plannedSchedules(schedules, actor.userId, today)
         const schedule = selectPlannedSchedule(schedules, actor.userId, today, requestedScheduleId, now)
         const clocking = clockingWindowForSchedule(schedule, now)
         const visiblePhase = displayAttendancePhase(state.phase, schedule, now)
+        const autoCheckoutAtIso = autoCheckoutAt?.toISOString() || null
         if (actor.role === 'employee') {
           return response({
             phase: visiblePhase,
             rawPhase: state.phase,
             schedule: schedulePayload(schedule),
             clocking,
+            autoCheckoutAt: autoCheckoutAtIso,
           })
         }
         return response({
@@ -291,6 +353,7 @@ export default async function attendance(request: Request, _context: Context) {
           schedule: schedulePayload(schedule),
           schedules: candidates.map((entry) => schedulePayload(entry)),
           clocking,
+          autoCheckoutAt: autoCheckoutAtIso,
         })
       }
       if (resource === 'history') {
