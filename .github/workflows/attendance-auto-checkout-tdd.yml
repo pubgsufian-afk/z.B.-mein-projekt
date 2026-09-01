@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/attendance-refresh-auto-checkout-20260817
+      - fix/sparse-attendance-auto-checkout-20260901
 
 permissions:
   contents: read
