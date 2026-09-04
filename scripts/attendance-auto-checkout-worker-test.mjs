@@ -74,10 +74,12 @@ assert.match(source, /finishFlexAutoShift/)
 assert.match(source, /clientOccurredAt:\s*deadline\.toISOString\(\)/)
 assert.match(source, /export\s+async\s+function\s+runAutoCheckoutForUser/,
   'employee-scoped reconciliation must be available without a global poll')
-assert.match(source, /schedule:\s*'@daily'/,
-  'global safety scan must run only once per day')
+assert.match(source, /schedule:\s*'@hourly'/,
+  'global safety scan must run hourly so forgotten clock-outs cannot stay open all day')
+assert.doesNotMatch(source, /schedule:\s*'@daily'/,
+  'a daily safety scan can leave forgotten clock-outs visibly open for too long')
 assert.doesNotMatch(source, /schedule:\s*'\*\/15 \* \* \* \*'/,
-  '15-minute global polling must be removed')
+  '15-minute global polling must remain disabled')
 
 assert.match(attendance, /autoCheckoutAtForState/)
 assert.match(attendance, /runAutoCheckoutForUser\(actor\.userId/,

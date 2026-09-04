@@ -149,4 +149,4 @@ export default async function attendanceAutoCheckout(_request: Request, _context
   await runAutoCheckout(null, new Date())
 }
 
-export const config: Config = { schedule: '@daily' }
+export const config: Config = { schedule: '@hourly' }

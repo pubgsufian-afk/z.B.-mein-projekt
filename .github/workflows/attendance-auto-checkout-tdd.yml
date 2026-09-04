@@ -5,6 +5,7 @@ on:
     branches:
       - feat/attendance-refresh-auto-checkout-20260817
       - fix/sparse-attendance-auto-checkout-20260901
+      - fix/hourly-attendance-auto-checkout-20260904
 
 permissions:
   contents: read
