@@ -9,6 +9,7 @@ import {
   listEmployeeAliases,
   saveEmployeeAlias,
 } from './employee-alias-service.mts'
+import { inspectPortalHealth } from './portal-admin-health.mts'
 import { normalizeAssistantName } from './schedule-assistant-core.mts'
 import type { PortalAdminHandler } from './portal-admin-router.mts'
 
@@ -58,6 +59,17 @@ export function createEmployeePortalAdminHandler(): PortalAdminHandler {
           name: text(operation.input.name, 300),
         })
         return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data: { employees: employees.map(safeEmployee), count: employees.length } }
+      }
+      if (operation.action === 'portal-health') {
+        try {
+          const data = await inspectPortalHealth(operation.input)
+          return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data }
+        } catch (error) {
+          if (error instanceof TypeError || error instanceof RangeError) {
+            return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'rejected', code: 'INVALID_HEALTH_RANGE' }
+          }
+          throw error
+        }
       }
       if (operation.action === 'list-aliases') {
         const [aliases, employees] = await Promise.all([
