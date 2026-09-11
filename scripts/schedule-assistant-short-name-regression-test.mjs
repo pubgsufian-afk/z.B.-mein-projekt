@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { resolveAssistantEmployee } from '../netlify/functions/_shared/schedule-assistant-core.mts'
 
+// Regression: a commonly used short name may be the final token of the registered full name.
 const uniqueTokenDirectory = [
   { userId: 'u-teno', fullName: 'Mohamed Teno', role: 'employee', status: 'active', location: 'Abbott' },
   { userId: 'u-omar', fullName: 'Omar Dirie', role: 'employee', status: 'active', location: 'Abbott' },
