@@ -66,6 +66,21 @@ assert.doesNotMatch(publishSource, /resolveAssistantEmployee\(input\.employeeNam
 assert.doesNotMatch(publishSource, /resolved\.status === 'not_found'/)
 assert.match(publishSource, /provisionalEmployee: isProvisionalEmployeeUserId\(shift\.employeeUserId\)/)
 
+// One relay execution must protect retries and verify the effective production row before success.
+assert.match(publishSource, /const sourceRef = `assistant:\$\{requestId\}:\$\{index\}`/)
+assert.match(publishSource, /existingSourceRef/)
+assert.match(publishSource, /already_satisfied/)
+assert.match(publishSource, /const verified = await findScheduleShift\(shift\.id\)/)
+assert.match(publishSource, /verification_failed/)
+assert.match(publishSource, /verified: true/)
+
+const sourceRefIndex = publishSource.indexOf('existingSourceRef')
+const upsertIndex = publishSource.indexOf('await upsertScheduleShift(candidate)')
+const verifyIndex = publishSource.indexOf('const verified = await findScheduleShift(shift.id)')
+const successIndex = publishSource.indexOf("status: 'published'", verifyIndex)
+assert.ok(sourceRefIndex >= 0 && upsertIndex > sourceRefIndex)
+assert.ok(verifyIndex > upsertIndex && successIndex > verifyIndex)
+
 const publishHandler = source.slice(source.indexOf("if (action === 'publish-shifts')"))
 assert.match(publishHandler, /const allowUnregistered = body\.allowUnregistered === true/)
 assert.match(publishHandler, /approvedUnregisteredNames/)
