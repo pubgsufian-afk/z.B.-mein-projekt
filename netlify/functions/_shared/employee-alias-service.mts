@@ -11,7 +11,7 @@ export type EmployeeAliasRecord = {
 }
 
 const STORE_NAME = 'portal-employee-aliases'
-const PREFIX = 'aliases/'
+const INDEX_KEY = 'aliases/index.json'
 
 function store() {
   return getStore({ name: STORE_NAME, consistency: 'strong' })
@@ -19,10 +19,6 @@ function store() {
 
 function text(value: unknown, max = 300) {
   return String(value ?? '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, max)
-}
-
-function keyFor(normalizedAlias: string) {
-  return `${PREFIX}${encodeURIComponent(normalizedAlias)}`
 }
 
 function mapRecord(value: unknown): EmployeeAliasRecord | null {
@@ -42,18 +38,25 @@ function mapRecord(value: unknown): EmployeeAliasRecord | null {
   }
 }
 
-export async function listEmployeeAliases(): Promise<EmployeeAliasRecord[]> {
+function cleanRows(value: unknown): EmployeeAliasRecord[] {
+  if (!Array.isArray(value)) return []
+  const byAlias = new Map<string, EmployeeAliasRecord>()
+  for (const row of value) {
+    const mapped = mapRecord(row)
+    if (mapped) byAlias.set(mapped.normalizedAlias, mapped)
+  }
+  return [...byAlias.values()].sort((left, right) => left.alias.localeCompare(right.alias, 'de'))
+}
+
+async function readAliasIndex() {
   const aliasStore = store()
-  const listed = await aliasStore.list({ prefix: PREFIX })
-  const rows = await Promise.all(
-    listed.blobs.map((blob) => aliasStore.get(blob.key, { type: 'json' }) as Promise<unknown>),
-  )
+  const rows = cleanRows(await aliasStore.get(INDEX_KEY, { type: 'json' }))
+  return { aliasStore, rows }
+}
+
+export async function listEmployeeAliases(): Promise<EmployeeAliasRecord[]> {
+  const { rows } = await readAliasIndex()
   return rows
-    .flatMap((row) => {
-      const mapped = mapRecord(row)
-      return mapped ? [mapped] : []
-    })
-    .sort((left, right) => left.alias.localeCompare(right.alias, 'de'))
 }
 
 export async function saveEmployeeAlias(input: { alias: unknown; userId: unknown; actorId: unknown }) {
@@ -64,9 +67,8 @@ export async function saveEmployeeAlias(input: { alias: unknown; userId: unknown
   if (!alias || !normalizedAlias) throw Object.assign(new Error('Alias ist erforderlich.'), { code: 'ALIAS_REQUIRED' })
   if (!userId) throw Object.assign(new Error('Mitarbeiter-ID ist erforderlich.'), { code: 'EMPLOYEE_REQUIRED' })
 
-  const aliasStore = store()
-  const key = keyFor(normalizedAlias)
-  const existing = mapRecord(await aliasStore.get(key, { type: 'json' }))
+  const { aliasStore, rows } = await readAliasIndex()
+  const existing = rows.find((row) => row.normalizedAlias === normalizedAlias) || null
   if (existing && existing.userId !== userId) {
     throw Object.assign(new Error('Dieser Alias ist bereits einem anderen Mitarbeiter zugeordnet.'), { code: 'ALIAS_CONFLICT' })
   }
@@ -80,17 +82,24 @@ export async function saveEmployeeAlias(input: { alias: unknown; userId: unknown
     updatedAt: now,
     updatedBy: actorId,
   }
-  await aliasStore.setJSON(key, record)
+  const next = rows.filter((row) => row.normalizedAlias !== normalizedAlias)
+  next.push(record)
+  next.sort((left, right) => left.alias.localeCompare(right.alias, 'de'))
+  await aliasStore.setJSON(INDEX_KEY, next)
   return record
 }
 
 export async function deleteEmployeeAlias(input: { alias: unknown; actorId?: unknown }) {
   const normalizedAlias = normalizeAssistantName(input.alias)
   if (!normalizedAlias) throw Object.assign(new Error('Alias ist erforderlich.'), { code: 'ALIAS_REQUIRED' })
-  const aliasStore = store()
-  const key = keyFor(normalizedAlias)
-  const existing = mapRecord(await aliasStore.get(key, { type: 'json' }))
+
+  const { aliasStore, rows } = await readAliasIndex()
+  const existing = rows.find((row) => row.normalizedAlias === normalizedAlias) || null
   if (!existing) return { deleted: false, alias: text(input.alias) }
-  await aliasStore.delete(key)
+
+  await aliasStore.setJSON(
+    INDEX_KEY,
+    rows.filter((row) => row.normalizedAlias !== normalizedAlias),
+  )
   return { deleted: true, alias: existing.alias, userId: existing.userId }
 }
