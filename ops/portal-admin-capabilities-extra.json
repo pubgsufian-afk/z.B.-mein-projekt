@@ -144,6 +144,15 @@
     "relay": { "domain": "employees", "action": "reactivate-account" }
   },
   {
+    "id": "employees.portal-health",
+    "surface": "Portal Gesundheitscheck",
+    "endpoint": "/api/schedule-oidc-trigger",
+    "method": "POST",
+    "action": "portal-health",
+    "classification": "relay-read-only",
+    "relay": { "domain": "employees", "action": "portal-health" }
+  },
+  {
     "id": "employees.list-aliases",
     "surface": "Mitarbeiter-Aliase",
     "endpoint": "/api/registrations",
