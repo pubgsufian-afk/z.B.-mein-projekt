@@ -14,6 +14,10 @@ for (const action of ['list-aliases', 'save-alias', 'delete-alias', 'portal-heal
   assert.match(employees, new RegExp(`operation\\.action === '${action}'`))
 }
 assert.match(aliases, /consistency: 'strong'/)
+assert.match(aliases, /INDEX_KEY = 'aliases\/index\.json'/)
+assert.match(aliases, /await aliasStore\.get\(INDEX_KEY, \{ type: 'json' \}\)/)
+assert.doesNotMatch(aliases, /aliasStore\.list\(/)
+assert.doesNotMatch(aliases, /Promise\.all\([^)]*aliasStore\.get/)
 assert.match(aliases, /ALIAS_CONFLICT/)
 assert.match(health, /MAX_RANGE_DAYS = 62/)
 assert.match(health, /guestIdentityIds/)
