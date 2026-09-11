@@ -19,7 +19,7 @@ function httpFailureStatus(status: number) {
 function publishResultStatus(data: Record<string, unknown>) {
   const results = Array.isArray(data.results) ? data.results : []
   if (!results.length) return { status: 'success' as const }
-  const accepted = new Set(['published', 'duplicate'])
+  const accepted = new Set(['published', 'duplicate', 'already_satisfied'])
   const failed = results.filter((entry) => {
     const row = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {}
     return !accepted.has(String(row.status || ''))
