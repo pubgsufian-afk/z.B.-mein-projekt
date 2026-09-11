@@ -37,20 +37,20 @@ export function resolveScheduleWorkArea(input: unknown): ScheduleWorkArea | null
   return BY_ALIAS.get(normalized) || null
 }
 
-function explicitPauseMinutes(value: unknown) {
-  if (value === undefined || value === null || value === '') return null
-  const pause = Number(value)
-  return Number.isFinite(pause) && pause >= 0 ? Math.round(pause) : null
-}
-
 export function resolveSchedulePause(input: {
   workAreaKey: string
   start: string
   end: string
   explicitPause?: unknown
-}) {
-  const explicit = explicitPauseMinutes(input.explicitPause)
-  if (explicit !== null) return explicit
+}): number | null {
+  const hasExplicitPause = input.explicitPause !== undefined
+    && input.explicitPause !== null
+    && input.explicitPause !== ''
+  if (hasExplicitPause) {
+    const pause = Number(input.explicitPause)
+    if (!Number.isFinite(pause) || pause < 0) return null
+    return Math.round(pause)
+  }
 
   const key = String(input.workAreaKey || '').trim()
   const start = String(input.start || '').trim()
