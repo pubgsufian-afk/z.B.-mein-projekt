@@ -277,6 +277,13 @@ export function resolveAssistantSchedulePerson(
     return { status: 'not_found' as const, employee: null, candidates: [] as Array<Pick<AssistantDirectoryEmployee, 'userId' | 'fullName'>> }
   }
 
+  const approved = approvedUnregisteredNames
+    .map((value) => text(value))
+    .find((value) => normalizeAssistantName(value) === normalized)
+  if (!approved) {
+    return { status: 'not_found' as const, employee: null, candidates: [] as Array<Pick<AssistantDirectoryEmployee, 'userId' | 'fullName'>> }
+  }
+
   const knownProvisional = provisionalEmployees.filter(
     (employee) => normalizeAssistantName(employee.fullName) === normalized,
   )
@@ -297,20 +304,13 @@ export function resolveAssistantSchedulePerson(
     }
   }
 
-  const approved = approvedUnregisteredNames
-    .map((value) => text(value))
-    .find((value) => normalizeAssistantName(value) === normalized)
-  if (approved) {
-    return {
-      status: 'approved_unregistered' as const,
-      employee: null,
-      candidates: [] as Array<Pick<AssistantDirectoryEmployee, 'userId' | 'fullName'>>,
-      provisional: true,
-      fullName: approved,
-    }
+  return {
+    status: 'approved_unregistered' as const,
+    employee: null,
+    candidates: [] as Array<Pick<AssistantDirectoryEmployee, 'userId' | 'fullName'>>,
+    provisional: true,
+    fullName: approved,
   }
-
-  return { status: 'not_found' as const, employee: null, candidates: [] as Array<Pick<AssistantDirectoryEmployee, 'userId' | 'fullName'>> }
 }
 
 export function defaultAssistantLocation(employee: Pick<AssistantDirectoryEmployee, 'location'>) {
