@@ -215,27 +215,14 @@ export function resolveAssistantEmployee(name: unknown, employees: AssistantDire
   }
 
   if (!normalized.includes(' ')) {
-    const firstNameCandidates = employees.filter((employee) => {
-      const employeeName = normalizeAssistantName(employee.fullName)
-      return employeeName.split(' ')[0] === normalized
-    })
-    if (firstNameCandidates.length === 1) {
-      return { status: 'matched' as const, employee: firstNameCandidates[0], candidates: firstNameCandidates }
+    const exactTokenCandidates = employees.filter((employee) => (
+      normalizeAssistantName(employee.fullName).split(' ').filter(Boolean).includes(normalized)
+    ))
+    if (exactTokenCandidates.length === 1) {
+      return { status: 'matched' as const, employee: exactTokenCandidates[0], candidates: exactTokenCandidates }
     }
-    if (firstNameCandidates.length > 1) {
-      return { status: 'ambiguous' as const, employee: null, candidates: firstNameCandidates }
-    }
-
-    const nonSurnameTokenCandidates = employees.filter((employee) => {
-      const tokens = normalizeAssistantName(employee.fullName).split(' ').filter(Boolean)
-      const tokenIndex = tokens.indexOf(normalized)
-      return tokens.length >= 3 && tokenIndex >= 0 && tokenIndex < tokens.length - 1
-    })
-    if (nonSurnameTokenCandidates.length === 1) {
-      return { status: 'matched' as const, employee: nonSurnameTokenCandidates[0], candidates: nonSurnameTokenCandidates }
-    }
-    if (nonSurnameTokenCandidates.length > 1) {
-      return { status: 'ambiguous' as const, employee: null, candidates: nonSurnameTokenCandidates }
+    if (exactTokenCandidates.length > 1) {
+      return { status: 'ambiguous' as const, employee: null, candidates: exactTokenCandidates }
     }
 
     const fuzzyFirstNameCandidates = employees.filter((employee) => {
