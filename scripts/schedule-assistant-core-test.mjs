@@ -41,8 +41,25 @@ const ambiguousFirstName = resolveAssistantEmployee('Amin', shortNameEmployees)
 assert.equal(ambiguousFirstName.status, 'ambiguous')
 assert.equal(ambiguousFirstName.candidates.length, 2)
 
-const surnameOnly = resolveAssistantEmployee('Khalaf', shortNameEmployees)
-assert.equal(surnameOnly.status, 'not_found')
+const uniqueSurnameToken = resolveAssistantEmployee('Khalaf', shortNameEmployees)
+assert.equal(uniqueSurnameToken.status, 'matched')
+assert.equal(uniqueSurnameToken.employee?.userId, '4')
+
+const registeredShortNameEmployees = [
+  { userId: '7', fullName: 'Mohamed Teno', role: 'employee', status: 'active', location: 'Abbott' },
+  { userId: '8', fullName: 'Omar Dirie', role: 'employee', status: 'active', location: 'Abbott' },
+]
+const teno = resolveAssistantEmployee('Teno', registeredShortNameEmployees)
+assert.equal(teno.status, 'matched')
+assert.equal(teno.employee?.userId, '7')
+assert.equal(teno.employee?.fullName, 'Mohamed Teno')
+
+const ambiguousAnyToken = resolveAssistantEmployee('Ahmed', [
+  { userId: '9', fullName: 'Mohamed Ahmed Warsame', role: 'employee', status: 'active', location: 'Abbott' },
+  { userId: '10', fullName: 'Ahmed Zarzour', role: 'employee', status: 'active', location: 'Abbott' },
+])
+assert.equal(ambiguousAnyToken.status, 'ambiguous')
+assert.equal(ambiguousAnyToken.candidates.length, 2)
 
 const partialFullName = resolveAssistantEmployee('Aras K', shortNameEmployees)
 assert.equal(partialFullName.status, 'not_found')
