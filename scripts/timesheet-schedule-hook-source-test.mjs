@@ -11,8 +11,12 @@ const [portal, assistant, sync] = await Promise.all([
 assert.match(portal, /syncPublishedScheduleShift\(shift, current\.userId, new Date\(\)\)/)
 assert.match(portal, /syncPublishedScheduleRange\(week, addDays\(week, 6\), current\.userId, new Date\(\)\)/)
 assert.match(portal, /removeScheduleShiftFromTimesheet\(id, existing\.date, current\.userId, new Date\(\)\)/)
-assert.match(assistant, /syncPublishedScheduleShift\(shift, ACTOR_ID, new Date\(\)\)/)
+assert.match(assistant, /syncPublishedScheduleShift\(verified, ACTOR_ID, new Date\(\)\)/)
 assert.match(assistant, /syncPublishedScheduleShift\(saved, ACTOR_ID, new Date\(\)\)/)
 assert.match(assistant, /removeScheduleShiftFromTimesheet\(shiftId, existing\.date, ACTOR_ID, new Date\(\)\)/)
+assert.ok(
+  assistant.indexOf('const verified = await findScheduleShift(shift.id)') < assistant.indexOf('syncPublishedScheduleShift(verified, ACTOR_ID, new Date())'),
+  'Stundenzettel-Sync darf erst nach erfolgreicher Dienst-Verifikation laufen.',
+)
 assert.doesNotMatch(sync, /attendance_events/)
 console.log('timesheet schedule hook source contract passed')

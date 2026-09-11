@@ -1,0 +1,56 @@
+name: PR73 reliability focus
+
+on:
+  push:
+    branches:
+      - feature/pr73-reliability-cost
+  pull_request:
+    paths:
+      - 'netlify/functions/schedule-assistant.mts'
+      - 'netlify/functions/_shared/schedule-assistant-core.mts'
+      - 'netlify/functions/_shared/schedule-work-policy.mts'
+      - 'netlify/functions/_shared/employee-alias-service.mts'
+      - 'netlify/functions/_shared/schedule-employee-alias-resolution.mts'
+      - 'netlify/functions/_shared/portal-admin-*.mts'
+      - 'ops/portal-admin-capabilities*.json'
+      - 'scripts/apply-schedule-*.mjs'
+      - 'scripts/schedule-assistant-*.mjs'
+      - 'scripts/employee-alias-*.mjs'
+      - 'scripts/portal-admin-*.mjs'
+      - 'scripts/pr73-*.mjs'
+      - '.github/workflows/pr73-reliability-focus.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Short-name regression
+        run: node --experimental-strip-types scripts/schedule-assistant-short-name-regression-test.mjs
+      - name: Schedule core
+        run: node --experimental-strip-types scripts/schedule-assistant-core-test.mjs
+      - name: Alias resolution
+        run: node --experimental-strip-types scripts/employee-alias-resolution-test.mjs
+      - name: Apply final schedule build state
+        run: node scripts/apply-schedule-assistant-full-control.mjs
+      - name: Finalizer idempotence
+        run: node scripts/pr73-finalizer-idempotence-test.mjs
+      - name: 100+ employee cost path
+        run: node --experimental-strip-types scripts/pr73-cost-path-test.mjs
+      - name: Schedule source
+        run: node scripts/schedule-assistant-source-test.mjs
+      - name: Schedule management source
+        run: node scripts/schedule-assistant-management-source-test.mjs
+      - name: Portal admin reliability
+        run: node --experimental-strip-types scripts/portal-admin-reliability-test.mjs
+      - name: Portal admin capability registry
+        run: node --experimental-strip-types scripts/portal-admin-capability-registry-test.mjs

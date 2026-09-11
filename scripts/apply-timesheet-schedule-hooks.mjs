@@ -44,12 +44,23 @@ assistant = replaceOnce(
   "} from './_shared/schedule-neon-repository.mts'\nimport { removeScheduleShiftFromTimesheet, syncPublishedScheduleShift } from './_shared/timesheet-schedule-sync.mts'\nimport {\n  assistantPersonMatch,",
   'Assistent Timesheet-Sync Import',
 )
-assistant = replaceOnce(
-  assistant,
-  "    const shift = await upsertScheduleShift(candidate)\n    await writeScheduleAudit({\n      actorId: ACTOR_ID,\n      actorType: 'chatgpt',\n      action: 'shift-published',",
-  "    const shift = await upsertScheduleShift(candidate)\n    await syncPublishedScheduleShift(shift, ACTOR_ID, new Date())\n    await writeScheduleAudit({\n      actorId: ACTOR_ID,\n      actorType: 'chatgpt',\n      action: 'shift-published',",
-  'Assistent Dienst veröffentlichen',
-)
+
+if (assistant.includes('const verified = await findScheduleShift(shift.id)')) {
+  assistant = replaceOnce(
+    assistant,
+    "    }\n    await writeScheduleAudit({\n      actorId: ACTOR_ID,\n      actorType: 'chatgpt',\n      action: 'shift-published',",
+    "    }\n    await syncPublishedScheduleShift(verified, ACTOR_ID, new Date())\n    await writeScheduleAudit({\n      actorId: ACTOR_ID,\n      actorType: 'chatgpt',\n      action: 'shift-published',",
+    'Assistent verifizierten Dienst veröffentlichen',
+  )
+} else {
+  assistant = replaceOnce(
+    assistant,
+    "    const shift = await upsertScheduleShift(candidate)\n    await writeScheduleAudit({\n      actorId: ACTOR_ID,\n      actorType: 'chatgpt',\n      action: 'shift-published',",
+    "    const shift = await upsertScheduleShift(candidate)\n    await syncPublishedScheduleShift(shift, ACTOR_ID, new Date())\n    await writeScheduleAudit({\n      actorId: ACTOR_ID,\n      actorType: 'chatgpt',\n      action: 'shift-published',",
+    'Assistent Dienst veröffentlichen',
+  )
+}
+
 assistant = replaceOnce(
   assistant,
   "  await upsertScheduleShift(candidate)\n  await writeScheduleAudit({\n    actorId: ACTOR_ID,\n    actorType: 'chatgpt',\n    action: 'shift-updated',",

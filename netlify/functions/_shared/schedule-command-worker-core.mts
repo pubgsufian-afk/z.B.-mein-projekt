@@ -107,6 +107,10 @@ export function parseScheduleCommand(raw: unknown, now = new Date()): ParseResul
   if (action === 'publish-shifts' && parsed.allowUnregistered !== undefined && typeof parsed.allowUnregistered !== 'boolean') {
     return { ok: false, message: 'Gastmodus ist ungültig.' }
   }
+  if (action === 'publish-shifts' && parsed.allowUnregistered === true
+    && (!Array.isArray(parsed.approvedUnregisteredNames) || parsed.approvedUnregisteredNames.length === 0)) {
+    return { ok: false, message: 'Gastmodus benötigt ausdrücklich freigegebene Namen.' }
+  }
   if (action === 'publish-shifts' && parsed.approvedUnregisteredNames !== undefined) {
     if (!Array.isArray(parsed.approvedUnregisteredNames) || parsed.approvedUnregisteredNames.length > 100) {
       return { ok: false, message: 'Freigegebene Dienstplan-Namen sind ungültig.' }

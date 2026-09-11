@@ -44,11 +44,19 @@ if (typeof assistantCore.resolveAssistantSchedulePerson === 'function') {
   assert.equal(registeredWins.employee?.userId, 'registered-1')
   assert.equal(registeredWins.provisional, false)
 
-  const knownProvisional = assistantCore.resolveAssistantSchedulePerson(
+  const unapprovedKnownProvisional = assistantCore.resolveAssistantSchedulePerson(
     'Guest Example',
     employees,
     provisionalEmployees,
     [],
+  )
+  assert.equal(unapprovedKnownProvisional.status, 'not_found')
+
+  const knownProvisional = assistantCore.resolveAssistantSchedulePerson(
+    'Guest Example',
+    employees,
+    provisionalEmployees,
+    ['Guest Example'],
   )
   assert.equal(knownProvisional.status, 'matched')
   assert.equal(knownProvisional.employee?.userId, 'guest:known')
