@@ -86,4 +86,6 @@ const preflightStopIndex = publishHandler.indexOf('preflightFailed: true')
 const publishCallIndex = publishHandler.indexOf('results.push(await publishOne')
 assert.ok(resolveIndex >= 0 && preflightStopIndex > resolveIndex && publishCallIndex > preflightStopIndex)
 
+await import('./schedule-assistant-short-name-regression-test.mjs')
+
 console.log('Schedule assistant source tests passed')
