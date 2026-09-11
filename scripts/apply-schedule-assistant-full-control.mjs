@@ -46,5 +46,6 @@ console.log('Schedule assistant full-control portal patch applied')
 
 await import('./ensure-settings-performance-input.mjs')
 await import('./apply-schedule-publish-user-id.mjs')
+await import('./apply-schedule-work-policy.mjs')
 await import('./apply-schedule-publish-verification.mjs')
 await import('./apply-schedule-safe-relay-approvals.mjs')
