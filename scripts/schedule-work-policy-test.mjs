@@ -25,5 +25,7 @@ assert.equal(resolveSchedulePause({ workAreaKey: 'bauhelfer', start: '08:30', en
 assert.equal(resolveSchedulePause({ workAreaKey: 'zuko', start: '06:00', end: '17:00' }), 0)
 assert.equal(resolveSchedulePause({ workAreaKey: 'brandwache', start: '07:00', end: '17:00', explicitPause: 0 }), 0)
 assert.equal(resolveSchedulePause({ workAreaKey: 'brandwache', start: '07:00', end: '17:00', explicitPause: 30 }), 30)
+assert.equal(resolveSchedulePause({ workAreaKey: 'brandwache', start: '07:00', end: '17:00', explicitPause: -1 }), null)
+assert.equal(resolveSchedulePause({ workAreaKey: 'brandwache', start: '07:00', end: '17:00', explicitPause: 'x' }), null)
 
 console.log('Schedule work policy tests passed')
