@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
-import { resolveAssistantEmployee } from '../netlify/functions/_shared/schedule-assistant-core.mts'
+import {
+  resolveAssistantEmployee,
+  resolveAssistantSchedulePerson,
+} from '../netlify/functions/_shared/schedule-assistant-core.mts'
 
 // Regression: a commonly used short name may be the final token of the registered full name.
 const uniqueTokenDirectory = [
@@ -20,5 +23,27 @@ const ambiguousTokenDirectory = [
 const ahmed = resolveAssistantEmployee('Ahmed', ambiguousTokenDirectory)
 assert.equal(ahmed.status, 'ambiguous')
 assert.equal(ahmed.candidates.length, 2)
+
+const provisionalDirectory = [
+  { userId: 'guest:kanee', fullName: 'Kanee' },
+]
+
+const unapprovedExistingGuest = resolveAssistantSchedulePerson(
+  'Kanee',
+  uniqueTokenDirectory,
+  provisionalDirectory,
+  [],
+)
+assert.equal(unapprovedExistingGuest.status, 'not_found')
+
+const approvedExistingGuest = resolveAssistantSchedulePerson(
+  'Kanee',
+  uniqueTokenDirectory,
+  provisionalDirectory,
+  ['Kanee'],
+)
+assert.equal(approvedExistingGuest.status, 'matched')
+assert.equal(approvedExistingGuest.employee?.userId, 'guest:kanee')
+assert.equal(approvedExistingGuest.provisional, true)
 
 console.log('Schedule assistant short-name regression tests passed')
