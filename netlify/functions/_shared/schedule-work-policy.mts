@@ -21,6 +21,8 @@ const WORK_AREAS: Array<ScheduleWorkArea & { aliases: string[] }> = [
   { key: 'lager-aufzug', label: 'Lager/Aufzug', aliases: ['lager', 'aufzug', 'lager aufzug', 'lager/aufzug'] },
   { key: 'baureinigung', label: 'Baureinigung', aliases: ['baureinigung', 'bau reinigung'] },
   { key: 'bauhelfer', label: 'Bauhelfer', aliases: ['bauhelfer', 'bau helfer'] },
+  { key: 'baulogistik', label: 'Baulogistik', aliases: ['baulogistik', 'bau logistik'] },
+  { key: 'staplerfahrer', label: 'Staplerfahrer', aliases: ['staplerfahrer', 'stapler fahrer'] },
   { key: 'lagerzelt', label: 'Lagerzelt', aliases: ['lagerzelt', 'lager zelt'] },
 ]
 
