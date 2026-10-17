@@ -8,6 +8,7 @@ const base = {
 }
 assert.equal(scheduleShiftBusinessEqual(base, { ...base }), true)
 assert.equal(scheduleShiftBusinessEqual(base, { ...base, pauseMinutes: 60 }), false)
+assert.equal(scheduleShiftBusinessEqual(base, { ...base, status: 'draft' }), false)
 
 const [service, adapter, capabilities] = await Promise.all([
   readFile('netlify/functions/_shared/portal-admin-bulk-schedule.mts', 'utf8'),
@@ -23,6 +24,8 @@ for (const needle of [
   'upsertScheduleShift',
   'writeScheduleAudit',
   'changed: false',
+  "requestedStatus !== 'published'",
+  "status: requestedStatus === 'published' ? 'published' : existing.status",
 ]) assert.ok(service.includes(needle), `missing ${needle}`)
 assert.ok(!service.includes('syncScheduleEmployees'), 'bulk update must not force a full directory sync')
 assert.match(adapter, /bulk-update-shifts/)

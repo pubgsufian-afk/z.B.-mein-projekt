@@ -144,6 +144,9 @@ async function updateOne(
   const rawChanges = update.changes && typeof update.changes === 'object' && !Array.isArray(update.changes)
     ? update.changes as Record<string, unknown>
     : {}
+  // Permit explicit draft-to-published transition through the authenticated relay.
+  const requestedStatus = rawChanges.status == null ? '' : text(rawChanges.status, 20)
+  if (requestedStatus && requestedStatus !== 'published') return { itemId, status: 'rejected', code: 'INVALID_STATUS' }
 
   let employeeUserId = existing.employeeUserId
   let employeeName = existing.employeeName
@@ -180,6 +183,7 @@ async function updateOne(
     location,
     workArea: text(rawChanges.workArea, 300) || existing.workArea,
     note: rawChanges.note == null ? existing.note : text(rawChanges.note, 1000),
+    status: requestedStatus === 'published' ? 'published' : existing.status,
   }
 
   if (scheduleShiftBusinessEqual(existing as unknown as Record<string, unknown>, candidate as unknown as Record<string, unknown>)) {
@@ -198,6 +202,9 @@ async function updateOne(
   const now = new Date().toISOString()
   const changed: ScheduleShift = {
     ...candidate,
+    ...(existing.status !== 'published' && candidate.status === 'published'
+      ? { publishedAt: now, publishedBy: ACTOR_ID }
+      : {}),
     updatedAt: now,
     updatedBy: ACTOR_ID,
   }

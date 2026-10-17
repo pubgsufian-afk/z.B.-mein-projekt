@@ -24,6 +24,7 @@ const WORK_AREAS: Array<ScheduleWorkArea & { aliases: string[] }> = [
   { key: 'baulogistik', label: 'Baulogistik', aliases: ['baulogistik', 'bau logistik'] },
   { key: 'staplerfahrer', label: 'Staplerfahrer', aliases: ['staplerfahrer', 'stapler fahrer'] },
   { key: 'lagerzelt', label: 'Lagerzelt', aliases: ['lagerzelt', 'lager zelt'] },
+  { key: 'wc', label: 'WC', aliases: ['wc', 'toilette', 'sanitär', 'sanitaer'] },
 ]
 
 const BY_ALIAS = new Map<string, ScheduleWorkArea>()
@@ -60,7 +61,7 @@ export function resolveSchedulePause(input: {
 
   if (key === 'brandwache' && start === '17:00' && end === '23:00') return 0
   if (['brandwache', 'gmp-rundgang', 'gmp-zuko'].includes(key) && start === '07:00' && end === '17:00') return 60
-  if (['baureinigung', 'lager-aufzug'].includes(key) && start === '07:30' && end === '16:30') return 30
+  if (['baureinigung', 'lager-aufzug'].includes(key) && start === '07:30' && end === '16:30') return 60
   if (key === 'bauhelfer' && start === '08:30' && end === '17:00') return 30
 
   // Unknown combinations preserve the historic safe default. Explicit user values always win above.
