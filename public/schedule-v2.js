@@ -22,7 +22,7 @@ function minutes(value) {
 
 export function netShiftMinutes(start, end, pauseMinutes) {
   const from = minutes(start)
-  const to = minutes(end)
+  const to = end === '00:00' && start !== '00:00' ? 1440 : minutes(end)
   const pause = Number(pauseMinutes)
   if (from === null || to === null || to <= from) throw new RangeError('Ungültige Dienstzeit')
   if (!Number.isFinite(pause) || pause < 0 || pause >= to - from) throw new RangeError('Ungültige Pause')
@@ -255,3 +255,4 @@ async function postAction(payload, message) {
 
 window.addEventListener('habun:v2-ready', (event) => { if (MANAGEMENT.has(event.detail.model.role)) load() })
 window.addEventListener('habun:v2-tab', (event) => { if (event.detail.name === 'schedule') load() })
+
