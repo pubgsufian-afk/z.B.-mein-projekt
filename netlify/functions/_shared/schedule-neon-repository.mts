@@ -236,8 +236,8 @@ export async function listScheduleOverlaps(candidate: Pick<ScheduleShift, 'emplo
     `SELECT * FROM schedule_shifts
       WHERE employee_user_id = $1
         AND shift_date = $2::date
-        AND start_time < CASE WHEN $4::time = '00:00'::time THEN '24:00'::time ELSE $4::time END
-        AND $3::time < CASE WHEN end_time = '00:00'::time THEN '24:00'::time ELSE end_time END
+        AND start_time < $4::time
+        AND $3::time < end_time
         AND ($5 = '' OR id <> $5)
       ORDER BY start_time, id`,
     [candidate.employeeUserId, candidate.date, candidate.start, candidate.end, excludeId],
@@ -460,4 +460,3 @@ export async function writeScheduleAudit(input: {
     [crypto.randomUUID(), input.actorId, input.actorType, input.action, input.shiftId || null, JSON.stringify(input.details || {})],
   )
 }
-
