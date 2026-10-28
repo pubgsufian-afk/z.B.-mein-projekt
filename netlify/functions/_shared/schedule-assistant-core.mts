@@ -166,7 +166,7 @@ export function classifyAssistantDuplicate<T extends AssistantPersonShift>(
   const candidateLocation = normalizeAssistantName(candidate.location)
   const candidateWorkArea = normalizeAssistantName(candidate.workArea)
   const candidateStartMinutes = timeMinutes(candidateStart)
-  const candidateEndMinutes = timeMinutes(candidateEnd)
+  const candidateEndMinutes = candidateEnd === '00:00' ? 1440 : timeMinutes(candidateEnd)
 
   for (const shift of shifts) {
     if (text(shift.date) !== candidateDate) continue
@@ -191,7 +191,7 @@ export function classifyAssistantDuplicate<T extends AssistantPersonShift>(
     }
 
     const shiftStartMinutes = timeMinutes(shiftStart)
-    const shiftEndMinutes = timeMinutes(shiftEnd)
+    const shiftEndMinutes = shiftEnd === '00:00' ? 1440 : timeMinutes(shiftEnd)
     if (candidateStartMinutes < shiftEndMinutes && shiftStartMinutes < candidateEndMinutes) {
       result.overlaps.push(shift)
     }
@@ -374,13 +374,15 @@ export function validateAssistantShiftInput(input: AssistantShiftInput): { ok: t
   if (!employeeName) return { ok: false, message: 'Mitarbeitername fehlt.' }
   if (!ISO_DATE.test(date)) return { ok: false, message: 'Datum ist ungültig.' }
   if (!TIME.test(start) || !TIME.test(end)) return { ok: false, message: 'Beginn oder Ende ist ungültig.' }
-  if (timeMinutes(end) <= timeMinutes(start)) return { ok: false, message: 'Ende muss nach dem Beginn liegen.' }
+  const endMinutes = end === '00:00' && start !== '00:00' ? 1440 : timeMinutes(end)
+  if (endMinutes <= timeMinutes(start)) return { ok: false, message: 'Ende muss nach dem Beginn liegen.' }
   if (!workArea) return { ok: false, message: 'Bereich fehlt.' }
 
   const pause = input.pauseMinutes == null || input.pauseMinutes === '' ? 0 : Number(input.pauseMinutes)
-  const duration = timeMinutes(end) - timeMinutes(start)
+  const duration = endMinutes - timeMinutes(start)
   if (!Number.isFinite(pause) || pause < 0 || pause >= duration) {
     return { ok: false, message: 'Pause ist für diese Dienstzeit ungültig.' }
   }
   return { ok: true }
 }
+
