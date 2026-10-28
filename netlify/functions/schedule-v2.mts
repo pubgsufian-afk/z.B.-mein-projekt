@@ -118,8 +118,8 @@ function normalized(value: unknown) {
 function overlap(left: Pick<Shift, 'date' | 'start' | 'end' | 'employeeUserId'>, right: Pick<Shift, 'date' | 'start' | 'end' | 'employeeUserId'>) {
   return left.employeeUserId === right.employeeUserId
     && left.date === right.date
-    && minutes(left.start) < minutes(right.end)
-    && minutes(right.start) < minutes(left.end)
+    && minutes(left.start) < (right.end === '00:00' ? 1440 : minutes(right.end))
+    && minutes(right.start) < (left.end === '00:00' ? 1440 : minutes(left.end))
 }
 
 function exactDuplicate(left: Partial<Shift>, right: Partial<Shift>) {
@@ -138,9 +138,10 @@ function validateShift(body: Record<string, unknown>) {
   }
   if (!ISO_DATE.test(String(body.date))) throw new TypeError('Das Datum ist ungültig.')
   if (!TIME.test(String(body.start)) || !TIME.test(String(body.end))) throw new TypeError('Beginn oder Ende ist ungültig.')
-  if (minutes(String(body.end)) <= minutes(String(body.start))) throw new RangeError('Das Dienstende muss nach dem Beginn liegen.')
+  const endMinutes = body.end === '00:00' && body.start !== '00:00' ? 1440 : minutes(String(body.end))
+  if (endMinutes <= minutes(String(body.start))) throw new RangeError('Das Dienstende muss nach dem Beginn liegen.')
   const pause = Number(body.pauseMinutes ?? 0)
-  const duration = minutes(String(body.end)) - minutes(String(body.start))
+  const duration = endMinutes - minutes(String(body.start))
   if (!Number.isFinite(pause) || pause < 0 || pause >= duration) throw new RangeError('Die Pause muss kürzer als die Dienstzeit sein.')
 }
 
@@ -345,3 +346,4 @@ export default async function scheduleV2(request: Request, _context: Context) {
 }
 
 export const config: Config = { path: '/api/schedule-v2' }
+
