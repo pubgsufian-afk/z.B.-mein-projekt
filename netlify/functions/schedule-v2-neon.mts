@@ -98,10 +98,9 @@ function validateShift(body: Record<string, unknown>) {
   }
   if (!ISO_DATE.test(String(body.date))) throw new TypeError('Das Datum ist ungültig.')
   if (!TIME.test(String(body.start)) || !TIME.test(String(body.end))) throw new TypeError('Beginn oder Ende ist ungültig.')
-  const endMinutes = body.end === '00:00' && body.start !== '00:00' ? 1440 : minutes(String(body.end))
-  if (endMinutes <= minutes(String(body.start))) throw new RangeError('Das Dienstende muss nach dem Beginn liegen.')
+  if (minutes(String(body.end)) <= minutes(String(body.start))) throw new RangeError('Das Dienstende muss nach dem Beginn liegen.')
   const pause = Number(body.pauseMinutes ?? 0)
-  const duration = endMinutes - minutes(String(body.start))
+  const duration = minutes(String(body.end)) - minutes(String(body.start))
   if (!Number.isFinite(pause) || pause < 0 || pause >= duration) throw new RangeError('Die Pause muss kürzer als die Dienstzeit sein.')
 }
 
@@ -409,4 +408,3 @@ export default async function scheduleV2Neon(request: Request, _context: Context
 }
 
 export const config: Config = { path: '/api/schedule-v2' }
-
