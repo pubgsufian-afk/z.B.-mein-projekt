@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import './schedule-midnight-end-test.mjs'
 import {
   assistantPersonMatch,
   classifyAssistantDuplicate,
@@ -186,3 +187,4 @@ assert.match(validateAssistantShiftInput({
 }).message || '', /Bereich/)
 
 console.log('Schedule assistant core tests passed')
+
