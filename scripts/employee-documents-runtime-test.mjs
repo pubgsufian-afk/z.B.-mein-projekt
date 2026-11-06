@@ -36,6 +36,7 @@ function query(sql, params = []) {
   }
   if (normalized.startsWith('insert into employee_documents')) {
     const [id, employeeUserId, senderUserId, documentType, title, fileName, blobKey, sha256, byteSize] = params
+    if (normalized.includes('on conflict (id) do nothing') && state.documents.some((row) => row.id === id)) return { rows: [] }
     const row = {
       id, employee_user_id: employeeUserId, sender_user_id: senderUserId,
       document_type: documentType, title, file_name: fileName,
@@ -48,6 +49,9 @@ function query(sql, params = []) {
   }
   if (normalized.startsWith('select user_id, full_name from schedule_employees where user_id')) {
     return { rows: params[0].includes('former-admin') ? [{ user_id: 'former-admin', full_name: 'Ehemalige Verwaltung' }] : [] }
+  }
+  if (normalized.startsWith('select id from employee_documents where id =') && normalized.includes('and sender_user_id =')) {
+    return { rows: state.documents.filter((e) => e.id === params[0] && e.sender_user_id === params[1]).map((e) => ({ id: e.id })) }
   }
   if (normalized.startsWith('select * from employee_documents where id =')) {
     return { rows: state.documents.filter((item) => item.id === params[0]) }
@@ -94,8 +98,20 @@ const mocks = {
     "  if (!state.blobs.has(name)) state.blobs.set(name, new Map())",
     "  const files = state.blobs.get(name)",
     "  return {",
-    "    get: async (key) => files.has(key) ? await files.get(key).arrayBuffer() : null,",
+    "    get: async (key, options = {}) => {",
+    "      if (!files.has(key)) return null",
+    "      const value = files.get(key)",
+    "      if (options.type === 'json') return value",
+    "      if (options.type === 'arrayBuffer') {",
+    "        if (value instanceof ArrayBuffer) return value",
+    "        if (value instanceof Uint8Array || Buffer.isBuffer(value)) return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength)",
+    "        return await value.arrayBuffer()",
+    "      }",
+    "      return value",
+    "    },",
     "    set: async (key, file) => { files.set(key, file) },",
+    "    setJSON: async (key, value) => { files.set(key, value) },",
+    "    list: async ({ prefix }) => ({ blobs: [...files.keys()].filter((key) => key.startsWith(prefix)).map((key) => ({ key })) }),",
     "    delete: async (key) => { files.delete(key) },",
     "  }",
     "}",
@@ -113,6 +129,18 @@ const bundled = await build({
   }],
 })
 const { default: handler } = await import('data:text/javascript;base64,' + Buffer.from(bundled.outputFiles[0].text).toString('base64'))
+const bundledLarge = await build({
+  entryPoints: ['netlify/functions/employee-documents-large.mts'],
+  bundle: true, format: 'esm', platform: 'node', write: false,
+  plugins: [{
+    name: 'fake-netlify-runtime',
+    setup(context) {
+      context.onResolve({ filter: /^@netlify\/(identity|database|blobs)$/ }, (args) => ({ path: args.path, namespace: 'mailbox-mock' }))
+      context.onLoad({ filter: /.*/, namespace: 'mailbox-mock' }, (args) => ({ contents: mocks[args.path], loader: 'js' }))
+    },
+  }],
+})
+const { default: largeHandler } = await import('data:text/javascript;base64,' + Buffer.from(bundledLarge.outputFiles[0].text).toString('base64'))
 
 const actors = {
   admin: { id: 'admin-1', email: 'admin@example.test' },
