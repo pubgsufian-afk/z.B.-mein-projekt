@@ -44,3 +44,8 @@ jobs:
         run: npm run build
       - name: Confirm generated build preserved the new features
         run: node scripts/employee-self-service-verify.mjs
+      - name: Check deployed preview mailbox rejects anonymous access
+        run: |
+          status=$(curl --retry 3 --retry-delay 3 --silent --show-error --location --max-time 20 --output /tmp/habun-mailbox-anon-response --write-out '%{http_code}' 'https://deploy-preview-161--habun-mitarbeiterportal.netlify.app/api/employee-documents')
+          echo "Anonymous mailbox HTTP status: $status"
+          test "$status" = '401'
