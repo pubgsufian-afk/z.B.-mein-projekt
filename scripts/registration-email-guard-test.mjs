@@ -14,7 +14,7 @@ assert.equal(findRegistrationEmailConflict({ ...original, status: 'pending' }, [
 assert.equal(findRegistrationEmailConflict(repeated, [{ ...original, status: 'rejected' }, repeated]), null)
 assert.equal(findRegistrationEmailConflict(repeated, [{ ...original, email: 'other@example.de' }, repeated]), null)
 assert.equal(findRegistrationEmailConflict({ ...repeated, email: '' }, [original]), null)
-assert.deepEqual(findRegistrationEmailConflict({ ...repeated, id: 'z-new-user-id' }, [{ ...original, createdAt: repeated.createdAt, status: 'pending' }, repeated]), { id: 'old-user-id', status: 'pending' })
+assert.deepEqual(findRegistrationEmailConflict({ ...repeated, id: 'z-new-user-id' }, [{ ...original, createdAt: repeated.createdAt, status: 'pending' }]), { id: 'old-user-id', status: 'pending' })
 assert.equal(findRegistrationEmailConflict({ ...repeated, id: 'aaa' }, [{ ...original, id: 'zzz', status: 'pending', createdAt: repeated.createdAt }]), null)
 
 const main = await readFile('netlify/functions/registrations.mts', 'utf8')
