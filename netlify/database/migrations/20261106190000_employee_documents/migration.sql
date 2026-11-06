@@ -9,7 +9,7 @@ CREATE TABLE employee_documents (
   file_name text NOT NULL,
   blob_key text NOT NULL UNIQUE,
   sha256 text NOT NULL CHECK (sha256 ~ '^[a-f0-9]{64}$'),
-  byte_size integer NOT NULL CHECK (byte_size BETWEEN 5 AND 10485760),
+  byte_size integer NOT NULL CHECK (byte_size BETWEEN 5 AND 4194304),
   published_at timestamp with time zone NOT NULL DEFAULT now(),
   first_opened_at timestamp with time zone,
   revoked_at timestamp with time zone,
