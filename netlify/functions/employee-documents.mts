@@ -1,4 +1,4 @@
-import type { Config } from '@netlify/functions'
+import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { getDatabase } from '@netlify/database'
 import { verifyRequestOrigin } from '@netlify/identity'
@@ -10,9 +10,12 @@ const TYPES = new Set(['contract', 'payslip', 'other'])
 const MAX_BYTES = 4 * 1024 * 1024
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-function store() {
-  // Pass the same explicit region on EVERY read/write; never expose Blob URLs.
-  return getStore({ name: 'habun-employee-documents', region: 'eu-central-1', consistency: 'strong' })
+function store(context: Context) {
+  // Never let deploy previews read or write the production personnel file store.
+  const name = context.deploy?.context === 'production'
+    ? 'habun-employee-documents'
+    : 'habun-employee-documents-preview'
+  return getStore({ name, region: 'eu-central-1', consistency: 'strong' })
 }
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: {
@@ -50,7 +53,7 @@ async function audit(documentId: string, actorId: string, action: 'upload' | 'do
   )
 }
 
-export default async function employeeDocuments(request: Request) {
+export default async function employeeDocuments(request: Request, context: Context) {
   const access = await requirePortalRole(['owner', 'admin', 'manager', 'employee'])
   if (access.response || !access.current) return access.response
   const actor = access.current
@@ -70,7 +73,7 @@ export default async function employeeDocuments(request: Request) {
       if (!mayDownloadEmployeeDocument(actor, row)) {
         return json({ message: 'Dokument nicht gefunden.' }, 404)
       }
-      const bytes = await store().get(String(row.blob_key), { type: 'arrayBuffer' })
+      const bytes = await store(context).get(String(row.blob_key), { type: 'arrayBuffer' })
       if (bytes === null) return json({ message: 'Die Datei ist nicht mehr verfügbar.' }, 404)
       const buffer = Buffer.from(bytes)
       if (createHash('sha256').update(buffer).digest('hex') !== row.sha256) {
@@ -162,7 +165,7 @@ export default async function employeeDocuments(request: Request) {
     const key = 'docs/' + id
     const fileName = pdfFilename(pdf.name)
     const sha256 = createHash('sha256').update(bytes).digest('hex')
-    await store().set(key, pdf)
+    await store(context).set(key, pdf)
     try {
       const inserted = await db.pool.query(
         `INSERT INTO employee_documents
@@ -178,7 +181,7 @@ export default async function employeeDocuments(request: Request) {
       // If metadata was inserted but only audit failed, keep the file rather
       // than breaking a link to an already-published document.
       const existing = await db.pool.query('SELECT id FROM employee_documents WHERE id = $1', [id]).catch(() => ({ rows: [] }))
-      if (!existing.rows.length) await store().delete(key).catch(() => {})
+      if (!existing.rows.length) await store(context).delete(key).catch(() => {})
       throw error
     }
   } catch (error) {
