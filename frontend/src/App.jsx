@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { plannedNetMinutes } from './timesheet-utils.js'
+import { EmployeeTimesheetPage, EmployeeMailboxPage } from './EmployeeSelfService.jsx'
 import {
   AuthError,
   getUser,
@@ -39,6 +40,8 @@ const NAVIGATION = [
   { key: 'attendance', label: 'Zeiterfassung', roles: ['owner', 'admin', 'manager', 'employee'] },
   { key: 'employees', label: 'Mitarbeiter', roles: ['owner', 'admin', 'manager'] },
   { key: 'schedule', label: 'Dienstplan', roles: ['owner', 'admin', 'manager', 'employee'] },
+  { key: 'my-hours', label: 'Meine Stunden', roles: ['owner', 'admin', 'manager', 'employee'] },
+  { key: 'mailbox', label: 'Postfach', roles: ['owner', 'admin', 'manager', 'employee'] },
   { key: 'times', label: 'Zeiten', roles: ['owner', 'admin', 'manager'] },
   { key: 'worksites', label: 'Einsatzorte', roles: ['owner', 'admin'] },
   { key: 'corrections', label: 'Korrekturen', roles: ['owner', 'admin', 'manager'] },
@@ -269,8 +272,10 @@ function PortalShell({ session, page, setPage, onLogout, children }) {
         <nav className="employee-kiosk-nav" aria-label="Mitarbeiterbereiche">
           <button type="button" className={page === 'attendance' ? 'active' : ''} onClick={() => navigate('attendance')}>Stempeluhr</button>
           <button type="button" className={page === 'schedule' ? 'active' : ''} onClick={() => navigate('schedule')}>Dienstplan</button>
+          <button type="button" className={page === 'my-hours' ? 'active' : ''} onClick={() => navigate('my-hours')}>Stunden</button>
+          <button type="button" className={page === 'mailbox' ? 'active' : ''} onClick={() => navigate('mailbox')}>Postfach</button>
         </nav>
-        <main className="employee-kiosk-main" aria-label={page === 'schedule' ? 'Eigener Dienstplan' : 'Mitarbeiter-Zeiterfassung'}>{children}</main>
+        <main className="employee-kiosk-main" aria-label={page === 'schedule' ? 'Eigener Dienstplan' : page === 'my-hours' ? 'Eigene Arbeitsstunden' : page === 'mailbox' ? 'Persönliches Postfach' : 'Mitarbeiter-Zeiterfassung'}>{children}</main>
       </div>
     )
   }
@@ -820,6 +825,8 @@ function UnifiedPortal({ session, onLogout }) {
     : page === 'attendance' ? <AttendancePage session={session} />
       : page === 'employees' ? <EmployeesPage session={session} />
         : page === 'schedule' ? <SchedulePage session={session} />
+          : page === 'my-hours' ? <EmployeeTimesheetPage />
+            : page === 'mailbox' ? <EmployeeMailboxPage session={session} />
           : page === 'times' ? <TimesPage session={session} />
             : page === 'worksites' ? <WorksitesPage />
               : page === 'corrections' ? <CorrectionsPage session={session} />
