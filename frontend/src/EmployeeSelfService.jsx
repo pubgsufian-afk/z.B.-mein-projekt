@@ -3,7 +3,7 @@ import './employee-self-service.css'
 
 const PDF = 'application/pdf'
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-const TYPES = { contract: 'Arbeitsvertrag', payslip: 'Lohnabrechnung', other: 'Sonstiges Dokument' }
+const TYPES = { contract: 'Arbeitsvertrag', payslip: 'Lohnabrechnung', other: 'Sonstiges' }
 
 async function requestJson(path, options = {}) {
   const response = await fetch(path, {
@@ -206,7 +206,7 @@ export function EmployeeMailboxPage({ session }) {
       const form = new FormData()
       form.append('employeeUserId', recipient)
       form.append('documentType', type)
-      form.append('title', title)
+      form.append('title', type === 'other' ? title.trim() : '')
       form.append('file', file)
       await requestJson('/api/employee-documents', { method: 'POST', body: form })
       setTitle(''); setFile(null)
@@ -250,13 +250,13 @@ export function EmployeeMailboxPage({ session }) {
           </select>
         </label>
         <label>Dokumentart
-          <select value={type} onChange={(e) => setType(e.target.value)}>
+          <select value={type} onChange={(e) => { setType(e.target.value); setTitle('') }}>
             {Object.entries(TYPES).map(([key, name]) => <option key={key} value={key}>{name}</option>)}
           </select>
         </label>
-        <label>Bezeichnung<input required maxLength={180} value={title} placeholder="z. B. Lohnabrechnung Oktober 2026" onChange={(e) => setTitle(e.target.value)} /></label>
+        {type === 'other' && <label>Bezeichnung<input required maxLength={180} value={title} placeholder="Bezeichnung des Dokuments" onChange={(e) => setTitle(e.target.value)} /></label>}
         <label>PDF-Datei (maximal 4 MB)<input id="employee-document-file" type="file" accept="application/pdf,.pdf" required onChange={(e) => setFile(e.target.files?.[0] || null)} /></label>
-        <button className="primary-button" disabled={Boolean(busy) || !recipient || !file || !title.trim()}>{busy === 'upload' ? 'Wird sicher zugestellt …' : 'Dokument zustellen'}</button>
+        <button className="primary-button" disabled={Boolean(busy) || !recipient || !file || (type === 'other' && !title.trim())}>{busy === 'upload' ? 'Wird sicher zugestellt …' : 'Dokument zustellen'}</button>
       </form>}
     </section>
     <section className="panel">
