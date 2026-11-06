@@ -4,6 +4,7 @@ import { getDatabase } from '@netlify/database'
 import { verifyRequestOrigin } from '@netlify/identity'
 import { createHash, randomUUID } from 'node:crypto'
 import { requirePortalRole } from './_shared/portal-role.mts'
+import { sendPushToUsers } from './_shared/push-core.mts'
 import { mayManageEmployeeDocuments, mayDownloadEmployeeDocument, mayPublishToRecipient } from './_shared/employee-self-service-policy.mjs'
 
 const TYPES = new Set(['contract', 'payslip', 'other'])
@@ -139,7 +140,10 @@ export default async function employeeDocuments(request: Request, context: Conte
     const form = await request.formData()
     const employeeUserId = clean(form.get('employeeUserId'), 160)
     const documentType = clean(form.get('documentType'), 20)
-    const title = clean(form.get('title'), 180)
+    // Standarddokumente werden serverseitig benannt; nur Sonstiges benötigt einen eigenen Titel.
+    const title = documentType === 'contract' ? 'Arbeitsvertrag'
+      : documentType === 'payslip' ? 'Lohnabrechnung'
+      : clean(form.get('title'), 180)
     const file = form.get('file')
     if (!employeeUserId || !TYPES.has(documentType) || !title) {
       return json({ message: 'Mitarbeiter, Dokumentart und Titel sind erforderlich.' }, 400)
@@ -175,6 +179,19 @@ export default async function employeeDocuments(request: Request, context: Conte
         [id, employeeUserId, actor.userId, documentType, title, fileName, key, sha256, bytes.length],
       )
       await audit(id, actor.userId, 'upload')
+      // Only the authenticated, selected recipient gets a notification. Never expose
+      // document type, title, PDF name or payroll data in a push message.
+      try {
+        await sendPushToUsers({
+          userIds: [employeeUserId],
+          title: 'HABUN Mitarbeiterportal',
+          body: 'Du hast ein neues Dokument in deinem Postfach.',
+          url: '/?view=mailbox',
+        })
+      } catch (pushError) {
+        // A temporary push failure must never undo an already published document.
+        console.error('Employee mailbox push failed', pushError)
+      }
       return json({ document: publicRow(inserted.rows[0]) }, 201)
     } catch (error) {
       // Do not retain a free-floating confidential file without DB metadata.
