@@ -611,7 +611,7 @@ test('mailbox blocks oversized PDFs before sending and explains Netlify 413 resp
   await upload.setInputFiles({
     name: 'scan-zu-gross.pdf',
     mimeType: 'application/pdf',
-    buffer: Buffer.alloc(4 * 1024 * 1024 + 1, 65),
+    buffer: Buffer.alloc(50 * 1024 * 1024 + 1, 65),
   })
   await expect(page.getByText(/Die ausgewählte PDF ist .* groß/)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Dokument zustellen' })).toBeDisabled()
@@ -625,7 +625,63 @@ test('mailbox blocks oversized PDFs before sending and explains Netlify 413 resp
   await expect(page.getByText(/bereit zum Hochladen/)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Dokument zustellen' })).toBeEnabled()
   await page.getByRole('button', { name: 'Dokument zustellen' }).click()
-  await expect(page.getByText('Die PDF ist für den Upload zu groß. Bitte auf höchstens 4 MB verkleinern.')).toBeVisible()
+  await expect(page.getByText('Die PDF ist für den Upload zu groß. Bitte auf höchstens 50 MB verkleinern.')).toBeVisible()
   expect(uploadRequests).toBe(1)
+  await expectNoHorizontalPageOverflow(page)
+})
+
+
+test('8.85 MB employee PDF uses private chunked upload without oversized Netlify requests', async ({ page }) => {
+  await login(page, 'admin')
+  const sentParts = []
+  let began = 0
+  let completed = 0
+  let directPosts = 0
+  await page.route('**/api/employee-documents', (route) => {
+    if (route.request().method() === 'POST') directPosts += 1
+    return route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ documents: [], unreadCount: 0 }) })
+  })
+  await page.route('**/api/employee-documents-large**', (route) => {
+    const address = new URL(route.request().url())
+    const action = address.searchParams.get('action')
+    if (action === 'begin') {
+      began += 1
+      const input = JSON.parse(route.request().postData() || '{}')
+      expect(input.byteSize).toBeGreaterThan(8 * 1024 * 1024)
+      expect(input.employeeUserId).toBeTruthy()
+      return route.fulfill({ status: 201, contentType: 'application/json',
+        body: JSON.stringify({ uploadId: 'a1b2c3d4-e5f6-4123-8123-aabbccddeeff',
+          chunkSize: 2 * 1024 * 1024, chunkCount: Math.ceil(input.byteSize / (2 * 1024 * 1024)) }) })
+    }
+    if (action === 'chunk') {
+      const data = route.request().postDataBuffer()
+      expect(data.length).toBeLessThanOrEqual(2 * 1024 * 1024)
+      if (address.searchParams.get('index') === '0') expect(data.toString('ascii', 0, 5)).toBe('%PDF-')
+      sentParts.push(Number(address.searchParams.get('index')))
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' })
+    }
+    if (action === 'finish') {
+      completed += 1
+      return route.fulfill({ status: 201, contentType: 'application/json',
+        body: '{"id":"a1b2c3d4-e5f6-4123-8123-aabbccddeeff"}' })
+    }
+    return route.fulfill({ status: 400, contentType: 'application/json', body: '{}' })
+  })
+  await navigate(page, 'Postfach')
+  await page.locator('.self-service-upload select').first().selectOption({ index: 1 })
+  const size = Math.round(8.85 * 1024 * 1024)
+  const file = Buffer.alloc(size, 65)
+  file.write('%PDF-', 0, 'ascii')
+  await page.locator('#employee-document-file').setInputFiles({
+    name: 'scan-8.85-MB.pdf', mimeType: 'application/pdf', buffer: file,
+  })
+  await expect(page.getByText(/Dateigröße: 8,85 MB/)).toBeVisible()
+  await page.getByRole('button', { name: 'Dokument zustellen' }).click()
+  await expect(page.getByText('Das Dokument wurde für den ausgewählten Mitarbeiter bereitgestellt.')).toBeVisible({ timeout: 25000 })
+  expect(began).toBe(1)
+  expect(completed).toBe(1)
+  expect(sentParts.sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4])
+  expect(directPosts).toBe(0)
   await expectNoHorizontalPageOverflow(page)
 })
