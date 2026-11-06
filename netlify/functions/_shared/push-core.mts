@@ -232,6 +232,55 @@ export async function sendDeviceTestPush(actor: PortalActor, rawToken: string) {
   }
 }
 
+// Used by schedule publication and confidential employee document delivery.
+// An empty or missing recipient list NEVER broadcasts to all subscriptions.
+export type PushDeliveryResult = {
+  targeted: number
+  delivered: number
+  removed: number
+  messageId: string
+}
+
+export async function sendPushToUsers(options: {
+  userIds: string[]
+  title: string
+  body: string
+  url?: string
+}): Promise<PushDeliveryResult> {
+  const userIds = [...new Set(options.userIds.map((value) => String(value || '').trim()).filter(Boolean))]
+  const title = String(options.title || '').trim().slice(0, 80)
+  const body = String(options.body || '').trim().slice(0, 300)
+  const url = String(options.url || '/').trim() || '/'
+  if (!title || !body) throw new TypeError('Titel und Nachricht sind erforderlich.')
+
+  const message: PushMessage = { id: crypto.randomUUID(), title, body, url, createdAt: new Date().toISOString() }
+  if (!userIds.length) return { targeted: 0, delivered: 0, removed: 0, messageId: message.id }
+
+  const recipients = new Set(userIds)
+  const devices = (await listDevices()).filter((row) => recipients.has(row.userId))
+  const config = devices.length ? await vapidConfig() : null
+  let delivered = 0
+  let removed = 0
+
+  for (const device of devices) {
+    const key = `devices/${device.tokenHash}`
+    await store().setJSON(key, { ...device, latestMessage: message, updatedAt: new Date().toISOString() })
+    try {
+      const response = await sendWake(device.endpoint, config!)
+      if (response.ok) delivered += 1
+      else if (response.status === 404 || response.status === 410) {
+        await store().delete(key)
+        removed += 1
+      } else {
+        console.warn('Push service rejected request', response.status, device.endpoint.slice(0, 80))
+      }
+    } catch (error) {
+      console.warn('Push delivery failed', error)
+    }
+  }
+  return { targeted: devices.length, delivered, removed, messageId: message.id }
+}
+
 export async function sendPortalPush(options: {
   actorRole?: string
   targetUserId?: string
