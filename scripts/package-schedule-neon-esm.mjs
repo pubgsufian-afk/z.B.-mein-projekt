@@ -20,8 +20,8 @@ await build({
 })
 
 const compiled = await readFile(output, 'utf8')
-assert.match(compiled, /path:\\s*["']\\/api\\/schedule-v2["']/, 'Compiled schedule function must retain its API route')
-assert.doesNotMatch(compiled, /from\\s+["'][^"']+\\.mts["']/, 'Compiled function must not import a runtime .mts file')
+assert.match(compiled, /path:\s*["']\/api\/schedule-v2["']/, 'Compiled schedule function must retain its API route')
+assert.doesNotMatch(compiled, /from\s+["'][^"']+\.mts["']/, 'Compiled function must not import a runtime .mts file')
 
 // Only remove the source from Netlify deployment builds, not local/CI E2E
 // source-contract runs. This guarantees the ESM entry is the sole deployed
