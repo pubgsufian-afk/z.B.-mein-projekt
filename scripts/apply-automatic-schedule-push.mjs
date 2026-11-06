@@ -23,6 +23,11 @@ await edit('netlify/functions/_shared/push-core.mts', (source) => {
     if (source.includes('export async function sendPushToUsers')) return source.includes('AUTOMATIC_SCHEDULE_PUSH_APPLIED') ? source : `${source}\n// AUTOMATIC_SCHEDULE_PUSH_APPLIED\n`
     throw new Error('Missing sendPortalPush in push-core.mts')
   }
+  // The targeted sender is now part of the base source for isolated mailbox tests.
+  // Remove only the legacy broadcast implementation, never duplicate the sender.
+  if (source.includes('export async function sendPushToUsers')) {
+    return source.slice(0, start) + '// AUTOMATIC_SCHEDULE_PUSH_APPLIED\n'
+  }
   const replacement = `export type PushDeliveryResult = {\n  targeted: number\n  delivered: number\n  removed: number\n  messageId: string\n}\n\nexport async function sendPushToUsers(options: {\n  userIds: string[]\n  title: string\n  body: string\n  url?: string\n}): Promise<PushDeliveryResult> {\n  const userIds = [...new Set(options.userIds.map((value) => String(value || '').trim()).filter(Boolean))]\n  const title = String(options.title || '').trim().slice(0, 80)\n  const body = String(options.body || '').trim().slice(0, 300)\n  const url = String(options.url || '/').trim() || '/'\n  if (!title || !body) throw new TypeError('Titel und Nachricht sind erforderlich.')\n\n  const message: PushMessage = { id: crypto.randomUUID(), title, body, url, createdAt: new Date().toISOString() }\n  if (!userIds.length) return { targeted: 0, delivered: 0, removed: 0, messageId: message.id }\n\n  const recipients = new Set(userIds)\n  const devices = (await listDevices()).filter((row) => recipients.has(row.userId))\n  const config = devices.length ? await vapidConfig() : null\n  let delivered = 0\n  let removed = 0\n\n  for (const device of devices) {\n    const key = \`devices/\${device.tokenHash}\`\n    await store().setJSON(key, { ...device, latestMessage: message, updatedAt: new Date().toISOString() })\n    try {\n      const response = await sendWake(device.endpoint, config!)\n      if (response.ok) delivered += 1\n      else if (response.status === 404 || response.status === 410) {\n        await store().delete(key)\n        removed += 1\n      } else {\n        console.warn('Push service rejected request', response.status, device.endpoint.slice(0, 80))\n      }\n    } catch (error) {\n      console.warn('Push delivery failed', error)\n    }\n  }\n\n  return { targeted: devices.length, delivered, removed, messageId: message.id }\n}\n\n// AUTOMATIC_SCHEDULE_PUSH_APPLIED\n`
   return source.slice(0, start) + replacement
 })
@@ -58,11 +63,21 @@ await edit('netlify/functions/schedule-v2-neon.mts', (source) => {
   }
   const saveAnchor = "      details: { date: shift.date, employeeUserId: shift.employeeUserId, status: shift.status },\n    })\n"
   if (!source.includes('const changedUserIds = [')) {
-    source = insertAfter(source, saveAnchor, "    const changedUserIds = [\n      ...(existing?.status === 'published' ? [existing.employeeUserId] : []),\n      ...(shift.status === 'published' ? [shift.employeeUserId] : []),\n    ]\n    if (changedUserIds.length) await notifyScheduleChanged(changedUserIds)\n", 'schedule-v2-neon.mts save')
+    source = insertAfter(source, saveAnchor, "    const materialFields = ['employeeUserId', 'date', 'start', 'end', 'pauseMinutes', 'objectId', 'location', 'workArea', 'note', 'status']\n    const materialChange = !existing || materialFields.some((field) => String(existing[field] ?? '') !== String(shift[field] ?? ''))\n    if (materialChange && shift.status === 'published') {\n      const changedUserIds = [\n        ...(existing?.status === 'published' && existing.employeeUserId !== shift.employeeUserId ? [existing.employeeUserId] : []),\n        shift.employeeUserId,\n      ]\n      await notifyScheduleChanged(changedUserIds)\n    } else if (materialChange && existing?.status === 'published' && existing.employeeUserId !== shift.employeeUserId) {\n      // A former employee loses access when a draft is reassigned.\n      await notifyScheduleChanged([existing.employeeUserId])\n    }\n", 'schedule-v2-neon.mts save')
+  }
+  // Capture drafts BEFORE publishing. Re-publishing an unchanged week must not
+  // notify every employee again, while a first publication notifies all assigned staff.
+  if (!source.includes('const pendingShiftIds = new Set(')) {
+    source = insertAfter(
+      source,
+      "  const week = mondayOf(value)\n",
+      "  const pendingShiftIds = new Set((await listScheduleShifts({ from: week, to: addDays(week, 6) }))\n    .filter((shift) => shift.status === 'draft').map((shift) => shift.id))\n",
+      'schedule-v2-neon.mts draft snapshot',
+    )
   }
   const publishAnchor = "    details: { week, version: result.version, published: result.published },\n  })\n"
   if (!source.includes('publishedShiftIds = new Set(result.shiftIds)')) {
-    source = insertAfter(source, publishAnchor, "  const publishedShiftIds = new Set(result.shiftIds)\n  const publishedRows = (await listScheduleShifts({ from: week, to: addDays(week, 6), publishedOnly: true }))\n    .filter((shift) => publishedShiftIds.has(shift.id))\n  await notifySchedulePublished(publishedRows.map((shift) => shift.employeeUserId))\n", 'schedule-v2-neon.mts publish')
+    source = insertAfter(source, publishAnchor, "  const publishedShiftIds = new Set(result.shiftIds.filter((id) => pendingShiftIds.has(id)))\n  const publishedRows = (await listScheduleShifts({ from: week, to: addDays(week, 6), publishedOnly: true }))\n    .filter((shift) => publishedShiftIds.has(shift.id))\n  if (publishedRows.length) await notifySchedulePublished(publishedRows.map((shift) => shift.employeeUserId))\n", 'schedule-v2-neon.mts publish')
   }
   const deleteAnchor = "      await writeScheduleAudit({ actorId: current.userId, actorType: 'portal', action: 'shift-deleted', shiftId: id })\n"
   if (!source.includes('existing.status === \'published\') await notifyScheduleChanged')) {
@@ -79,7 +94,7 @@ await edit('netlify/functions/schedule-assistant.mts', (source) => {
   source = source.replace("      employeeName: shift.employeeName,\n      status: 'published',\n      shiftId: shift.id,", "      employeeName: shift.employeeName,\n      employeeUserId: shift.employeeUserId,\n      status: 'published',\n      shiftId: shift.id,")
   const updateAnchor = "  const verified = await findScheduleShift(candidate.id)\n  if (!verified) return json({ message: 'Geänderter Dienst konnte nicht verifiziert werden.', code: 'VERIFY_FAILED' }, 500)\n"
   if (!source.includes('assistantChangedUserIds')) {
-    source = insertAfter(source, updateAnchor, "  const assistantChangedUserIds = [\n    ...(existing.status === 'published' ? [existing.employeeUserId] : []),\n    ...(verified.status === 'published' ? [verified.employeeUserId] : []),\n  ]\n  if (assistantChangedUserIds.length) await notifyScheduleChanged(assistantChangedUserIds)\n", 'schedule-assistant update')
+    source = insertAfter(source, updateAnchor, "  const assistantFields = ['employeeUserId', 'date', 'start', 'end', 'pauseMinutes', 'objectId', 'location', 'workArea', 'note', 'status']\n  if (assistantFields.some((field) => String(existing[field] ?? '') !== String(verified[field] ?? ''))) {\n    const assistantChangedUserIds = [\n      ...(existing.status === 'published' ? [existing.employeeUserId] : []),\n      ...(verified.status === 'published' ? [verified.employeeUserId] : []),\n    ]\n    if (assistantChangedUserIds.length) await notifyScheduleChanged(assistantChangedUserIds)\n  }\n", 'schedule-assistant update')
   }
   const deleteAnchor = "    details: { requestId, before: auditShift(existing) },\n  })\n"
   if (!source.includes("existing.status === 'published') await notifyScheduleChanged([existing.employeeUserId])")) {
