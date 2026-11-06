@@ -822,7 +822,12 @@ function SettingsPage() {
 function UnifiedPortal({ session, onLogout }) {
   const allowed = NAVIGATION.filter((item) => item.roles.includes(session.role)).map((item) => item.key)
   const initialPage = session.role === 'employee' ? 'attendance' : 'overview'
-  const [page, setPage] = useState(initialPage)
+  // An authenticated deep link lets users open a tab directly after login.
+  // Only registered navigation keys for the current role are accepted.
+  const [page, setPage] = useState(() => {
+    const requested = new URLSearchParams(window.location.search).get('view')
+    return requested && allowed.includes(requested) ? requested : initialPage
+  })
   useEffect(() => { if (!allowed.includes(page)) setPage(initialPage) }, [allowed, initialPage, page])
   const content = page === 'overview' ? <OverviewPage session={session} navigate={setPage} />
     : page === 'attendance' ? <AttendancePage session={session} />
