@@ -404,3 +404,30 @@ test('employee can submit a locked daily report, see only own history and downlo
   expect((await pdf).suggestedFilename()).toMatch(/\.pdf$/i)
   await expectNoHorizontalPageOverflow(page)
 })
+
+test('direct mailbox URL opens the admin postbox after login without sidebar click', async ({ page }) => {
+  const user = users.admin
+  await mockIdentity(page, user)
+  await mockPortalApis(page, 'admin')
+  await page.goto('/?view=mailbox')
+  await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
+  await page.getByLabel('E-Mail-Adresse').fill(user.email)
+  await page.getByLabel('Passwort').fill('TestPasswort123!')
+  await page.getByRole('button', { name: 'Sicher anmelden' }).click()
+  await expect(page.getByRole('heading', { name: 'Mitarbeiterpostfach verwalten' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Dokument zustellen' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Postfach', exact: true })).toHaveClass(/active/)
+})
+
+test('unknown direct URL does not bypass role-based navigation', async ({ page }) => {
+  const user = users.employee
+  await mockIdentity(page, user)
+  await mockPortalApis(page, 'employee')
+  await page.goto('/?view=employees')
+  await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
+  await page.getByLabel('E-Mail-Adresse').fill(user.email)
+  await page.getByLabel('Passwort').fill('TestPasswort123!')
+  await page.getByRole('button', { name: 'Sicher anmelden' }).click()
+  await expect(page.getByRole('heading', { name: 'Stempeluhr', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Mitarbeiter', exact: true })).toHaveCount(0)
+})
