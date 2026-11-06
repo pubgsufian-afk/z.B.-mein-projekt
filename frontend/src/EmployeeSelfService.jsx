@@ -265,6 +265,7 @@ export function EmployeeMailboxPage({ session }) {
         {documents.map((doc) => <article className="self-service-entry" key={doc.id}>
           <div><strong>{doc.title}</strong>
             <span>{TYPES[doc.documentType] || 'Dokument'} · {new Date(doc.publishedAt).toLocaleDateString('de-DE')}</span>
+            <span>Gesendet von: {doc.senderName || 'Absender nicht zugeordnet'}</span>
             {isAdmin && <span>Empfänger: {names.get(String(doc.employeeUserId)) || 'Mitarbeiter'}</span>}
           </div>
           <div className="self-service-document-actions">

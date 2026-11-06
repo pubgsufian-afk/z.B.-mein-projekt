@@ -28,10 +28,13 @@ function json(data: unknown, status = 200) {
 function clean(value: unknown, max = 180) {
   return String(value || '').trim().replace(/[\r\n\t]+/g, ' ').slice(0, max)
 }
-function publicRow(row: Record<string, unknown>) {
+function publicRow(row: Record<string, unknown>, senders: Map<string, string>) {
   return {
     id: row.id,
     employeeUserId: row.employee_user_id,
+    // Never trust a sender name supplied by the uploading browser.
+    // Resolve sender_user_id using authenticated company records instead.
+    senderName: senders.get(String(row.sender_user_id || '')) || 'Absender nicht zugeordnet',
     documentType: row.document_type,
     title: row.title,
     fileName: row.file_name,
@@ -41,6 +44,64 @@ function publicRow(row: Record<string, unknown>) {
     revokedAt: row.revoked_at,
   }
 }
+// The sender's immutable account ID has been stored since the mailbox was created.
+// Resolve names server-side for both existing and future documents, without exposing
+// account IDs, email addresses or the complete employee directory to recipients.
+async function senderNamesFor(
+  rows: Record<string, unknown>[],
+  db: ReturnType<typeof getDatabase>,
+  actor: { userId: string; user: unknown },
+) {
+  const ids = [...new Set(rows.map((row) => clean(row.sender_user_id, 160)).filter(Boolean))]
+  const names = new Map<string, string>()
+  if (!ids.length) return names
+
+  const accessStore = getStore({ name: 'portal-access', consistency: 'strong' })
+  await Promise.all(ids.map(async (id) => {
+    try {
+      const account = await accessStore.get('access/' + id, { type: 'json' }) as { fullName?: unknown } | null
+      const name = clean(account?.fullName, 120)
+      if (name) names.set(id, name)
+    } catch {
+      // Sender identity lookup must not prevent employees from opening documents.
+    }
+  }))
+
+  const unknown = ids.filter((id) => !names.has(id))
+  if (unknown.length) {
+    try {
+      const listed = await db.pool.query(
+        'SELECT user_id, full_name FROM schedule_employees WHERE user_id = ANY($1::text[])',
+        [unknown],
+      )
+      for (const row of listed.rows) {
+        const id = clean(row.user_id, 160)
+        const name = clean(row.full_name, 120)
+        if (id && name && unknown.includes(id)) names.set(id, name)
+      }
+    } catch {
+      // Old or unsynced personnel records may not exist on every database branch.
+    }
+  }
+
+  // Owners may be approved by email without a portal-access record. If the
+  // current authenticated owner uploaded the document, their identity metadata
+  // is an additional trustworthy source for their *own* name.
+  if (ids.includes(actor.userId) && !names.has(actor.userId)) {
+    const user = actor.user && typeof actor.user === 'object'
+      ? actor.user as Record<string, unknown>
+      : {}
+    const metadata = user.userMetadata && typeof user.userMetadata === 'object'
+      ? user.userMetadata as Record<string, unknown>
+      : user.user_metadata && typeof user.user_metadata === 'object'
+        ? user.user_metadata as Record<string, unknown>
+        : {}
+    const ownName = clean(metadata.fullName || metadata.full_name || metadata.name || user.name, 120)
+    if (ownName) names.set(actor.userId, ownName)
+  }
+  return names
+}
+
 function pdfFilename(value: unknown) {
   const safe = clean(value, 120).replace(/[^a-zA-Z0-9._ -]/g, '_').replace(/[\/\\]/g, '_')
   const base = safe.replace(/\.pdf$/i, '') || 'Dokument'
@@ -112,7 +173,9 @@ export default async function employeeDocuments(request: Request, context: Conte
             [filterId],
           )
         : await db.pool.query('SELECT * FROM employee_documents ORDER BY published_at DESC, id DESC LIMIT 200')
-      const documents = result.rows.filter((row) => isAdmin || !row.revoked_at).map(publicRow)
+      const visibleRows = result.rows.filter((row) => isAdmin || !row.revoked_at)
+      const senderNames = await senderNamesFor(visibleRows, db, actor)
+      const documents = visibleRows.map((row) => publicRow(row, senderNames))
       const unreadCount = documents.filter((row) => !row.revokedAt && !row.firstOpenedAt).length
       return json({ documents, unreadCount })
     }
@@ -192,7 +255,8 @@ export default async function employeeDocuments(request: Request, context: Conte
         // A temporary push failure must never undo an already published document.
         console.error('Employee mailbox push failed', pushError)
       }
-      return json({ document: publicRow(inserted.rows[0]) }, 201)
+      const senderNames = await senderNamesFor(inserted.rows, db, actor)
+      return json({ document: publicRow(inserted.rows[0], senderNames) }, 201)
     } catch (error) {
       // Do not retain a free-floating confidential file without DB metadata.
       // If metadata was inserted but only audit failed, keep the file rather
