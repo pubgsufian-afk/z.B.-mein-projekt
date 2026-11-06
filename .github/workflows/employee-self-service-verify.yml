@@ -12,6 +12,7 @@ on:
       - 'frontend/src/employee-daily-reports.css'
       - 'frontend/src/employee-self-service.css'
       - 'netlify/functions/employee-documents.mts'
+      - 'netlify/functions/employee-document-database-health.mts'
       - 'netlify/functions/_shared/employee-self-service-policy.mjs'
       - 'netlify/functions/_shared/portal-admin-report-service.mts'
       - 'netlify/database/migrations/**'
@@ -49,3 +50,19 @@ jobs:
           status=$(curl --retry 3 --retry-delay 3 --silent --show-error --location --max-time 20 --output /tmp/habun-mailbox-anon-response --write-out '%{http_code}' 'https://deploy-preview-161--habun-mitarbeiterportal.netlify.app/api/employee-documents')
           echo "Anonymous mailbox HTTP status: $status"
           test "$status" = '401'
+      - name: Confirm real preview runtime can access document database tables
+        run: |
+          url='https://deploy-preview-161--habun-mitarbeiterportal.netlify.app/api/employee-document-database-health'
+          for attempt in $(seq 1 18); do
+            response=$(curl --silent --show-error --max-time 15 --write-out '\n%{http_code}' "$url" || true)
+            status="${response##*$'\n'}"
+            body="${response%$'\n'*}"
+            if [[ "$status" == '200' && "$body" == '{"ready":true}' ]]; then
+              echo 'PASS: preview server confirms both private document database tables exist'
+              exit 0
+            fi
+            echo "Preview runtime database not confirmed (attempt $attempt, HTTP $status)"
+            sleep 5
+          done
+          echo 'FAIL: preview database not ready after checks'
+          exit 1
