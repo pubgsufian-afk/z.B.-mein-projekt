@@ -71,8 +71,9 @@ function notice(text, tone = 'error') {
 export function EmployeeTimesheetPage() {
   const [month, setMonth] = useState(berlinMonth)
   const [entries, setEntries] = useState([])
+  const [monthlyEntries, setMonthlyEntries] = useState([])
   const [summary, setSummary] = useState(null)
-  const [scope, setScope] = useState('actual')
+  const [scope, setScope] = useState('monthly')
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
   const range = useMemo(() => monthRange(month), [month])
@@ -83,10 +84,12 @@ export function EmployeeTimesheetPage() {
       const params = new URLSearchParams(range)
       const data = await requestJson('/api/employee-timesheet?' + params)
       setEntries(Array.isArray(data.entries) ? data.entries : [])
+      setMonthlyEntries(Array.isArray(data.monthlyEntries) ? data.monthlyEntries : [])
       setSummary(data.summary || null)
       setMessage('')
     } catch (error) {
       setEntries([])
+      setMonthlyEntries([])
       setSummary(null)
       setMessage(error.message)
     } finally { setBusy('') }
@@ -110,13 +113,15 @@ export function EmployeeTimesheetPage() {
       </div>
       {notice(message)}
       <div className="self-service-metrics">
+        <div><span>Stundenzettel der Verwaltung</span><strong>{formatMinutes(summary?.timesheetMinutes)}</strong><small>{summary?.timesheetEntries || 0} hinterlegte Einträge, inklusive Korrekturen und Dienstplanübernahmen</small></div>
         <div><span>Tatsächlich erfasst</span><strong>{formatMinutes(summary?.recordedMinutes)}</strong><small>{summary?.recordedShifts || 0} abgeschlossene Buchungen</small></div>
         <div><span>Nur im Dienstplan</span><strong>{formatMinutes(summary?.scheduledMinutes)}</strong><small>{summary?.scheduledShifts || 0} noch nicht durch Stempelzeiten ersetzte Dienste</small></div>
       </div>
-      <p className="self-service-hint">Erfasste Zeiten stammen aus der Stempeluhr. Dienstplanstunden sind geplant und werden nicht zu den erfassten Stunden addiert. Abweichungen oder Korrekturen mit dem Büro klären.</p>
+      <p className="self-service-hint">Der Stundenzettel der Verwaltung berücksichtigt gespeicherte Korrekturen, kann aber auch aus dem Dienstplan übernommene Stunden enthalten. Erfasste Zeiten stammen aus der Stempeluhr. Die drei Summen sind unterschiedliche Sichtweisen und dürfen nicht zusammengerechnet werden.</p>
       <div className="self-service-export">
         <label>Für den Download
           <select value={scope} onChange={(e) => setScope(e.target.value)}>
+            <option value="monthly">Stundenzettel der Verwaltung (inkl. Korrekturen)</option>
             <option value="actual">Nur erfasste Arbeitszeit</option>
             <option value="unified">Erfasst und Dienstplan (getrennt gekennzeichnet)</option>
             <option value="planned">Nur Dienstplan</option>
@@ -127,7 +132,16 @@ export function EmployeeTimesheetPage() {
       </div>
     </section>
     <section className="panel">
-      <h2>Arbeitstage im {month?.split('-').reverse().join('.') || 'Monat'}</h2>
+      <h2>Stundenzettel der Verwaltung</h2>
+      <p className="self-service-hint">Gespeicherte Stunden einschließlich nachträglicher Korrekturen. Dienstplanübernahmen sind nicht automatisch eine Bestätigung der tatsächlich geleisteten Arbeit.</p>
+      {monthlyEntries.length ? <div className="self-service-list">{monthlyEntries.map((entry, index) => <article className="self-service-entry" key={'monthly-' + index + '-' + entry.date}>
+        <div><strong>{formatDay(entry.date)}</strong><span>{entry.location || 'Einsatzort'} · {entry.workArea || 'Arbeitsbereich'}</span></div>
+        <div><strong>{entry.start}–{entry.end}</strong><span>Pause: {entry.pauseMinutes || 0} Min.</span></div>
+        <div className="self-service-entry-right"><strong>{formatMinutes(entry.netMinutes)}</strong><span className={entry.manualOverride || entry.source === 'manual' ? 'self-service-tag recorded' : 'self-service-tag'}>{entry.manualOverride || entry.source === 'manual' ? 'Korrigiert / manuell' : 'Dienstplanübernahme'}</span></div>
+      </article>)}</div> : <p>Für diesen Monat sind noch keine Verwaltungs-Stundenzettel hinterlegt.</p>}
+    </section>
+    <section className="panel">
+      <h2>Stempeluhr und Dienstplan im {month?.split('-').reverse().join('.') || 'Monat'}</h2>
       {busy === 'loading' ? <p>Arbeitsstunden werden geladen …</p>
         : entries.length ? <div className="self-service-list">
           {entries.map((entry, index) => <article className="self-service-entry" key={entry.date + '-' + entry.start + '-' + index}>
