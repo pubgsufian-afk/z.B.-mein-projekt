@@ -19,6 +19,7 @@ on:
       - 'frontend/src/employee-self-service.css'
       - 'frontend/src/App.jsx'
       - 'scripts/employee-self-service-verify.mjs'
+      - 'scripts/employee-documents-runtime-test.mjs'
       - '.github/workflows/employee-self-service-verify.yml'
 
 permissions:
@@ -37,6 +38,8 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Source parsing, authorization and UI contracts
         run: node scripts/employee-self-service-verify.mjs
+      - name: Run isolated end-to-end mailbox API security test
+        run: node scripts/employee-documents-runtime-test.mjs
       - name: Complete production build and existing regression tests
         run: npm run build
       - name: Confirm generated build preserved the new features
