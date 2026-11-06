@@ -58,11 +58,21 @@ await edit('netlify/functions/schedule-v2-neon.mts', (source) => {
   }
   const saveAnchor = "      details: { date: shift.date, employeeUserId: shift.employeeUserId, status: shift.status },\n    })\n"
   if (!source.includes('const changedUserIds = [')) {
-    source = insertAfter(source, saveAnchor, "    const changedUserIds = [\n      ...(existing?.status === 'published' ? [existing.employeeUserId] : []),\n      ...(shift.status === 'published' ? [shift.employeeUserId] : []),\n    ]\n    if (changedUserIds.length) await notifyScheduleChanged(changedUserIds)\n", 'schedule-v2-neon.mts save')
+    source = insertAfter(source, saveAnchor, "    const materialFields = ['employeeUserId', 'date', 'start', 'end', 'pauseMinutes', 'objectId', 'location', 'workArea', 'note', 'status']\n    const materialChange = !existing || materialFields.some((field) => String(existing[field] ?? '') !== String(shift[field] ?? ''))\n    if (materialChange && shift.status === 'published') {\n      const changedUserIds = [\n        ...(existing?.status === 'published' && existing.employeeUserId !== shift.employeeUserId ? [existing.employeeUserId] : []),\n        shift.employeeUserId,\n      ]\n      await notifyScheduleChanged(changedUserIds)\n    } else if (materialChange && existing?.status === 'published' && existing.employeeUserId !== shift.employeeUserId) {\n      // A former employee loses access when a draft is reassigned.\n      await notifyScheduleChanged([existing.employeeUserId])\n    }\n", 'schedule-v2-neon.mts save')
+  }
+  // Capture drafts BEFORE publishing. Re-publishing an unchanged week must not
+  // notify every employee again, while a first publication notifies all assigned staff.
+  if (!source.includes('const pendingShiftIds = new Set(')) {
+    source = insertAfter(
+      source,
+      "  const week = mondayOf(value)\n",
+      "  const pendingShiftIds = new Set((await listScheduleShifts({ from: week, to: addDays(week, 6) }))\n    .filter((shift) => shift.status === 'draft').map((shift) => shift.id))\n",
+      'schedule-v2-neon.mts draft snapshot',
+    )
   }
   const publishAnchor = "    details: { week, version: result.version, published: result.published },\n  })\n"
   if (!source.includes('publishedShiftIds = new Set(result.shiftIds)')) {
-    source = insertAfter(source, publishAnchor, "  const publishedShiftIds = new Set(result.shiftIds)\n  const publishedRows = (await listScheduleShifts({ from: week, to: addDays(week, 6), publishedOnly: true }))\n    .filter((shift) => publishedShiftIds.has(shift.id))\n  await notifySchedulePublished(publishedRows.map((shift) => shift.employeeUserId))\n", 'schedule-v2-neon.mts publish')
+    source = insertAfter(source, publishAnchor, "  const publishedShiftIds = new Set(result.shiftIds.filter((id) => pendingShiftIds.has(id)))\n  const publishedRows = (await listScheduleShifts({ from: week, to: addDays(week, 6), publishedOnly: true }))\n    .filter((shift) => publishedShiftIds.has(shift.id))\n  if (publishedRows.length) await notifySchedulePublished(publishedRows.map((shift) => shift.employeeUserId))\n", 'schedule-v2-neon.mts publish')
   }
   const deleteAnchor = "      await writeScheduleAudit({ actorId: current.userId, actorType: 'portal', action: 'shift-deleted', shiftId: id })\n"
   if (!source.includes('existing.status === \'published\') await notifyScheduleChanged')) {
@@ -79,7 +89,7 @@ await edit('netlify/functions/schedule-assistant.mts', (source) => {
   source = source.replace("      employeeName: shift.employeeName,\n      status: 'published',\n      shiftId: shift.id,", "      employeeName: shift.employeeName,\n      employeeUserId: shift.employeeUserId,\n      status: 'published',\n      shiftId: shift.id,")
   const updateAnchor = "  const verified = await findScheduleShift(candidate.id)\n  if (!verified) return json({ message: 'Geänderter Dienst konnte nicht verifiziert werden.', code: 'VERIFY_FAILED' }, 500)\n"
   if (!source.includes('assistantChangedUserIds')) {
-    source = insertAfter(source, updateAnchor, "  const assistantChangedUserIds = [\n    ...(existing.status === 'published' ? [existing.employeeUserId] : []),\n    ...(verified.status === 'published' ? [verified.employeeUserId] : []),\n  ]\n  if (assistantChangedUserIds.length) await notifyScheduleChanged(assistantChangedUserIds)\n", 'schedule-assistant update')
+    source = insertAfter(source, updateAnchor, "  const assistantFields = ['employeeUserId', 'date', 'start', 'end', 'pauseMinutes', 'objectId', 'location', 'workArea', 'note', 'status']\n  if (assistantFields.some((field) => String(existing[field] ?? '') !== String(verified[field] ?? ''))) {\n    const assistantChangedUserIds = [\n      ...(existing.status === 'published' ? [existing.employeeUserId] : []),\n      ...(verified.status === 'published' ? [verified.employeeUserId] : []),\n    ]\n    if (assistantChangedUserIds.length) await notifyScheduleChanged(assistantChangedUserIds)\n  }\n", 'schedule-assistant update')
   }
   const deleteAnchor = "    details: { requestId, before: auditShift(existing) },\n  })\n"
   if (!source.includes("existing.status === 'published') await notifyScheduleChanged([existing.employeeUserId])")) {
