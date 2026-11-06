@@ -3,6 +3,7 @@ import { getStore } from '@netlify/blobs'
 import { verifyRequestOrigin } from '@netlify/identity'
 import { randomUUID } from 'node:crypto'
 import { requirePortalRole } from './_shared/portal-role.mts'
+import { canManageDailyReport, canSubmitDailyReport, mayReadDailyReport } from './_shared/daily-report-policy.mjs'
 import {
   findDailyReportById,
   isIsoDateKey,
@@ -58,7 +59,7 @@ async function authorNameFor(current: NonNullable<Awaited<ReturnType<typeof requ
   ).trim()
   if (name) return name
   const localPart = String(current.email || '').split('@')[0].replace(/[._-]+/g, ' ').trim()
-  return localPart || 'Admin'
+  return localPart || 'Mitarbeiter'
 }
 
 export default async function dailyReports(request: Request) {
@@ -66,7 +67,7 @@ export default async function dailyReports(request: Request) {
   if (!['GET', 'POST', 'PATCH', 'DELETE'].includes(request.method)) return response({ message: 'Methode nicht erlaubt.' }, 405)
 
   try {
-    const access = await requirePortalRole(['owner', 'admin'])
+    const access = await requirePortalRole(['owner', 'admin', 'manager', 'employee'])
     if (access.response) return access.response
     const current = access.current
     if (!current) return response({ message: 'Nicht angemeldet.' }, 401)
@@ -78,7 +79,8 @@ export default async function dailyReports(request: Request) {
       const date = url.searchParams.get('date')?.trim() || ''
       if (date && !isIsoDateKey(date)) return response({ message: 'Ungültiges Datum.' }, 400)
       const rows = await listDailyReports(store, date || undefined)
-      return response({ reports: rows.map(({ report }) => report) })
+      // Non-administrators can read only the reports written under their own login.
+      return response({ reports: rows.map(({ report }) => report).filter((report) => mayReadDailyReport(current, report)) })
     }
 
     try { verifyRequestOrigin(request) } catch {
@@ -86,6 +88,7 @@ export default async function dailyReports(request: Request) {
     }
 
     if (request.method === 'POST') {
+      if (!canSubmitDailyReport(current.role)) return response({ message: 'Keine Berechtigung.' }, 403)
       const body = await request.json().catch(() => null) as Record<string, unknown> | null
       const validation = validateDailyReportText(body?.text)
       if (!validation.ok) return response({ message: validation.message }, validation.status)
@@ -102,6 +105,12 @@ export default async function dailyReports(request: Request) {
       const chronologicalKey = `${String(Date.parse(createdAt)).padStart(13, '0')}-${id}`
       await store.setJSON(`reports/${chronologicalKey}`, report)
       return response({ report }, 201)
+    }
+
+    // Never rely on hidden frontend buttons: staff and managers are forbidden
+    // from PATCH / DELETE, including direct crafted HTTP requests.
+    if (!canManageDailyReport(current.role)) {
+      return response({ message: 'Nur Administratoren dürfen Berichte bearbeiten oder löschen.' }, 403)
     }
 
     const id = url.searchParams.get('id')?.trim() || ''

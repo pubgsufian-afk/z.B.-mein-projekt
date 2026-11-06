@@ -63,7 +63,11 @@ mark('frontend/src/App.jsx', await removeRegexFromFile(
   /\n\s*<button type="button" className=\{page === 'timesheet' \? 'active' : ''\} onClick=\{\(\) => navigate\('timesheet'\)\}>Stundenzettel<\/button>/,
 ))
 
-mark('frontend/src/App.jsx', await replaceInFile(
+// The employee self-service feature intentionally extends this aria-label.
+// Keep this historical migration idempotent for newly added employee pages.
+const kioskAlreadyExtended = (await readFile('frontend/src/App.jsx', 'utf8'))
+  .includes("page === 'my-hours' ? 'Eigene Arbeitsstunden'")
+mark('frontend/src/App.jsx', kioskAlreadyExtended ? false : await replaceInFile(
   'frontend/src/App.jsx',
   "        <main className=\"employee-kiosk-main\" aria-label={page === 'schedule' ? 'Eigener Dienstplan' : page === 'timesheet' ? 'Eigener Stundenzettel' : 'Mitarbeiter-Zeiterfassung'}>{children}</main>",
   "        <main className=\"employee-kiosk-main\" aria-label={page === 'schedule' ? 'Eigener Dienstplan' : 'Mitarbeiter-Zeiterfassung'}>{children}</main>",

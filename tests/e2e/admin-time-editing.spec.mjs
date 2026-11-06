@@ -188,7 +188,12 @@ test('manager can edit an already checked-in running session and close it with p
 
   await expect(page.getByText(/Arbeitszeit wurde aktualisiert/)).toBeVisible()
   await expect(card.getByText('10 Min.', { exact: true })).toBeVisible()
-  await expect(card.getByText('0:50 Std.', { exact: true })).toBeVisible()
+  // A running shift starts at 07:00 UTC, shown in Berlin local time. Its
+  // displayed duration must track the submitted timestamps across DST changes.
+  const saved = portal.getLastEditBody()
+  const netMinutes = Math.max(0, Math.round((new Date(saved.clockOutAt) - new Date(saved.clockInAt)) / 60000) - saved.pauseMinutes)
+  const expectedDuration = `${Math.floor(netMinutes / 60)}:${String(netMinutes % 60).padStart(2, '0')} Std.`
+  await expect(card.getByText(expectedDuration, { exact: true })).toBeVisible()
   expect(portal.getLastEditBody()).toMatchObject({
     clockInEventId: 'clock-in-1',
     clockOutEventId: null,

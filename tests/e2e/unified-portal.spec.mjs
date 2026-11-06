@@ -162,6 +162,36 @@ async function mockPortalApis(page, role = 'admin') {
     })
   })
 
+  const dailyReports = []
+  await page.route('**/api/daily-reports**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (url.pathname.endsWith('/daily-reports-pdf')) {
+      return route.fulfill({
+        status: 200, contentType: 'application/pdf',
+        headers: { 'Content-Disposition': 'attachment; filename="Tagesbericht_Test.pdf"' },
+        body: Buffer.from('%PDF-1.4\\n%%EOF'),
+      })
+    }
+    if (request.method() === 'GET') {
+      const visible = role === 'employee' ? dailyReports.filter((report) => report.authorId === 'employee-anna') : dailyReports
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ reports: visible }) })
+    }
+    if (request.method() === 'POST') {
+      const body = request.postDataJSON()
+      const report = {
+        id: 'employee-report-' + (dailyReports.length + 1), text: body.text,
+        authorId: role === 'employee' ? 'employee-anna' : 'admin-1',
+        authorName: role === 'employee' ? 'Anna Beispiel' : 'Test Admin',
+        createdAt: new Date().toISOString(),
+      }
+      dailyReports.push(report)
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ report }) })
+    }
+    if (role !== 'admin') return route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ message: 'Nur Administratoren dürfen Berichte bearbeiten oder löschen.' }) })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+  })
+
   await page.route('**/api/unified-reports', async (route) => {
     const format = route.request().postDataJSON().format
     if (format === 'xlsx') {
@@ -315,7 +345,10 @@ test('employee sees only clock and own published schedule', async ({ page }, tes
   await expect(page.getByRole('button', { name: 'Menü öffnen' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Stempeluhr', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Dienstplan', exact: true })).toBeVisible()
-  await expect(page.getByText(/Übersicht|Heutiger Dienst|Meine Zeiten|Zeiten|Korrekturen|Berichte|PDF|Excel|Gesamt|Heutige Buchungen/i)).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Stunden', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Postfach', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Berichte', exact: true })).toBeVisible()
+  await expect(page.getByText(/Übersicht|Heutiger Dienst|Meine Zeiten|Zeiten|Korrekturen|PDF|Excel|Gesamt|Heutige Buchungen/i)).toHaveCount(0)
   await expect(page.locator('.digital-clock')).toHaveText(/^\d{2}:\d{2}:\d{2}$/)
   if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/05-mitarbeiter-stempeluhr-iphone.png', fullPage: true })
   if (testInfo.project.name === 'android-chromium') await page.screenshot({ path: 'artifacts/unified-preview/06-mitarbeiter-stempeluhr-android.png', fullPage: true })
@@ -347,4 +380,73 @@ test('employee sees only clock and own published schedule', async ({ page }, tes
   await expect(page.getByText('Dienst abgeschlossen', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Abmelden' })).toBeVisible()
   await expectNoHorizontalPageOverflow(page)
+})
+
+
+test('employee can submit a locked daily report, see only own history and download own PDF', async ({ page }) => {
+  await login(page, 'employee')
+  await page.getByRole('button', { name: 'Berichte', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Tagesbericht melden' })).toBeVisible()
+  await expect(page.locator('.employee-report-item')).toHaveCount(0)
+
+  await page.getByLabel('Deine Meldung').fill('Kontrollgang im Objekt Nord abgeschlossen. Notausgang geprüft.')
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: 'Bericht verbindlich absenden' }).click()
+  await expect(page.getByText(/erfolgreich an die Verwaltung übermittelt/)).toBeVisible()
+  await expect(page.locator('.employee-report-item')).toHaveCount(1)
+  await expect(page.locator('.employee-report-item').getByText(/Kontrollgang im Objekt Nord/)).toBeVisible()
+  await expect(page.locator('.employee-report-item').getByText('Anna Beispiel')).toBeVisible()
+
+  // Staff can view and export, but not change or delete their submitted report.
+  await expect(page.locator('.employee-report-page').getByRole('button', { name: /Bearbeiten|Löschen|Änderungen speichern/ })).toHaveCount(0)
+  const pdf = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Eigenen Bericht als PDF' }).click()
+  expect((await pdf).suggestedFilename()).toMatch(/\.pdf$/i)
+  await expectNoHorizontalPageOverflow(page)
+})
+
+test('direct mailbox URL opens the admin postbox after login without sidebar click', async ({ page }) => {
+  const user = users.admin
+  await mockIdentity(page, user)
+  await mockPortalApis(page, 'admin')
+  await page.goto('/?view=mailbox')
+  await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
+  await page.getByLabel('E-Mail-Adresse').fill(user.email)
+  await page.getByLabel('Passwort').fill('TestPasswort123!')
+  await page.getByRole('button', { name: 'Sicher anmelden' }).click()
+  await expect(page.getByRole('heading', { name: 'Mitarbeiterpostfach verwalten' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Dokument zustellen' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Postfach', exact: true })).toHaveClass(/active/)
+})
+
+test('unknown direct URL does not bypass role-based navigation', async ({ page }) => {
+  const user = users.employee
+  await mockIdentity(page, user)
+  await mockPortalApis(page, 'employee')
+  await page.goto('/?view=employees')
+  await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
+  await page.getByLabel('E-Mail-Adresse').fill(user.email)
+  await page.getByLabel('Passwort').fill('TestPasswort123!')
+  await page.getByRole('button', { name: 'Sicher anmelden' }).click()
+  await expect(page.getByRole('heading', { name: 'Stempeluhr', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Mitarbeiter', exact: true })).toHaveCount(0)
+})
+
+test('admin sidebar opens mailbox and distinguishes identically named recipient accounts', async ({ page }) => {
+  await login(page, 'admin')
+  await page.route('**/api/registrations', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({
+      employees: [
+        { userId: 'employee-account-a1234567', fullName: 'Ahmad Zarzour', status: 'active' },
+        { userId: 'employee-account-b7654321', fullName: 'Ahmad Zarzour', status: 'active' },
+      ],
+      archived: [], requests: [],
+    }),
+  }))
+  await navigate(page, 'Postfach')
+  await expect(page.getByRole('heading', { name: 'Mitarbeiterpostfach verwalten' })).toBeVisible()
+  const choices = page.locator('.self-service-upload select').first().locator('option')
+  await expect(choices).toHaveCount(3)
+  await expect(choices.nth(1)).toHaveText('Ahmad Zarzour · Konto …a1234567')
+  await expect(choices.nth(2)).toHaveText('Ahmad Zarzour · Konto …b7654321')
 })

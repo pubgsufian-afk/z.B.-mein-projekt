@@ -3,6 +3,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFP
 import { readCompanySettings } from './_shared/company-settings.mts'
 import { centeredTextX, drawCenteredShieldLogo, loadOriginalLogo } from './_shared/pdf-shield-logo.mts'
 import { requirePortalRole } from './_shared/portal-role.mts'
+import { canManageDailyReport, mayReadDailyReport } from './_shared/daily-report-policy.mjs'
 import {
   berlinDateKey,
   findDailyReportById,
@@ -294,7 +295,8 @@ export default async function dailyReportsPdf(request: Request) {
   if (request.method !== 'GET') return jsonError('Methode nicht erlaubt.', 405)
 
   try {
-    const access = await requirePortalRole(['owner', 'admin'])
+    const access = await requirePortalRole(['owner', 'admin', 'manager', 'employee'])
+    if (!access.current) return jsonError('Nicht angemeldet.', 401)
     if (access.response) return access.response
 
     const url = new URL(request.url)
@@ -310,11 +312,12 @@ export default async function dailyReportsPdf(request: Request) {
 
     if (id) {
       const found = await findDailyReportById(store, id)
-      if (!found) return jsonError('Bericht nicht gefunden.', 404)
+      if (!found || !mayReadDailyReport(access.current, found.report)) return jsonError('Bericht nicht gefunden.', 404)
       reports = [found.report]
       documentDate = berlinDateKey(found.report.createdAt)
       filename = `Tagesbericht_${documentDate}_${safePdfFilenamePart(found.report.authorName)}.pdf`
     } else {
+      if (!canManageDailyReport(access.current.role)) return jsonError('Nur Administratoren dürfen alle Tagesberichte herunterladen.', 403)
       reports = (await listDailyReports(store, date))
         .map(({ report }) => report)
         .sort((left, right) => String(left.createdAt).localeCompare(String(right.createdAt)))

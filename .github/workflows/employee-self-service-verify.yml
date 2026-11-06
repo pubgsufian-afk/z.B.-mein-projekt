@@ -1,0 +1,68 @@
+name: Employee self-service security and build
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'netlify/functions/employee-timesheet.mts'
+      - 'netlify/functions/daily-reports.mts'
+      - 'netlify/functions/daily-reports-pdf.mts'
+      - 'netlify/functions/_shared/daily-report-policy.mjs'
+      - 'frontend/src/EmployeeDailyReports.jsx'
+      - 'frontend/src/employee-daily-reports.css'
+      - 'frontend/src/employee-self-service.css'
+      - 'netlify/functions/employee-documents.mts'
+      - 'netlify/functions/employee-document-database-health.mts'
+      - 'netlify/functions/_shared/employee-self-service-policy.mjs'
+      - 'netlify/functions/_shared/portal-admin-report-service.mts'
+      - 'netlify/database/migrations/**'
+      - 'frontend/src/EmployeeSelfService.jsx'
+      - 'frontend/src/employee-self-service.css'
+      - 'frontend/src/App.jsx'
+      - 'scripts/employee-self-service-verify.mjs'
+      - 'scripts/employee-documents-runtime-test.mjs'
+      - '.github/workflows/employee-self-service-verify.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  secure-self-service:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Source parsing, authorization and UI contracts
+        run: node scripts/employee-self-service-verify.mjs
+      - name: Run isolated end-to-end mailbox API security test
+        run: node scripts/employee-documents-runtime-test.mjs
+      - name: Complete production build and existing regression tests
+        run: npm run build
+      - name: Confirm generated build preserved the new features
+        run: node scripts/employee-self-service-verify.mjs
+      - name: Check deployed preview mailbox rejects anonymous access
+        run: |
+          status=$(curl --retry 3 --retry-delay 3 --silent --show-error --location --max-time 20 --output /tmp/habun-mailbox-anon-response --write-out '%{http_code}' 'https://deploy-preview-161--habun-mitarbeiterportal.netlify.app/api/employee-documents')
+          echo "Anonymous mailbox HTTP status: $status"
+          test "$status" = '401'
+      - name: Confirm real preview runtime can access document database tables
+        run: |
+          url='https://deploy-preview-161--habun-mitarbeiterportal.netlify.app/api/employee-document-database-health'
+          for attempt in $(seq 1 18); do
+            response=$(curl --silent --show-error --max-time 15 --write-out '\n%{http_code}' "$url" || true)
+            status="${response##*$'\n'}"
+            body="${response%$'\n'*}"
+            if [[ "$status" == '200' && "$body" == '{"ready":true}' ]]; then
+              echo 'PASS: preview server confirms both private document database tables exist'
+              exit 0
+            fi
+            echo "Preview runtime database not confirmed (attempt $attempt, HTTP $status)"
+            sleep 5
+          done
+          echo 'FAIL: preview database not ready after checks'
+          exit 1

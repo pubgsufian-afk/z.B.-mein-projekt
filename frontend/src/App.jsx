@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { plannedNetMinutes } from './timesheet-utils.js'
+import { EmployeeTimesheetPage, EmployeeMailboxPage } from './EmployeeSelfService.jsx'
+import EmployeeDailyReports from './EmployeeDailyReports.jsx'
 import {
   AuthError,
   getUser,
@@ -39,6 +41,9 @@ const NAVIGATION = [
   { key: 'attendance', label: 'Zeiterfassung', roles: ['owner', 'admin', 'manager', 'employee'] },
   { key: 'employees', label: 'Mitarbeiter', roles: ['owner', 'admin', 'manager'] },
   { key: 'schedule', label: 'Dienstplan', roles: ['owner', 'admin', 'manager', 'employee'] },
+  { key: 'my-hours', label: 'Meine Stunden', roles: ['owner', 'admin', 'manager', 'employee'] },
+  { key: 'mailbox', label: 'Postfach', roles: ['owner', 'admin', 'manager', 'employee'] },
+  { key: 'daily-reports', label: 'Tagesberichte', roles: ['manager', 'employee'] },
   { key: 'times', label: 'Zeiten', roles: ['owner', 'admin', 'manager'] },
   { key: 'worksites', label: 'Einsatzorte', roles: ['owner', 'admin'] },
   { key: 'corrections', label: 'Korrekturen', roles: ['owner', 'admin', 'manager'] },
@@ -269,8 +274,11 @@ function PortalShell({ session, page, setPage, onLogout, children }) {
         <nav className="employee-kiosk-nav" aria-label="Mitarbeiterbereiche">
           <button type="button" className={page === 'attendance' ? 'active' : ''} onClick={() => navigate('attendance')}>Stempeluhr</button>
           <button type="button" className={page === 'schedule' ? 'active' : ''} onClick={() => navigate('schedule')}>Dienstplan</button>
+          <button type="button" className={page === 'my-hours' ? 'active' : ''} onClick={() => navigate('my-hours')}>Stunden</button>
+          <button type="button" className={page === 'mailbox' ? 'active' : ''} onClick={() => navigate('mailbox')}>Postfach</button>
+          <button type="button" className={page === 'daily-reports' ? 'active' : ''} onClick={() => navigate('daily-reports')}>Berichte</button>
         </nav>
-        <main className="employee-kiosk-main" aria-label={page === 'schedule' ? 'Eigener Dienstplan' : 'Mitarbeiter-Zeiterfassung'}>{children}</main>
+        <main className="employee-kiosk-main" aria-label={page === 'schedule' ? 'Eigener Dienstplan' : page === 'my-hours' ? 'Eigene Arbeitsstunden' : page === 'mailbox' ? 'Persönliches Postfach' : page === 'daily-reports' ? 'Eigene Tagesberichte' : 'Mitarbeiter-Zeiterfassung'}>{children}</main>
       </div>
     )
   }
@@ -814,12 +822,20 @@ function SettingsPage() {
 function UnifiedPortal({ session, onLogout }) {
   const allowed = NAVIGATION.filter((item) => item.roles.includes(session.role)).map((item) => item.key)
   const initialPage = session.role === 'employee' ? 'attendance' : 'overview'
-  const [page, setPage] = useState(initialPage)
+  // An authenticated deep link lets users open a tab directly after login.
+  // Only registered navigation keys for the current role are accepted.
+  const [page, setPage] = useState(() => {
+    const requested = new URLSearchParams(window.location.search).get('view')
+    return requested && allowed.includes(requested) ? requested : initialPage
+  })
   useEffect(() => { if (!allowed.includes(page)) setPage(initialPage) }, [allowed, initialPage, page])
   const content = page === 'overview' ? <OverviewPage session={session} navigate={setPage} />
     : page === 'attendance' ? <AttendancePage session={session} />
       : page === 'employees' ? <EmployeesPage session={session} />
         : page === 'schedule' ? <SchedulePage session={session} />
+          : page === 'my-hours' ? <EmployeeTimesheetPage />
+            : page === 'mailbox' ? <EmployeeMailboxPage session={session} />
+            : page === 'daily-reports' ? <EmployeeDailyReports />
           : page === 'times' ? <TimesPage session={session} />
             : page === 'worksites' ? <WorksitesPage />
               : page === 'corrections' ? <CorrectionsPage session={session} />
