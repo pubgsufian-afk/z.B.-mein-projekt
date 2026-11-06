@@ -333,7 +333,7 @@ test('reports provide PDF preview, PDF download and Excel download', async ({ pa
   expect((await excelDownload).suggestedFilename()).toMatch(/\.xlsx$/i)
 })
 
-test('employee sees protected clock, own schedule and self-service tabs', async ({ page }, testInfo) => {
+test('employee sees only clock and own published schedule', async ({ page }, testInfo) => {
   await login(page, 'employee')
   await expect(page.locator('.employee-kiosk-shell')).toBeVisible()
   await expect(page.getByRole('img', { name: 'Habun Security' })).toBeVisible()
