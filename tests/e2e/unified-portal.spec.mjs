@@ -504,3 +504,62 @@ test('iPhone employee hours cards keep readable dark colors and compact layout',
   await expect(page.locator('.self-service-hours-entry').first().getByText('Dienstplanübernahme')).toBeVisible()
   await expectNoHorizontalPageOverflow(page)
 })
+
+
+test('admin hours and legacy time entries keep dark high-contrast cards on iPhone', async ({ page }) => {
+  await login(page, 'admin')
+  const today = new Date().toISOString().slice(0, 10)
+
+  await page.route('**/api/employee-timesheet**', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({
+      entries: [{ date: today, start: '08:00', end: '16:00', pauseMinutes: 30, netMinutes: 450, location: 'Objekt Nord', workArea: 'Stapler Fahrer', source: 'planned' }],
+      monthlyEntries: [{ date: today, start: '08:00', end: '16:00', pauseMinutes: 30, netMinutes: 450, location: 'Objekt Nord', workArea: 'Stapler Fahrer', source: 'planned' }],
+      summary: { timesheetMinutes: 450, timesheetEntries: 1, recordedMinutes: 0, recordedShifts: 0, scheduledMinutes: 450, scheduledShifts: 1 },
+    }),
+  }))
+  await navigate(page, 'Meine Stunden')
+  await expect(page.getByRole('heading', { name: 'Meine Arbeitsstunden' })).toBeVisible()
+  const adminCards = page.locator('.app-shell .self-service-hours-entry')
+  await expect(adminCards).toHaveCount(2)
+  const colors = await adminCards.first().evaluate((card) => {
+    const styles = (node) => window.getComputedStyle(node)
+    return { background: styles(card).backgroundColor, date: styles(card.querySelector('strong')).color }
+  })
+  const values = (s) => (s.match(/\d+/g) || []).slice(0, 3).map(Number)
+  const lum = (s) => values(s).reduce((sum, v, i) => {
+    const n = v / 255
+    const linear = n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4
+    return sum + linear * [0.2126, 0.7152, 0.0722][i]
+  }, 0)
+  const ratio = (a, b) => {
+    const [high, low] = [lum(a), lum(b)].sort((x, y) => y - x)
+    return (high + 0.05) / (low + 0.05)
+  }
+  expect(lum(colors.background)).toBeLessThan(0.1)
+  expect(ratio(colors.background, colors.date)).toBeGreaterThan(4.5)
+  await expectNoHorizontalPageOverflow(page)
+
+  await page.route('**/api/attendance**', (route) => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('resource') !== 'history') return route.continue()
+    return route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [
+        { id: 'test-clock-in', userId: 'employee-anna', action: 'clock-in', eventDate: today, clientOccurredAt: today + 'T08:00:00.000Z', workSiteName: 'Objekt Nord' },
+        { id: 'test-clock-out', userId: 'employee-anna', action: 'clock-out', eventDate: today, clientOccurredAt: today + 'T16:00:00.000Z', workSiteName: 'Objekt Nord' },
+      ] }),
+    })
+  })
+  const menu = page.getByRole('button', { name: 'Menü öffnen' })
+  if (await menu.isVisible().catch(() => false)) await menu.click()
+  await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('button', { name: /^(Zeiten|Stundenzettel)$/ }).click()
+  await expect(page.locator('.app-shell .times-list article')).toHaveCount(1)
+  const legacy = await page.locator('.times-list article').first().evaluate((card) => ({
+    card: window.getComputedStyle(card).backgroundColor,
+    time: window.getComputedStyle(card.querySelector('.time-values > div')).backgroundColor,
+    text: window.getComputedStyle(card.querySelector('header strong')).color,
+  }))
+  expect(lum(legacy.card)).toBeLessThan(0.1)
+  expect(lum(legacy.time)).toBeLessThan(0.1)
+  expect(ratio(legacy.card, legacy.text)).toBeGreaterThan(4.5)
+  await expectNoHorizontalPageOverflow(page)
+})
