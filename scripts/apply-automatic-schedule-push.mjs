@@ -76,7 +76,7 @@ await edit('netlify/functions/schedule-v2-neon.mts', (source) => {
     )
   }
   const publishAnchor = "    details: { week, version: result.version, published: result.published },\n  })\n"
-  if (!source.includes('publishedShiftIds = new Set(result.shiftIds)')) {
+  if (!source.includes('const publishedShiftIds = new Set(')) {
     source = insertAfter(source, publishAnchor, "  const publishedShiftIds = new Set(result.shiftIds.filter((id) => pendingShiftIds.has(id)))\n  const publishedRows = (await listScheduleShifts({ from: week, to: addDays(week, 6), publishedOnly: true }))\n    .filter((shift) => publishedShiftIds.has(shift.id))\n  if (publishedRows.length) await notifySchedulePublished(publishedRows.map((shift) => shift.employeeUserId))\n", 'schedule-v2-neon.mts publish')
   }
   const deleteAnchor = "      await writeScheduleAudit({ actorId: current.userId, actorType: 'portal', action: 'shift-deleted', shiftId: id })\n"
