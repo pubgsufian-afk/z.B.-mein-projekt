@@ -20,7 +20,9 @@ for (const token of ['PATCH', 'DELETE', 'updatedAt', 'updatedById', 'updatedByNa
   assert.match(source, new RegExp(token), `daily-reports.mts must contain ${token}`)
 }
 assert.match(source, /verifyRequestOrigin/, 'write operations must verify request origin')
-assert.match(source, /requirePortalRole\(\['owner', 'admin'\]\)/, 'daily report API must stay owner/admin only')
+assert.match(source, /requirePortalRole\(\['owner', 'admin', 'manager', 'employee'\]\)/, 'approved staff may submit and read own reports')
+assert.match(source, /if \(!canManageDailyReport\(current\.role\)\)/, 'PATCH and DELETE must remain admin-only')
+assert.match(source, /mayReadDailyReport\(current, report\)/, 'non-admins may read only their own reports')
 assert.match(source, /findDailyReportById/, 'PATCH/DELETE must resolve report ids server-side')
 assert.doesNotMatch(source, /body\?\.key|body\.key/, 'browser must never choose the internal blob key')
 
