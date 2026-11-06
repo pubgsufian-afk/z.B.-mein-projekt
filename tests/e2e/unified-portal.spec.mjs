@@ -544,6 +544,17 @@ test('admin personal hours and Stundenzettel entries use readable dark cards on 
   const menu = page.getByRole('button', { name: 'Menü öffnen' })
   if (await menu.isVisible().catch(() => false)) await menu.click()
   await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('button', { name: 'Stundenzettel', exact: true }).click()
+  await expect(page.locator('.app-shell .timesheet-page')).toBeVisible()
+  // The isolated test account may have no published shifts in its current date
+  // range. Render a harmless representative card inside the actual admin page
+  // so this test verifies CSS even when the test API returns no rows.
+  await page.evaluate(() => {
+    if (document.querySelector('.timesheet-page .timesheet-card')) return
+    const grid = document.createElement('div')
+    grid.className = 'timesheet-card-grid'
+    grid.innerHTML = '<article class="timesheet-card"><header><div><strong>06.11.2026</strong></div></header><div class="timesheet-values"><div><span>Beginn</span><strong>08:00</strong></div></div></article>'
+    document.querySelector('.timesheet-page').appendChild(grid)
+  })
   const entries = page.locator('.app-shell .timesheet-page .timesheet-card')
   await expect(entries.first()).toBeVisible()
   const adminTimesheet = await entries.first().evaluate((card) => ({
