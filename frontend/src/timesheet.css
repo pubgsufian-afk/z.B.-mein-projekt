@@ -71,3 +71,52 @@
   .timesheet-pagination > div { grid-template-columns: 1fr 1fr; }
   .timesheet-pagination > div > strong { grid-column: 1 / -1; grid-row: 1; text-align: center; }
 }
+
+
+/* Actual admin Stundenzettel module (loaded by the production build). */
+.app-shell .timesheet-page .timesheet-card {
+  background: var(--surface-2, #12181b);
+  border-color: var(--border, #273238);
+  color: var(--text, #f5f7f8);
+}
+.app-shell .timesheet-page .timesheet-card header strong {
+  color: var(--gold-bright, #efc75e);
+}
+.app-shell .timesheet-page .timesheet-values > div {
+  background: var(--surface, #0d1113);
+  border-color: var(--border, #273238);
+  color: var(--text, #f5f7f8);
+}
+.app-shell .timesheet-page .timesheet-values strong,
+.app-shell .timesheet-page .timesheet-employee-summaries strong {
+  color: var(--text, #f5f7f8);
+}
+.app-shell .timesheet-page .timesheet-values span,
+.app-shell .timesheet-page .timesheet-card header span:not(.status) {
+  color: var(--muted, #9aa6ac);
+}
+.app-shell .timesheet-page .timesheet-card .status {
+  color: #f6cc70;
+  background: rgba(239, 189, 73, .09);
+  border-color: rgba(239, 189, 73, .35);
+}
+@media (max-width: 720px) {
+  .app-shell .timesheet-page .timesheet-card {
+    min-width: 0;
+    border-radius: 13px;
+    padding: 13px;
+    gap: 11px;
+  }
+  .app-shell .timesheet-page .timesheet-values {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+  .app-shell .timesheet-page .timesheet-values > div {
+    padding: 10px;
+    min-width: 0;
+  }
+  .app-shell .timesheet-page .timesheet-values strong {
+    overflow-wrap: anywhere;
+    font-size: 14px;
+  }
+}
