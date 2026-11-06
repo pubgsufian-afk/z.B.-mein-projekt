@@ -104,7 +104,7 @@ async function embedLogo(pdf: any, request: Request, logoUrl: string) {
     return response.headers.get('content-type')?.includes('jpeg') ? await pdf.embedJpg(bytes) : await pdf.embedPng(bytes)
   } catch { return null }
 }
-async function buildPdf(request: Request, rows: DailyTimesheetRow[], from: string, to: string) {
+export async function buildPdf(request: Request, rows: DailyTimesheetRow[], from: string, to: string) {
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib')
   const settings = await readCompanySettings()
   const pdf = await PDFDocument.create()
@@ -207,7 +207,7 @@ function safeSheetName(value: string, used: Set<string>) {
   while (used.has(name)) { const tail = ` ${suffix++}`; name = `${base.slice(0, 31 - tail.length)}${tail}` }
   used.add(name); return name
 }
-async function buildXlsx(rows: DailyTimesheetRow[], from: string, to: string) {
+export async function buildXlsx(rows: DailyTimesheetRow[], from: string, to: string) {
   const ExcelJS = await import('exceljs')
   const workbook = new ExcelJS.Workbook()
   const settings = await readCompanySettings()
