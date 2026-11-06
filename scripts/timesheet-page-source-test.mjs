@@ -26,9 +26,14 @@ assert.doesNotMatch(page, /Dienstplanstunden – geplant/)
 assert.doesNotMatch(page, /Begründung/)
 assert.doesNotMatch(page, /Korrektur beantragen/)
 
-// Force one fresh frontend URL after the accidentally long-lived asset cache, then revalidate future updates.
-assert.match(indexHtml, /\/assets\/habun-portal\.js\?v=20260813-speed1/)
-assert.match(indexHtml, /\/assets\/habun-portal\.css\?v=20260813-speed1/)
+// The PWA and browser must use an explicit, matching frontend release version.
+// A new release may rotate the value to invalidate the old iPhone asset cache.
+const jsVersion = indexHtml.match(/\/assets\/habun-portal\.js\?v=([a-z0-9-]+)/)?.[1]
+const cssVersion = indexHtml.match(/\/assets\/habun-portal\.css\?v=([a-z0-9-]+)/)?.[1]
+assert.ok(jsVersion, 'Frontend JavaScript requires an explicit cache-busting release')
+assert.ok(cssVersion, 'Frontend CSS requires an explicit cache-busting release')
+assert.equal(jsVersion, cssVersion, 'JavaScript and CSS must belong to the same release')
+assert.notEqual(jsVersion, '20260813-speed1', 'A new iPhone portal rollout requires a fresh frontend asset version')
 assert.match(netlify, /for = "\/assets\/\*"[\s\S]*Cache-Control = "public, max-age=0, must-revalidate"/)
 assert.doesNotMatch(netlify, /for = "\/assets\/\*"[\s\S]*Cache-Control = "[^"]*immutable/)
 
