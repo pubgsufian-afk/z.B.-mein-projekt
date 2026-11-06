@@ -385,6 +385,27 @@ export async function generateTimesheetAdminExport(input: Record<string, unknown
   }
 }
 
+/**
+ * A read-only, single-identity view of the same actual/planned rows used for
+ * the established Stundenzettel exports. The HTTP handler MUST derive the
+ * employee id from the authenticated session, never from a query parameter.
+ */
+export async function listEmployeeTimesheetRows(userId: string, from: string, to: string) {
+  if (!userId) throw new PortalAdminReportError('Mitarbeiterkonto fehlt.', 'INVALID_ACTOR', 403)
+  const [names, shifts] = await Promise.all([
+    loadNames(),
+    loadSchedules(from, to, [userId]),
+  ])
+  const events = await loadAttendanceEvents(from, to, [userId])
+  const actual = actualRows(events, shifts, names, from, to)
+  const planned = plannedRows(shifts, names)
+  return mergeRows(actual, planned)
+    .filter((row) => row.employeeUserId === userId)
+    .map(({ date, start, end, pauseMinutes, netMinutes, location, workArea, source }) => ({
+      date, start, end, pauseMinutes, netMinutes, location, workArea, source,
+    }))
+}
+
 async function schedulePdf(shifts: ScheduleShift[], from: string, to: string) {
   const { PDFDocument, StandardFonts } = await import('pdf-lib')
   const settings = await readCompanySettings()
