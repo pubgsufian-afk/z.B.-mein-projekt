@@ -6,6 +6,7 @@ import { employeeManagementPolicy, type EmployeeManagementAction } from './_shar
 import { requirePortalRole } from "./_shared/portal-role.mts";
 import { deactivateScheduleEmployee } from './_shared/schedule-employee-management.mts';
 import { upsertScheduleEmployee, type ScheduleEmployee } from "./_shared/schedule-neon-repository.mts";
+import { findRegistrationEmailConflict, normalizeRegistrationEmail, readPortalRegistrationIdentities } from './_shared/registration-email-guard.mts';
 
 type RateEntry = { count: number; resetAt: number };
 type AccessRole = 'owner' | 'admin' | 'manager' | 'employee' | 'pending';
@@ -294,6 +295,40 @@ export default async (request: Request, context: Context) => {
 
   if (request.method === 'PATCH') {
     const payload = await request.clone().json().catch(() => null) as Record<string, unknown> | null;
+
+    // Check before the older backend sees the approval request. Both admin UI and
+    // automated callers must go through this protection, not just the signup screen.
+    if (payload?.action === 'approve') {
+      try { verifyRequestOrigin(request); } catch { return json({ message: 'Ungültige Anfragequelle.' }, 403); }
+      if (access.current?.role === 'manager') return json({ message: 'Keine Freigabeberechtigung.' }, 403);
+      const id = String(payload.id || '').trim();
+      if (!id) return json({ message: 'Registrierungs-ID fehlt.' }, 400);
+      try {
+        const registrations = await readPortalRegistrationIdentities();
+        const target = registrations.find((row) => String(row.id || '').trim() === id);
+        if (!target || !normalizeRegistrationEmail(target.email)) {
+          return json({
+            code: 'REGISTRATION_CHECK_UNAVAILABLE',
+            message: 'Die E-Mail-Adresse dieser Anfrage konnte nicht sicher geprüft werden. Bitte nicht freigeben und den Hauptadmin informieren.',
+          }, 409);
+        }
+        const collision = findRegistrationEmailConflict(target, registrations);
+        if (collision) {
+          return json({
+            code: 'DUPLICATE_REGISTRATION_EMAIL',
+            message: collision.status === 'approved'
+              ? 'Diese E-Mail-Adresse ist bereits freigeschaltet. Bitte vorhandenen Zugang benutzen oder „Passwort vergessen“ wählen.'
+              : 'Für diese E-Mail-Adresse liegt bereits eine ältere Anfrage vor. Bitte diese zuerst bearbeiten.',
+          }, 409);
+        }
+      } catch {
+        return json({
+          code: 'REGISTRATION_CHECK_UNAVAILABLE',
+          message: 'Registrierungsdaten konnten nicht sicher geprüft werden. Freigabe vorübergehend gesperrt.',
+        }, 503);
+      }
+    }
+
     if (payload?.action === 'update-role' || payload?.action === 'deactivate-account' || payload?.action === 'update-profile') {
       return manageActiveEmployee(request, access, payload);
     }
