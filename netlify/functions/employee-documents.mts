@@ -4,8 +4,8 @@ import { getDatabase } from '@netlify/database'
 import { verifyRequestOrigin } from '@netlify/identity'
 import { createHash, randomUUID } from 'node:crypto'
 import { requirePortalRole } from './_shared/portal-role.mts'
+import { mayManageEmployeeDocuments, mayDownloadEmployeeDocument, mayPublishToRecipient } from './_shared/employee-self-service-policy.mjs'
 
-const ADMIN_ROLES = new Set(['owner', 'admin'])
 const TYPES = new Set(['contract', 'payslip', 'other'])
 const MAX_BYTES = 4 * 1024 * 1024
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -54,7 +54,7 @@ export default async function employeeDocuments(request: Request) {
   const access = await requirePortalRole(['owner', 'admin', 'manager', 'employee'])
   if (access.response || !access.current) return access.response
   const actor = access.current
-  const isAdmin = ADMIN_ROLES.has(actor.role)
+  const isAdmin = mayManageEmployeeDocuments(actor.role)
   const url = new URL(request.url)
 
   if (!['GET', 'POST', 'DELETE'].includes(request.method)) {
@@ -67,7 +67,7 @@ export default async function employeeDocuments(request: Request) {
       const db = getDatabase()
       const result = await db.pool.query('SELECT * FROM employee_documents WHERE id = $1 LIMIT 1', [id])
       const row = result.rows[0]
-      if (!row || row.revoked_at || (!isAdmin && row.employee_user_id !== actor.userId)) {
+      if (!mayDownloadEmployeeDocument(actor, row)) {
         return json({ message: 'Dokument nicht gefunden.' }, 404)
       }
       const bytes = await store().get(String(row.blob_key), { type: 'arrayBuffer' })
@@ -154,7 +154,7 @@ export default async function employeeDocuments(request: Request) {
     // Reject inactive/unapproved accounts and stale duplicate registrations.
     const recipient = await getStore({ name: 'portal-access', consistency: 'strong' })
       .get('access/' + employeeUserId, { type: 'json' }) as { status?: string; role?: string } | null
-    if (recipient?.status !== 'active' || recipient.role === 'pending') {
+    if (!mayPublishToRecipient(actor.role, recipient)) {
       return json({ message: 'Empfänger ist nicht als aktives Mitarbeiterkonto freigeschaltet.' }, 409)
     }
 
@@ -162,7 +162,7 @@ export default async function employeeDocuments(request: Request) {
     const key = 'docs/' + id
     const fileName = pdfFilename(pdf.name)
     const sha256 = createHash('sha256').update(bytes).digest('hex')
-    await store().set(key, bytes)
+    await store().set(key, pdf)
     try {
       const inserted = await db.pool.query(
         `INSERT INTO employee_documents
