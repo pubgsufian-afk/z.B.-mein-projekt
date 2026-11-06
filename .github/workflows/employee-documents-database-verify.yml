@@ -1,0 +1,43 @@
+name: Employee document inbox PostgreSQL verification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'netlify/database/migrations/**'
+      - 'netlify/functions/employee-documents.mts'
+      - 'scripts/employee-documents-db-verify.sql'
+      - '.github/workflows/employee-documents-database-verify.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-migration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: habun_ci
+          POSTGRES_PASSWORD: disposable-ci-only
+          POSTGRES_DB: habun_ci
+        options: >-
+          --health-cmd "pg_isready -U habun_ci -d habun_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply the real migration to a disposable PostgreSQL database
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          test -n "$POSTGRES_CONTAINER"
+          docker exec -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 -U habun_ci -d habun_ci < netlify/database/migrations/20261106190000_employee_documents/migration.sql
+      - name: Exercise recipient index, stored documents, audit and withdrawal
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 -U habun_ci -d habun_ci < scripts/employee-documents-db-verify.sql
