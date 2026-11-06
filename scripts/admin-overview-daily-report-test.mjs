@@ -90,3 +90,13 @@ assert.match(apply, /function OverviewPage/, 'apply script must patch only the o
 assert.match(apply, /AdminOverview/, 'apply script must inject AdminOverview')
 
 console.log('admin overview + daily report source contract: ok')
+
+const routing = readFileSync(resolve(root, 'netlify.toml'), 'utf8')
+const scheduleEntry = readFileSync(resolve(root, 'netlify/functions/schedule-v2-neon.js'), 'utf8')
+assert.match(scheduleEntry, /import scheduleV2Neon from ['"]\.\/schedule-v2-neon\.mts['"]/, 'Bundled ESM entry must import the TypeScript implementation')
+assert.match(scheduleEntry, /path:\s*['"]\/api\/schedule-v2['"]/, 'ESM schedule entry must expose the active route')
+assert.doesNotMatch(routing, /from = ['"]\/api\/schedule-v2['"]/, 'Do not shadow the automatic function route with a rewrite')
+assert.match(component, /const isHtml =/, 'Admin overview must detect HTML error documents')
+assert.match(component, /Die Serveranfrage ist nicht erreichbar/, 'Admin overview must show a brief server error instead of a full Netlify HTML page')
+assert.doesNotMatch(component, /body = \{ message: text \}/, 'Never show raw HTML error source in admin dashboard')
+console.log('admin-overview schedule API rewrite and safe errors: ok')
