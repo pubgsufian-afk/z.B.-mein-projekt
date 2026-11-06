@@ -1,0 +1,37 @@
+name: Employee self-service security and build
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'netlify/functions/employee-timesheet.mts'
+      - 'netlify/functions/employee-documents.mts'
+      - 'netlify/functions/_shared/employee-self-service-policy.mjs'
+      - 'netlify/functions/_shared/portal-admin-report-service.mts'
+      - 'netlify/database/migrations/**'
+      - 'frontend/src/EmployeeSelfService.jsx'
+      - 'frontend/src/employee-self-service.css'
+      - 'frontend/src/App.jsx'
+      - 'scripts/employee-self-service-verify.mjs'
+      - '.github/workflows/employee-self-service-verify.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  secure-self-service:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Source parsing, authorization and UI contracts
+        run: node scripts/employee-self-service-verify.mjs
+      - name: Complete production build and existing regression tests
+        run: npm run build
+      - name: Confirm generated build preserved the new features
+        run: node scripts/employee-self-service-verify.mjs
