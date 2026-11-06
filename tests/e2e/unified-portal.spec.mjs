@@ -506,7 +506,7 @@ test('iPhone employee hours cards keep readable dark colors and compact layout',
 })
 
 
-test('admin hours and legacy time entries keep dark high-contrast cards on iPhone', async ({ page }) => {
+test('admin personal hours and Stundenzettel entries use readable dark cards on iPhone', async ({ page }) => {
   await login(page, 'admin')
   const today = new Date().toISOString().slice(0, 10)
 
@@ -539,27 +539,20 @@ test('admin hours and legacy time entries keep dark high-contrast cards on iPhon
   expect(ratio(colors.background, colors.date)).toBeGreaterThan(4.5)
   await expectNoHorizontalPageOverflow(page)
 
-  await page.route('**/api/attendance**', (route) => {
-    const url = new URL(route.request().url())
-    if (url.searchParams.get('resource') !== 'history') return route.continue()
-    return route.fulfill({
-      status: 200, contentType: 'application/json', body: JSON.stringify({ entries: [
-        { id: 'test-clock-in', userId: 'employee-anna', action: 'clock-in', eventDate: today, clientOccurredAt: today + 'T08:00:00.000Z', workSiteName: 'Objekt Nord' },
-        { id: 'test-clock-out', userId: 'employee-anna', action: 'clock-out', eventDate: today, clientOccurredAt: today + 'T16:00:00.000Z', workSiteName: 'Objekt Nord' },
-      ] }),
-    })
-  })
+  // Production builds replace the legacy Zeiten tab with TimesheetPage.
+  // Existing mock portal schedules provide completed rows for the admin view.
   const menu = page.getByRole('button', { name: 'Menü öffnen' })
   if (await menu.isVisible().catch(() => false)) await menu.click()
-  await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('button', { name: /^(Zeiten|Stundenzettel)$/ }).click()
-  await expect(page.locator('.app-shell .times-list article')).toHaveCount(1)
-  const legacy = await page.locator('.times-list article').first().evaluate((card) => ({
+  await page.getByRole('navigation', { name: 'Hauptnavigation' }).getByRole('button', { name: 'Stundenzettel', exact: true }).click()
+  const entries = page.locator('.app-shell .timesheet-page .timesheet-card')
+  await expect(entries.first()).toBeVisible()
+  const adminTimesheet = await entries.first().evaluate((card) => ({
     card: window.getComputedStyle(card).backgroundColor,
-    time: window.getComputedStyle(card.querySelector('.time-values > div')).backgroundColor,
+    values: window.getComputedStyle(card.querySelector('.timesheet-values > div')).backgroundColor,
     text: window.getComputedStyle(card.querySelector('header strong')).color,
   }))
-  expect(lum(legacy.card)).toBeLessThan(0.1)
-  expect(lum(legacy.time)).toBeLessThan(0.1)
-  expect(ratio(legacy.card, legacy.text)).toBeGreaterThan(4.5)
+  expect(lum(adminTimesheet.card)).toBeLessThan(0.1)
+  expect(lum(adminTimesheet.values)).toBeLessThan(0.1)
+  expect(ratio(adminTimesheet.card, adminTimesheet.text)).toBeGreaterThan(4.5)
   await expectNoHorizontalPageOverflow(page)
 })
