@@ -567,3 +567,25 @@ test('admin personal hours and Stundenzettel entries use readable dark cards on 
   expect(ratio(adminTimesheet.card, adminTimesheet.text)).toBeGreaterThan(4.5)
   await expectNoHorizontalPageOverflow(page)
 })
+
+for (const role of ['admin', 'employee']) {
+  test(`mailbox displays verified sender name for ${role} on iPhone and desktop`, async ({ page }) => {
+    await login(page, role)
+    await page.route('**/api/employee-documents**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        documents: [{
+          id: 'test-sender-doc', employeeUserId: 'employee-anna',
+          title: 'Lohnabrechnung', documentType: 'payslip', senderName: 'Test Verwaltung',
+          publishedAt: '2026-11-06T11:00:00.000Z', firstOpenedAt: null, revokedAt: null,
+        }],
+        unreadCount: 1,
+      }),
+    }))
+    await navigate(page, 'Postfach')
+    await expect(page.getByText('Gesendet von: Test Verwaltung')).toBeVisible()
+    if (role === 'admin') await expect(page.getByText('Empfänger: Anna Beispiel')).toBeVisible()
+    else await expect(page.getByText('Empfänger: Anna Beispiel')).toHaveCount(0)
+    await expectNoHorizontalPageOverflow(page)
+  })
+}
