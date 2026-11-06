@@ -103,3 +103,37 @@
     max-width: 168px;
   }
 }
+
+
+/* Admin "Meine Stunden": enforce the same dark mobile hour cards as employees. */
+.app-shell .self-service-view .self-service-hours-entry {
+  background: var(--surface-2, #12181b);
+  border-color: var(--border, #273238);
+  color: var(--text, #f5f7f8);
+}
+.app-shell .self-service-view .self-service-hours-entry > div > strong {
+  color: var(--gold-bright, #efc75e);
+}
+.app-shell .self-service-view .self-service-hours-entry > div > span:not(.self-service-tag) {
+  color: var(--muted, #9aa6ac);
+}
+.app-shell .self-service-view .self-service-hours-entry .self-service-tag {
+  background: var(--surface-3, #182024);
+  border-color: var(--border, #273238);
+  color: var(--text, #f5f7f8);
+}
+@media (max-width: 700px) {
+  .app-shell .self-service-view .self-service-hours-entry {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: end;
+    gap: 10px;
+    padding: 13px;
+  }
+  .app-shell .self-service-view .self-service-hours-entry > div:first-child { grid-column: 1 / -1; }
+  .app-shell .self-service-view .self-service-hours-entry > div:nth-child(2) { grid-column: 1; }
+  .app-shell .self-service-view .self-service-hours-entry .self-service-entry-right {
+    grid-column: 2;
+    text-align: right;
+    max-width: 160px;
+  }
+}
