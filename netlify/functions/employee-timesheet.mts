@@ -1,5 +1,6 @@
 import type { Config } from '@netlify/functions'
 import { verifyRequestOrigin } from '@netlify/identity'
+import { validSelfServiceRange } from './_shared/employee-self-service-policy.mjs'
 import { requirePortalRole } from './_shared/portal-role.mts'
 import {
   generateTimesheetAdminExport,
@@ -7,26 +8,12 @@ import {
   PortalAdminReportError,
 } from './_shared/portal-admin-report-service.mts'
 
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
-
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: {
     'Cache-Control': 'private, no-store',
     'X-Content-Type-Options': 'nosniff',
     'X-Robots-Tag': 'noindex',
   } })
-}
-
-function dateRange(from: unknown, to: unknown) {
-  const start = String(from || '')
-  const end = String(to || '')
-  if (!ISO_DATE.test(start) || !ISO_DATE.test(end)) return null
-  const startTime = Date.parse(start + 'T12:00:00Z')
-  const endTime = Date.parse(end + 'T12:00:00Z')
-  if (!Number.isFinite(startTime) || !Number.isFinite(endTime)) return null
-  if (new Date(startTime).toISOString().slice(0, 10) !== start || new Date(endTime).toISOString().slice(0, 10) !== end) return null
-  const days = (endTime - startTime) / 86400000
-  return days >= 0 && days <= 370 ? { from: start, to: end } : null
 }
 
 export default async function employeeTimesheet(request: Request) {
@@ -38,7 +25,7 @@ export default async function employeeTimesheet(request: Request) {
   try {
     if (request.method === 'GET') {
       const url = new URL(request.url)
-      const range = dateRange(url.searchParams.get('from'), url.searchParams.get('to'))
+      const range = validSelfServiceRange(url.searchParams.get('from'), url.searchParams.get('to'))
       if (!range) return json({ message: 'Ungültiger Zeitraum (maximal 371 Tage).' }, 400)
       const rows = await listEmployeeTimesheetRows(userId, range.from, range.to)
       const actual = rows.filter((row) => row.source === 'actual')
@@ -59,7 +46,7 @@ export default async function employeeTimesheet(request: Request) {
     }
     const body = await request.json().catch(() => null) as Record<string, unknown> | null
     if (!body) return json({ message: 'Ungültige Anfrage.' }, 400)
-    const range = dateRange(body.from, body.to)
+    const range = validSelfServiceRange(body.from, body.to)
     if (!range) return json({ message: 'Ungültiger Zeitraum (maximal 371 Tage).' }, 400)
     if (body.format !== 'pdf' && body.format !== 'xlsx') return json({ message: 'Ungültiges Dateiformat.' }, 400)
     const scope = body.scope === 'planned' ? 'planned' : body.scope === 'unified' ? 'unified' : 'actual'
