@@ -167,6 +167,24 @@ export function EmployeeMailboxPage({ session }) {
   const [message, setMessage] = useState('')
   const [success, setSuccess] = useState('')
   const names = useMemo(() => new Map(employees.map((e) => [String(e.userId || e.id), e.fullName])), [employees])
+  // Duplicate display names are possible while accounts are being reconciled.
+  // Make recipients distinguishable so an admin cannot unknowingly deliver
+  // confidential payroll documents to the wrong account.
+  const nameCounts = useMemo(() => {
+    const counts = new Map()
+    for (const employee of employees) {
+      const key = String(employee.fullName || '').trim().toLocaleLowerCase('de-DE')
+      counts.set(key, (counts.get(key) || 0) + 1)
+    }
+    return counts
+  }, [employees])
+  const recipientLabel = (employee) => {
+    const name = String(employee.fullName || 'Mitarbeiter').trim()
+    const key = name.toLocaleLowerCase('de-DE')
+    if ((nameCounts.get(key) || 0) < 2) return name
+    const id = String(employee.userId || employee.id || '')
+    return name + ' · Konto …' + id.slice(-8)
+  }
   const load = useCallback(async () => {
     try {
       const data = await requestJson('/api/employee-documents')
@@ -228,7 +246,7 @@ export function EmployeeMailboxPage({ session }) {
         <label>Mitarbeiter
           <select required value={recipient} onChange={(e) => setRecipient(e.target.value)}>
             <option value="">Mitarbeiter auswählen</option>
-            {employees.map((e) => <option key={e.userId || e.id} value={e.userId || e.id}>{e.fullName}</option>)}
+            {employees.map((e) => <option key={e.userId || e.id} value={e.userId || e.id}>{recipientLabel(e)}</option>)}
           </select>
         </label>
         <label>Dokumentart
