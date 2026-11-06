@@ -3,9 +3,22 @@ import { build } from 'esbuild'
 
 // Backend integration test: the real API module and permission checks run
 // against fake Netlify identity, blobs and SQL. Never touches real personnel data.
-const state = { actor: null, access: {}, documents: [], blobs: new Map(), audit: [] }
+const state = { actor: null, access: {}, documents: [], blobs: new Map(), audit: [], pushRegistry: new Map(), pushCalls: [] }
 globalThis.__habunMailboxTest = state
 globalThis.Netlify = { env: { get: () => '' } }
+// Network-safe test: only mocked push endpoints are allowed.
+globalThis.fetch = async (input) => {
+  const endpoint = String(input)
+  if (!endpoint.startsWith('https://habun-push-test.invalid/')) throw Error('Unexpected test network request')
+  state.pushCalls.push(endpoint)
+  return new Response(null, { status: 201 })
+}
+for (const [token, userId] of [['a', 'employee-a'], ['b', 'employee-b'], ['manager', 'manager-1']]) {
+  state.pushRegistry.set('devices/' + token, {
+    tokenHash: token, endpoint: 'https://habun-push-test.invalid/' + token,
+    userId, email: '', role: 'employee', createdAt: '', updatedAt: '', latestMessage: null,
+  })
+}
 
 state.access['access/admin-1'] = { role: 'admin', status: 'active' }
 state.access['access/employee-a'] = { role: 'employee', status: 'active' }
@@ -68,6 +81,12 @@ const mocks = {
   '@netlify/blobs': [
     "export function getStore({ name }) {",
     "  const state = globalThis.__habunMailboxTest",
+    "  if (name === 'portal-push-devices-v1') return {",
+    "    list: async ({ prefix }) => ({ blobs: [...state.pushRegistry.keys()].filter((key) => key.startsWith(prefix)).map((key) => ({ key })) }),",
+    "    get: async (key) => state.pushRegistry.get(key) ?? null,",
+    "    setJSON: async (key, value) => { state.pushRegistry.set(key, value) },",
+    "    delete: async (key) => { state.pushRegistry.delete(key) },",
+    "  }",
     "  if (name === 'portal-access') return { get: async (key) => state.access[key] ?? null }",
     "  if (!state.blobs.has(name)) state.blobs.set(name, new Map())",
     "  const files = state.blobs.get(name)",
@@ -144,6 +163,17 @@ const documentA = (await responseA.json()).document
 const documentB = (await responseB.json()).document
 assert.ok(documentA.id && documentB.id && documentA.id !== documentB.id)
 assert.equal(state.audit.filter((item) => item.action === 'upload').length, 2)
+assert.deepEqual(state.pushCalls.sort(), [
+  'https://habun-push-test.invalid/a',
+  'https://habun-push-test.invalid/b',
+], 'Only document recipients, never the manager or other users, receive a push')
+for (const token of ['a', 'b']) {
+  const push = state.pushRegistry.get('devices/' + token)?.latestMessage
+  assert.equal(push?.body, 'Du hast ein neues Dokument in deinem Postfach.')
+  assert.equal(push?.url, '/?view=mailbox')
+  assert.ok(!push.body.includes('Testabrechnung'), 'Push must not expose payroll details')
+}
+assert.equal(state.pushRegistry.get('devices/manager')?.latestMessage, null)
 
 selectActor('a')
 const listingA = await (await call()).json()
