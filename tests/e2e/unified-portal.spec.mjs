@@ -315,6 +315,8 @@ test('employee sees only clock and own published schedule', async ({ page }, tes
   await expect(page.getByRole('button', { name: 'Menü öffnen' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Stempeluhr', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Dienstplan', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Stunden', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Postfach', exact: true })).toBeVisible()
   await expect(page.getByText(/Übersicht|Heutiger Dienst|Meine Zeiten|Zeiten|Korrekturen|Berichte|PDF|Excel|Gesamt|Heutige Buchungen/i)).toHaveCount(0)
   await expect(page.locator('.digital-clock')).toHaveText(/^\d{2}:\d{2}:\d{2}$/)
   if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/05-mitarbeiter-stempeluhr-iphone.png', fullPage: true })
