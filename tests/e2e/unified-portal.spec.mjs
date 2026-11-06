@@ -431,3 +431,22 @@ test('unknown direct URL does not bypass role-based navigation', async ({ page }
   await expect(page.getByRole('heading', { name: 'Stempeluhr', exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Mitarbeiter', exact: true })).toHaveCount(0)
 })
+
+test('admin sidebar opens mailbox and distinguishes identically named recipient accounts', async ({ page }) => {
+  await login(page, 'admin')
+  await page.route('**/api/registrations', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({
+      employees: [
+        { userId: 'employee-account-a1234567', fullName: 'Ahmad Zarzour', status: 'active' },
+        { userId: 'employee-account-b7654321', fullName: 'Ahmad Zarzour', status: 'active' },
+      ],
+      archived: [], requests: [],
+    }),
+  }))
+  await navigate(page, 'Postfach')
+  await expect(page.getByRole('heading', { name: 'Mitarbeiterpostfach verwalten' })).toBeVisible()
+  const choices = page.locator('.self-service-upload select').first().locator('option')
+  await expect(choices).toHaveCount(3)
+  await expect(choices.nth(1)).toHaveText('Ahmad Zarzour · Konto …a1234567')
+  await expect(choices.nth(2)).toHaveText('Ahmad Zarzour · Konto …b7654321')
+})
