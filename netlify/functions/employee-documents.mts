@@ -7,7 +7,7 @@ import { requirePortalRole } from './_shared/portal-role.mts'
 
 const ADMIN_ROLES = new Set(['owner', 'admin'])
 const TYPES = new Set(['contract', 'payslip', 'other'])
-const MAX_BYTES = 10 * 1024 * 1024
+const MAX_BYTES = 4 * 1024 * 1024
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function store() {
@@ -145,7 +145,7 @@ export default async function employeeDocuments(request: Request) {
       return json({ message: 'Bitte eine PDF-Datei auswählen.' }, 400)
     }
     const pdf = file as File
-    if (pdf.size < 5 || pdf.size > MAX_BYTES) return json({ message: 'Die PDF muss kleiner als 10 MB sein.' }, 413)
+    if (pdf.size < 5 || pdf.size > MAX_BYTES) return json({ message: 'Die PDF darf höchstens 4 MB groß sein.' }, 413)
     const bytes = Buffer.from(await pdf.arrayBuffer())
     if (bytes.subarray(0, 5).toString('ascii') !== '%PDF-') {
       return json({ message: 'Die Datei ist keine gültige PDF-Datei.' }, 415)
