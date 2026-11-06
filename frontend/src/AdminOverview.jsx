@@ -23,7 +23,7 @@ async function apiJson(path, options = {}) {
   catch {
     // Netlify can return an HTML 404 page if a function route is missing.
     // Never show the raw HTML source inside the staff/admin dashboard.
-    const isHtml = /^\\s*(?:<!doctype\\s+html|<html\\b)/i.test(text)
+    const isHtml = /^\s*(?:<!doctype\s+html|<html\b)/i.test(text)
     body = { message: isHtml
       ? `Die Serveranfrage ist nicht erreichbar (HTTP ${response.status}). Bitte erneut versuchen.`
       : String(text || '').slice(0, 300) }
