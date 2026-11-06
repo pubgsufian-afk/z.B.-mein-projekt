@@ -7,14 +7,6 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# Stable API route for the Neo/PostgreSQL-backed schedule service.
-# Netlify did not route /api/schedule-v2 through the function automatically.
-[[redirects]]
-  from = "/api/schedule-v2"
-  to = "/.netlify/functions/schedule-v2-neon"
-  status = 200
-  force = true
-
 [[redirects]]
   from = "/api/unified-reports"
   to = "/.netlify/functions/unified-reports-fixed"
