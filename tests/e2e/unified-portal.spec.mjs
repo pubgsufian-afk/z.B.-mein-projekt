@@ -162,6 +162,36 @@ async function mockPortalApis(page, role = 'admin') {
     })
   })
 
+  const dailyReports = []
+  await page.route('**/api/daily-reports**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (url.pathname.endsWith('/daily-reports-pdf')) {
+      return route.fulfill({
+        status: 200, contentType: 'application/pdf',
+        headers: { 'Content-Disposition': 'attachment; filename="Tagesbericht_Test.pdf"' },
+        body: Buffer.from('%PDF-1.4\\n%%EOF'),
+      })
+    }
+    if (request.method() === 'GET') {
+      const visible = role === 'employee' ? dailyReports.filter((report) => report.authorId === 'employee-anna') : dailyReports
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ reports: visible }) })
+    }
+    if (request.method() === 'POST') {
+      const body = request.postDataJSON()
+      const report = {
+        id: 'employee-report-' + (dailyReports.length + 1), text: body.text,
+        authorId: role === 'employee' ? 'employee-anna' : 'admin-1',
+        authorName: role === 'employee' ? 'Anna Beispiel' : 'Test Admin',
+        createdAt: new Date().toISOString(),
+      }
+      dailyReports.push(report)
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ report }) })
+    }
+    if (role !== 'admin') return route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ message: 'Nur Administratoren dürfen Berichte bearbeiten oder löschen.' }) })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+  })
+
   await page.route('**/api/unified-reports', async (route) => {
     const format = route.request().postDataJSON().format
     if (format === 'xlsx') {
@@ -303,7 +333,7 @@ test('reports provide PDF preview, PDF download and Excel download', async ({ pa
   expect((await excelDownload).suggestedFilename()).toMatch(/\.xlsx$/i)
 })
 
-test('employee sees only clock and own published schedule', async ({ page }, testInfo) => {
+test('employee sees protected clock, own schedule and self-service tabs', async ({ page }, testInfo) => {
   await login(page, 'employee')
   await expect(page.locator('.employee-kiosk-shell')).toBeVisible()
   await expect(page.getByRole('img', { name: 'Habun Security' })).toBeVisible()
@@ -317,7 +347,8 @@ test('employee sees only clock and own published schedule', async ({ page }, tes
   await expect(page.getByRole('button', { name: 'Dienstplan', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Stunden', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Postfach', exact: true })).toBeVisible()
-  await expect(page.getByText(/Übersicht|Heutiger Dienst|Meine Zeiten|Zeiten|Korrekturen|Berichte|PDF|Excel|Gesamt|Heutige Buchungen/i)).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Berichte', exact: true })).toBeVisible()
+  await expect(page.getByText(/Übersicht|Heutiger Dienst|Meine Zeiten|Zeiten|Korrekturen|PDF|Excel|Gesamt|Heutige Buchungen/i)).toHaveCount(0)
   await expect(page.locator('.digital-clock')).toHaveText(/^\d{2}:\d{2}:\d{2}$/)
   if (testInfo.project.name === 'iphone-chromium') await page.screenshot({ path: 'artifacts/unified-preview/05-mitarbeiter-stempeluhr-iphone.png', fullPage: true })
   if (testInfo.project.name === 'android-chromium') await page.screenshot({ path: 'artifacts/unified-preview/06-mitarbeiter-stempeluhr-android.png', fullPage: true })
@@ -348,5 +379,28 @@ test('employee sees only clock and own published schedule', async ({ page }, tes
   await page.getByRole('button', { name: 'Arbeit beenden' }).click()
   await expect(page.getByText('Dienst abgeschlossen', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('button', { name: 'Abmelden' })).toBeVisible()
+  await expectNoHorizontalPageOverflow(page)
+})
+
+
+test('employee can submit a locked daily report, see only own history and download own PDF', async ({ page }) => {
+  await login(page, 'employee')
+  await page.getByRole('button', { name: 'Berichte', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Tagesbericht melden' })).toBeVisible()
+  await expect(page.locator('.employee-report-item')).toHaveCount(0)
+
+  await page.getByLabel('Deine Meldung').fill('Kontrollgang im Objekt Nord abgeschlossen. Notausgang geprüft.')
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: 'Bericht verbindlich absenden' }).click()
+  await expect(page.getByText(/erfolgreich an die Verwaltung übermittelt/)).toBeVisible()
+  await expect(page.locator('.employee-report-item')).toHaveCount(1)
+  await expect(page.locator('.employee-report-item').getByText(/Kontrollgang im Objekt Nord/)).toBeVisible()
+  await expect(page.locator('.employee-report-item').getByText('Anna Beispiel')).toBeVisible()
+
+  // Staff can view and export, but not change or delete their submitted report.
+  await expect(page.locator('.employee-report-page').getByRole('button', { name: /Bearbeiten|Löschen|Änderungen speichern/ })).toHaveCount(0)
+  const pdf = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Eigenen Bericht als PDF' }).click()
+  expect((await pdf).suggestedFilename()).toMatch(/\.pdf$/i)
   await expectNoHorizontalPageOverflow(page)
 })
