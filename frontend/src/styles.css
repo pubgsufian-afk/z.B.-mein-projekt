@@ -511,3 +511,44 @@ body { min-height: 100dvh; }
   .employee-kiosk-main .schedule-toolbar .toolbar-actions { grid-template-columns: 1fr; }
   .employee-kiosk-main .schedule-toolbar .toolbar-actions button { min-height: 36px; }
 }
+
+
+/* Admin "Zeiten" on iPhone: same readable dark card design as employee hours. */
+.app-shell .times-list article {
+  background: var(--surface-2, #12181b);
+  border-color: var(--border, #273238);
+  color: var(--text, #f5f7f8);
+}
+.app-shell .times-list article header > strong {
+  color: var(--gold-bright, #efc75e);
+}
+.app-shell .times-list .time-values > div {
+  background: var(--surface, #0d1113);
+  color: var(--text, #f5f7f8);
+}
+.app-shell .times-list .time-values strong {
+  color: var(--text, #f5f7f8);
+}
+.app-shell .times-list .time-values span,
+.app-shell .times-list article > p {
+  color: var(--muted, #9aa6ac);
+}
+@media (max-width: 680px) {
+  .app-shell .times-list {
+    padding: 12px 0;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .app-shell .times-list article {
+    min-width: 0;
+    border-radius: 13px;
+  }
+  .app-shell .times-list article header {
+    padding: 12px;
+    flex-wrap: wrap;
+  }
+  .app-shell .times-list .time-values > div {
+    padding: 10px;
+    min-width: 0;
+  }
+  .app-shell .times-list .time-values strong { overflow-wrap: anywhere; }
+}
