@@ -2,6 +2,10 @@ import assert from 'node:assert/strict'
 import { access, readFile } from 'node:fs/promises'
 
 await import('./apply-automatic-schedule-push.mjs')
+await import('./apply-automatic-schedule-push.mjs?check-idempotence')
+const patchedSchedule = await readFile('netlify/functions/schedule-v2-neon.mts', 'utf8')
+assert.equal((patchedSchedule.match(/const publishedShiftIds = new Set\(/g) || []).length, 1, 'Repeat push patch must not duplicate declarations')
+
 
 const [client, api, core, schedulePush, portalSchedule, assistantSchedule, commandWorker, reminderCore, migration] = await Promise.all([
   readFile('frontend/src/push-notifications.js', 'utf8'),
