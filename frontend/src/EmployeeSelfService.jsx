@@ -134,7 +134,7 @@ export function EmployeeTimesheetPage() {
     <section className="panel">
       <h2>Stundenzettel der Verwaltung</h2>
       <p className="self-service-hint">Gespeicherte Stunden einschließlich nachträglicher Korrekturen. Dienstplanübernahmen sind nicht automatisch eine Bestätigung der tatsächlich geleisteten Arbeit.</p>
-      {monthlyEntries.length ? <div className="self-service-list">{monthlyEntries.map((entry, index) => <article className="self-service-entry" key={'monthly-' + index + '-' + entry.date}>
+      {monthlyEntries.length ? <div className="self-service-list">{monthlyEntries.map((entry, index) => <article className="self-service-entry self-service-hours-entry" key={'monthly-' + index + '-' + entry.date}>
         <div><strong>{formatDay(entry.date)}</strong><span>{entry.location || 'Einsatzort'} · {entry.workArea || 'Arbeitsbereich'}</span></div>
         <div><strong>{entry.start}–{entry.end}</strong><span>Pause: {entry.pauseMinutes || 0} Min.</span></div>
         <div className="self-service-entry-right"><strong>{formatMinutes(entry.netMinutes)}</strong><span className={entry.manualOverride || entry.source === 'manual' ? 'self-service-tag recorded' : 'self-service-tag'}>{entry.manualOverride || entry.source === 'manual' ? 'Korrigiert / manuell' : 'Dienstplanübernahme'}</span></div>
@@ -144,7 +144,7 @@ export function EmployeeTimesheetPage() {
       <h2>Stempeluhr und Dienstplan im {month?.split('-').reverse().join('.') || 'Monat'}</h2>
       {busy === 'loading' ? <p>Arbeitsstunden werden geladen …</p>
         : entries.length ? <div className="self-service-list">
-          {entries.map((entry, index) => <article className="self-service-entry" key={entry.date + '-' + entry.start + '-' + index}>
+          {entries.map((entry, index) => <article className="self-service-entry self-service-hours-entry" key={entry.date + '-' + entry.start + '-' + index}>
             <div><strong>{formatDay(entry.date)}</strong><span>{entry.location || 'Einsatzort'} · {entry.workArea || 'Arbeitsbereich'}</span></div>
             <div><strong>{entry.start}–{entry.end}</strong><span>Pause: {entry.pauseMinutes || 0} Min.</span></div>
             <div className="self-service-entry-right"><strong>{formatMinutes(entry.netMinutes)}</strong><span className={entry.source === 'actual' ? 'self-service-tag recorded' : 'self-service-tag'}>{entry.source === 'actual' ? 'Erfasst' : 'Dienstplan'}</span></div>
