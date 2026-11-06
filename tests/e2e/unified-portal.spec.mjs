@@ -582,7 +582,12 @@ for (const role of ['admin', 'employee']) {
         unreadCount: 1,
       }),
     }))
-    await navigate(page, 'Postfach')
+    if (role === 'employee') {
+      await page.getByRole('button', { name: 'Postfach', exact: true }).click()
+      await expect(page.getByRole('heading', { name: 'Mein Postfach' })).toBeVisible()
+    } else {
+      await navigate(page, 'Postfach')
+    }
     await expect(page.getByText('Gesendet von: Test Verwaltung')).toBeVisible()
     if (role === 'admin') await expect(page.getByText('Empfänger: Anna Beispiel')).toBeVisible()
     else await expect(page.getByText('Empfänger: Anna Beispiel')).toHaveCount(0)
