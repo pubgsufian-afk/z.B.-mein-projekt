@@ -72,7 +72,9 @@ assert.deepEqual(groups.paused.map((entry) => entry.name), ['Adel'], 'break-star
 assert.deepEqual(groups.completed.map((entry) => entry.name), ['Amin'], 'latest clock-out maps to Dienst beendet')
 assert.deepEqual(groups.notStarted.map((entry) => entry.name), ['Kwame'], 'missing attendance maps to Noch nicht gestartet')
 
-assert.match(api, /requirePortalRole\(\['owner', 'admin'\]\)/, 'API must be owner/admin only')
+assert.match(api, /requirePortalRole\(\['owner', 'admin', 'manager', 'employee'\]\)/, 'approved employees can submit reports')
+assert.match(api, /if \(!canManageDailyReport\(current\.role\)\)/, 'only admins can modify or delete reports')
+assert.match(api, /mayReadDailyReport\(current, report\)/, 'employee access must be author-scoped')
 assert.match(api, /reportStore/, 'API must use the shared daily report store helper')
 assert.match(model, /portal-daily-reports/, 'shared model must keep the dedicated lightweight blob store')
 assert.match(api, /MAX_REPORT_WORDS\s*=\s*1000/, 'API must enforce the 1,000 word limit')
