@@ -20,7 +20,7 @@ for (const [token, userId] of [['a', 'employee-a'], ['b', 'employee-b'], ['manag
   })
 }
 
-state.access['access/admin-1'] = { role: 'admin', status: 'active' }
+state.access['access/admin-1'] = { role: 'admin', status: 'active', fullName: 'Verwaltung Test' }
 state.access['access/employee-a'] = { role: 'employee', status: 'active' }
 state.access['access/employee-b'] = { role: 'employee', status: 'active' }
 state.access['access/manager-1'] = { role: 'manager', status: 'active' }
@@ -45,6 +45,9 @@ function query(sql, params = []) {
     }
     state.documents.push(row)
     return { rows: [row] }
+  }
+  if (normalized.startsWith('select user_id, full_name from schedule_employees where user_id')) {
+    return { rows: params[0].includes('former-admin') ? [{ user_id: 'former-admin', full_name: 'Ehemalige Verwaltung' }] : [] }
   }
   if (normalized.startsWith('select * from employee_documents where id =')) {
     return { rows: state.documents.filter((item) => item.id === params[0]) }
@@ -162,6 +165,8 @@ assert.equal(responseB.status, 201)
 const documentA = (await responseA.json()).document
 const documentB = (await responseB.json()).document
 assert.ok(documentA.id && documentB.id && documentA.id !== documentB.id)
+assert.equal(documentA.senderName, 'Verwaltung Test', 'Upload response derives name from the actual sender account')
+assert.equal(documentB.senderName, 'Verwaltung Test')
 assert.equal(state.audit.filter((item) => item.action === 'upload').length, 2)
 assert.deepEqual(state.pushCalls.sort(), [
   'https://habun-push-test.invalid/a',
@@ -179,6 +184,7 @@ selectActor('a')
 const listingA = await (await call()).json()
 assert.equal(listingA.documents.length, 1, 'Employee sees exactly one own document')
 assert.equal(listingA.documents[0].id, documentA.id)
+assert.equal(listingA.documents[0].senderName, 'Verwaltung Test', 'Staff sees sender without admin access')
 assert.equal((await call(base + '?action=download&id=' + documentB.id)).status, 404, 'Cross-employee download blocked')
 const ownPdf = await call(base + '?action=download&id=' + documentA.id)
 assert.equal(ownPdf.status, 200)
@@ -189,6 +195,7 @@ assert.equal((await call(base, 'DELETE', { id: documentA.id })).status, 403, 'Em
 selectActor('b')
 const listingB = await (await call()).json()
 assert.deepEqual(listingB.documents.map((item) => item.id), [documentB.id])
+assert.equal(listingB.documents[0].senderName, 'Verwaltung Test', 'Other staff sees only own document and its sender')
 assert.equal((await call(base + '?action=download&id=' + documentA.id)).status, 404)
 
 selectActor('admin')
@@ -198,5 +205,23 @@ selectActor('a')
 assert.equal((await call(base + '?action=download&id=' + documentA.id)).status, 404, 'Revoked PDF inaccessible')
 assert.equal((await (await call()).json()).documents.length, 0, 'Revoked PDF hidden')
 assert.equal(state.audit.filter((entry) => entry.action === 'revoke').length, 1)
+
+// Historical documents store sender_user_id, not a sender name. Resolve names
+// from the personnel directory when the old account has no access record.
+const previous = { ...state.documents[0], id: 'old-record', employee_user_id: 'employee-a',
+  sender_user_id: 'former-admin', revoked_at: null }
+state.documents.push(previous)
+selectActor('a')
+const oldListing = await (await call()).json()
+assert.equal(oldListing.documents.length, 1)
+assert.equal(oldListing.documents[0].senderName, 'Ehemalige Verwaltung', 'Historical document sender resolved by account ID')
+assert.ok(!JSON.stringify(oldListing.documents).includes('senderUserId'), 'Do not leak sender account identifiers')
+state.documents.pop()
+
+// Unknown historical senders must not receive an invented person name.
+state.documents.push({ ...previous, sender_user_id: 'deleted-admin', id: 'unknown-record' })
+const unresolved = await (await call()).json()
+assert.equal(unresolved.documents[0].senderName, 'Absender nicht zugeordnet')
+state.documents.pop()
 
 console.log('PASS: actual mailbox API handler: anonymous/pending isolation, admin-only sending, PDF validation, separate staff inboxes, download, audit, revocation and forbidden cross-account access')
