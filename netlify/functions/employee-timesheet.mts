@@ -2,7 +2,6 @@ import type { Config } from '@netlify/functions'
 import { verifyRequestOrigin } from '@netlify/identity'
 import { validSelfServiceRange } from './_shared/employee-self-service-policy.mjs'
 import { listTimesheetEntries } from './_shared/timesheet-repository.mts'
-import { syncPublishedScheduleRange } from './_shared/timesheet-schedule-sync.mts'
 import { buildPdf as monthlyPdf, buildXlsx as monthlyXlsx } from './timesheet-monthly-reports.mts'
 import { rollupDailyTimesheetRows } from '../../shared/timesheet-daily-rollup.mjs'
 import { requirePortalRole } from './_shared/portal-role.mts'
@@ -31,7 +30,6 @@ export default async function employeeTimesheet(request: Request) {
       const url = new URL(request.url)
       const range = validSelfServiceRange(url.searchParams.get('from'), url.searchParams.get('to'))
       if (!range) return json({ message: 'Ungültiger Zeitraum (maximal 371 Tage).' }, 400)
-      await syncPublishedScheduleRange(range.from, range.to, userId, new Date())
       const [rows, monthlyEntries] = await Promise.all([
         listEmployeeTimesheetRows(userId, range.from, range.to),
         listTimesheetEntries({ from: range.from, to: range.to, employeeUserId: userId }),
@@ -72,7 +70,6 @@ export default async function employeeTimesheet(request: Request) {
     if (body.format !== 'pdf' && body.format !== 'xlsx') return json({ message: 'Ungültiges Dateiformat.' }, 400)
     const scope = body.scope === 'monthly' ? 'monthly' : body.scope === 'planned' ? 'planned' : body.scope === 'unified' ? 'unified' : 'actual'
     if (scope === 'monthly') {
-      await syncPublishedScheduleRange(range.from, range.to, userId, new Date())
       const stored = await listTimesheetEntries({ from: range.from, to: range.to, employeeUserId: userId })
       if (!stored.length) return json({ message: 'Für diesen Monat ist noch kein Stundenzettel hinterlegt.' }, 404)
       const rows = rollupDailyTimesheetRows(stored)
