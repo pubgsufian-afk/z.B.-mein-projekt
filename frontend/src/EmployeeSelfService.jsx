@@ -4,6 +4,18 @@ import './employee-self-service.css'
 const PDF = 'application/pdf'
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const TYPES = { contract: 'Arbeitsvertrag', payslip: 'Lohnabrechnung', other: 'Sonstiges' }
+const MAX_DOCUMENT_BYTES = 4 * 1024 * 1024
+const documentSizeLabel = (bytes) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(bytes / (1024 * 1024)) + ' MB'
+const documentFileError = (selected) => {
+  if (!selected) return ''
+  if (selected.size > MAX_DOCUMENT_BYTES) {
+    return 'Die ausgewählte PDF ist ' + documentSizeLabel(selected.size) + ' groß. Erlaubt sind höchstens 4 MB. Bitte die PDF vor dem Zustellen verkleinern.'
+  }
+  if (selected.size < 5 || (!/\.pdf$/i.test(selected.name) && selected.type !== PDF)) {
+    return 'Bitte eine gültige PDF-Datei auswählen.'
+  }
+  return ''
+}
 
 async function requestJson(path, options = {}) {
   const response = await fetch(path, {
@@ -11,7 +23,17 @@ async function requestJson(path, options = {}) {
     headers: { Accept: 'application/json', ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) },
   })
   const body = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(body.message || 'Die Anfrage ist fehlgeschlagen.')
+  if (!response.ok) {
+    if (body.message) throw new Error(body.message)
+    const uploadingDocument = options.body instanceof FormData
+    if (uploadingDocument && response.status === 413) {
+      throw new Error('Die PDF ist für den Upload zu groß. Bitte auf höchstens 4 MB verkleinern.')
+    }
+    if (uploadingDocument && response.status === 400) {
+      throw new Error('Der Upload wurde vom Server abgelehnt. Bitte PDF-Datei und Größe (maximal 4 MB) prüfen.')
+    }
+    throw new Error('Die Anfrage ist fehlgeschlagen (HTTP ' + response.status + '). Bitte erneut versuchen.')
+  }
   return body
 }
 async function requestDownload(path, payload, expectedType) {
@@ -198,9 +220,17 @@ export function EmployeeMailboxPage({ session }) {
       .then((data) => setEmployees((data.employees || []).filter((e) => e.status !== 'inactive' && (e.userId || e.id))))
       .catch((error) => setMessage(error.message))
   }, [isAdmin, load])
+  function chooseDocument(event) {
+    const selected = event.target.files?.[0] || null
+    setFile(selected)
+    setSuccess('')
+    setMessage(documentFileError(selected))
+  }
   async function upload(event) {
     event.preventDefault()
     if (!isAdmin || !file) return
+    const invalid = documentFileError(file)
+    if (invalid) { setMessage(invalid); return }
     setBusy('upload'); setMessage(''); setSuccess('')
     try {
       const form = new FormData()
@@ -255,8 +285,10 @@ export function EmployeeMailboxPage({ session }) {
           </select>
         </label>
         {type === 'other' && <label>Bezeichnung<input required maxLength={180} value={title} placeholder="Bezeichnung des Dokuments" onChange={(e) => setTitle(e.target.value)} /></label>}
-        <label>PDF-Datei (maximal 4 MB)<input id="employee-document-file" type="file" accept="application/pdf,.pdf" required onChange={(e) => setFile(e.target.files?.[0] || null)} /></label>
-        <button className="primary-button" disabled={Boolean(busy) || !recipient || !file || (type === 'other' && !title.trim())}>{busy === 'upload' ? 'Wird sicher zugestellt …' : 'Dokument zustellen'}</button>
+        <label>PDF-Datei (maximal 4 MB)<input id="employee-document-file" type="file" accept="application/pdf,.pdf" required onChange={chooseDocument} />
+          {file && <small className="self-service-file-size">Dateigröße: {documentSizeLabel(file.size)} {documentFileError(file) ? '– bitte kleinere PDF auswählen' : '– bereit zum Hochladen'}</small>}
+        </label>
+        <button className="primary-button" disabled={Boolean(busy) || !recipient || !file || Boolean(documentFileError(file)) || (type === 'other' && !title.trim())}>{busy === 'upload' ? 'Wird sicher zugestellt …' : 'Dokument zustellen'}</button>
       </form>}
     </section>
     <section className="panel">

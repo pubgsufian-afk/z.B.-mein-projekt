@@ -594,3 +594,38 @@ for (const role of ['admin', 'employee']) {
     await expectNoHorizontalPageOverflow(page)
   })
 }
+
+test('mailbox blocks oversized PDFs before sending and explains Netlify 413 response', async ({ page }) => {
+  await login(page, 'admin')
+  let uploadRequests = 0
+  await page.route('**/api/employee-documents**', (route) => {
+    if (route.request().method() === 'POST') {
+      uploadRequests += 1
+      return route.fulfill({ status: 413, contentType: 'text/plain', body: 'Payload Too Large' })
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ documents: [], unreadCount: 0 }) })
+  })
+  await navigate(page, 'Postfach')
+  await page.locator('.self-service-upload select').first().selectOption({ index: 1 })
+  const upload = page.locator('#employee-document-file')
+  await upload.setInputFiles({
+    name: 'scan-zu-gross.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.alloc(4 * 1024 * 1024 + 1, 65),
+  })
+  await expect(page.getByText(/Die ausgewählte PDF ist .* groß/)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Dokument zustellen' })).toBeDisabled()
+  expect(uploadRequests).toBe(0)
+
+  await upload.setInputFiles({
+    name: 'kleine-datei.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.7\\nTestinhalt'),
+  })
+  await expect(page.getByText(/bereit zum Hochladen/)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Dokument zustellen' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Dokument zustellen' }).click()
+  await expect(page.getByText('Die PDF ist für den Upload zu groß. Bitte auf höchstens 4 MB verkleinern.')).toBeVisible()
+  expect(uploadRequests).toBe(1)
+  await expectNoHorizontalPageOverflow(page)
+})

@@ -137,3 +137,12 @@
     max-width: 160px;
   }
 }
+
+/* Show the selected document size clearly in both mobile and admin mailboxes. */
+.self-service-upload .self-service-file-size {
+  display: block;
+  color: var(--muted, #9aa6ac);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
