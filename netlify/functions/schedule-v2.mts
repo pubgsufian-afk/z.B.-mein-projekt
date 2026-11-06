@@ -344,4 +344,5 @@ export default async function scheduleV2(request: Request, _context: Context) {
   }
 }
 
-export const config: Config = { path: '/api/schedule-v2' }
+// Legacy Blob-backed schedule endpoint: do not collide with the Neon-backed /api/schedule-v2.
+export const config: Config = { path: '/api/schedule-v2-legacy' }
