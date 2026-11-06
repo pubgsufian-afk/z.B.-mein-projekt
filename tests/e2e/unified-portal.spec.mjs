@@ -450,3 +450,57 @@ test('admin sidebar opens mailbox and distinguishes identically named recipient 
   await expect(choices.nth(1)).toHaveText('Ahmad Zarzour · Konto …a1234567')
   await expect(choices.nth(2)).toHaveText('Ahmad Zarzour · Konto …b7654321')
 })
+
+
+test('iPhone employee hours cards keep readable dark colors and compact layout', async ({ page }) => {
+  await login(page, 'employee')
+  const entry = {
+    date: '2026-11-06',
+    start: '08:00',
+    end: '16:00',
+    pauseMinutes: 30,
+    netMinutes: 450,
+    location: 'Abbott Laboratories GmbH',
+    workArea: 'Stapler Fahrer',
+    source: 'planned',
+  }
+  await page.route('**/api/employee-timesheet**', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      entries: [entry],
+      monthlyEntries: [entry],
+      summary: { timesheetMinutes: 450, timesheetEntries: 1, recordedMinutes: 0, recordedShifts: 0, scheduledMinutes: 450, scheduledShifts: 1 },
+    }),
+  }))
+  await page.getByRole('button', { name: 'Stunden', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Meine Arbeitsstunden' })).toBeVisible()
+  await expect(page.locator('.self-service-hours-entry')).toHaveCount(2)
+  const colors = await page.locator('.self-service-hours-entry').first().evaluate((card) => {
+    const styles = (el) => window.getComputedStyle(el)
+    return {
+      background: styles(card).backgroundColor,
+      date: styles(card.querySelector('strong')).color,
+      detail: styles(card.querySelector('span')).color,
+      gold: styles(card.querySelector('.self-service-entry-right strong')).color,
+    }
+  })
+  const channels = (value) => (value.match(/\d+/g) || []).slice(0, 3).map(Number)
+  const luminance = (value) => {
+    const converted = channels(value).map((channel) => {
+      const x = channel / 255
+      return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4
+    })
+    return converted[0] * 0.2126 + converted[1] * 0.7152 + converted[2] * 0.0722
+  }
+  const contrast = (a, b) => {
+    const values = [luminance(a), luminance(b)].sort((a, b) => b - a)
+    return (values[0] + 0.05) / (values[1] + 0.05)
+  }
+  expect(luminance(colors.background)).toBeLessThan(0.1)
+  expect(contrast(colors.background, colors.date)).toBeGreaterThan(4.5)
+  expect(contrast(colors.background, colors.detail)).toBeGreaterThan(4.5)
+  expect(contrast(colors.background, colors.gold)).toBeGreaterThan(4.5)
+  await expect(page.locator('.self-service-hours-entry').first().getByText('Dienstplanübernahme')).toBeVisible()
+  await expectNoHorizontalPageOverflow(page)
+})

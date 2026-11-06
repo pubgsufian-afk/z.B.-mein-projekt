@@ -7,7 +7,7 @@
 .self-service-toolbar { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
 .self-service-toolbar label { flex: 1 1 190px; max-width: 280px; }
 .self-service-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
-.self-service-metrics > div { display: grid; gap: 5px; border: 1px solid var(--border); border-radius: 14px; padding: 17px; background: var(--panel, #fff); min-width: 0; }
+.self-service-metrics > div { display: grid; gap: 5px; border: 1px solid var(--border); border-radius: 14px; padding: 17px; background: var(--surface-2, #12181b); min-width: 0; }
 .self-service-metrics span, .self-service-metrics small { font-size: 12px; line-height: 1.4; color: var(--muted, #606b7a); }
 .self-service-metrics strong { font-size: clamp(22px, 4vw, 30px); line-height: 1.1; overflow-wrap: anywhere; }
 .self-service-hint { font-size: 13px; line-height: 1.5; margin: 10px 0 15px; color: var(--muted, #606b7a); }
@@ -16,7 +16,7 @@
 .self-service-upload { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; margin-top: 12px; align-items: end; }
 .self-service-upload > button { width: max-content; max-width: 100%; }
 .self-service-list { display: grid; gap: 10px; margin-top: 15px; }
-.self-service-entry { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 15px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel, #fff); min-width: 0; }
+.self-service-entry { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 15px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2, #12181b); min-width: 0; }
 .self-service-entry > div { display: grid; min-width: 0; gap: 5px; }
 .self-service-entry strong { overflow-wrap: anywhere; }
 .self-service-entry span { overflow-wrap: anywhere; font-size: 12px; color: var(--muted, #606b7a); }
@@ -39,4 +39,67 @@
 .employee-kiosk-shell .employee-kiosk-nav { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 @media (max-width: 620px) {
   .employee-kiosk-shell .employee-kiosk-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+
+/* HABUN dark-mode hour cards: no white fallback under the light text theme. */
+.self-service-view .self-service-metrics > div,
+.self-service-view .self-service-entry {
+  background: var(--surface-2, #12181b);
+  border-color: var(--border, #273238);
+  color: var(--text, #f5f7f8);
+}
+.self-service-view .self-service-entry strong { color: var(--text, #f5f7f8); }
+.self-service-view .self-service-entry > div > span:not(.self-service-tag) {
+  color: var(--muted, #9aa6ac);
+}
+.self-service-view .self-service-entry .self-service-tag:not(.recorded) {
+  color: var(--text, #f5f7f8);
+  border-color: var(--border, #273238);
+  background: var(--surface-3, #182024);
+}
+.self-service-view .self-service-entry .self-service-tag.recorded {
+  color: #b8f0cf;
+  border-color: rgba(82, 199, 138, .5);
+  background: rgba(82, 199, 138, .14);
+}
+.self-service-view .self-service-hours-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) max-content;
+  gap: 12px;
+}
+.self-service-hours-entry > div:first-child > strong {
+  color: var(--gold-bright, #efc75e);
+  font-size: 15px;
+}
+.self-service-hours-entry .self-service-entry-right > strong {
+  color: var(--gold-bright, #efc75e);
+  font-size: 17px;
+}
+.self-service-hours-entry .self-service-tag {
+  max-width: 100%;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .self-service-view .self-service-hours-entry {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: end;
+    gap: 10px 8px;
+    padding: 14px;
+  }
+  .self-service-hours-entry > div:first-child {
+    grid-column: 1 / -1;
+  }
+  .self-service-hours-entry > div:nth-child(2) {
+    grid-column: 1;
+    align-self: end;
+  }
+  .self-service-hours-entry .self-service-entry-right {
+    grid-column: 2;
+    text-align: right;
+    min-width: 0;
+    max-width: 168px;
+  }
 }
