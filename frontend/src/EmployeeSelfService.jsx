@@ -223,7 +223,7 @@ export function EmployeeMailboxPage({ session }) {
           </select>
         </label>
         <label>Bezeichnung<input required maxLength={180} value={title} placeholder="z. B. Lohnabrechnung Oktober 2026" onChange={(e) => setTitle(e.target.value)} /></label>
-        <label>PDF-Datei (maximal 10 MB)<input id="employee-document-file" type="file" accept="application/pdf,.pdf" required onChange={(e) => setFile(e.target.files?.[0] || null)} /></label>
+        <label>PDF-Datei (maximal 4 MB)<input id="employee-document-file" type="file" accept="application/pdf,.pdf" required onChange={(e) => setFile(e.target.files?.[0] || null)} /></label>
         <button className="primary-button" disabled={Boolean(busy) || !recipient || !file || !title.trim()}>{busy === 'upload' ? 'Wird sicher zugestellt …' : 'Dokument zustellen'}</button>
       </form>}
     </section>
