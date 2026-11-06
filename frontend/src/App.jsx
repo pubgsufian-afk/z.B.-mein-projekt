@@ -202,7 +202,13 @@ function AuthScreen({ notice, setNotice }) {
         setNotice({ tone: 'success', text: 'Anfrage gesendet. Bitte bestätige deine E-Mail. Danach schaltet die Firma das Konto frei.' })
       }
     } catch (error) {
-      setNotice({ tone: 'error', text: error instanceof AuthError ? error.message : error.message || 'Anmeldung nicht möglich.' })
+      const message = error instanceof AuthError ? error.message : error.message || 'Anmeldung nicht möglich.'
+      if (mode === 'register' && /already|exist|registered|taken|bereits|vergeben|verwendet|existiert|duplicate/i.test(message)) {
+        setMode('login')
+        setNotice({ tone: 'error', text: 'Für diese E-Mail-Adresse besteht bereits ein Konto oder eine Anfrage. Bitte anmelden oder „Passwort vergessen“ verwenden.' })
+      } else {
+        setNotice({ tone: 'error', text: message })
+      }
     } finally { setBusy(false) }
   }
 
@@ -246,7 +252,9 @@ function AuthScreen({ notice, setNotice }) {
             <Notice notice={notice} />
             <button className="primary-button" disabled={busy}>{busy ? 'Bitte warten …' : mode === 'login' ? 'Sicher anmelden' : 'Anfrage absenden'}</button>
           </form>
-          {mode === 'login' && <button className="text-button" type="button" onClick={recover} disabled={busy}>Passwort vergessen</button>}
+          {mode === 'login'
+            ? <button className="text-button" type="button" onClick={recover} disabled={busy}>Passwort vergessen</button>
+            : <button className="text-button" type="button" disabled={busy} onClick={() => { setMode('login'); setNotice({ tone: 'info', text: 'Bereits registriert? Bitte E-Mail eingeben und „Passwort vergessen“ wählen. Keine neue Anfrage absenden.' }) }}>Bereits registriert? Passwort vergessen</button>}
           <p className="security-note">Keine öffentlichen Adminrechte. Freigaben erfolgen ausschließlich intern.</p>
         </div>
       </section>

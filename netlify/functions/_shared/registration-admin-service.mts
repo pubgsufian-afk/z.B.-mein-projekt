@@ -1,11 +1,13 @@
 import { getStore } from '@netlify/blobs'
 import { upsertScheduleEmployee, type ScheduleEmployee } from './schedule-neon-repository.mts'
+import { findRegistrationEmailConflict, normalizeRegistrationEmail, readPortalRegistrationIdentities } from './registration-email-guard.mts'
 
 export type RegistrationAdminRole = 'owner' | 'admin'
 
 type RegistrationRecord = {
   id?: string
   status?: string
+  email?: string
   role?: string
   fullName?: string
   employeeId?: string
@@ -104,6 +106,17 @@ export async function decideRegistration(input: {
       accessStore().setJSON(`access/${id}`, access),
     ])
     return { ok: true as const, action: 'reject' as const, id }
+  }
+
+  // The relay and regular admin UI must obey the same email-uniqueness rule.
+  // If existing account data is incomplete, do not risk another approval.
+  if (!normalizeRegistrationEmail(registration.email)) {
+    return { ok: false as const, status: 409, code: 'REGISTRATION_CHECK_UNAVAILABLE', message: 'Registrierungs-E-Mail konnte nicht geprüft werden.' }
+  }
+  const registrations = await readPortalRegistrationIdentities()
+  const collision = findRegistrationEmailConflict({ ...registration, id }, registrations)
+  if (collision) {
+    return { ok: false as const, status: 409, code: 'DUPLICATE_REGISTRATION_EMAIL', message: 'E-Mail-Adresse ist bereits registriert oder wurde bereits angefragt.' }
   }
 
   const role = clean(input.role || 'employee', 30)
