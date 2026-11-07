@@ -608,10 +608,15 @@ test('mailbox blocks oversized PDFs before sending and explains Netlify 413 resp
   await navigate(page, 'Postfach')
   await page.locator('.self-service-upload select').first().selectOption({ index: 1 })
   const upload = page.locator('#employee-document-file')
-  await upload.setInputFiles({
-    name: 'scan-zu-gross.pdf',
-    mimeType: 'application/pdf',
-    buffer: Buffer.alloc(50 * 1024 * 1024 + 1, 65),
+  // Playwright forbids passing >50 MiB as an inline Buffer. Let the test
+  // browser create a real File object in memory, like a user selecting a PDF.
+  await page.evaluate(() => {
+    const input = document.querySelector('#employee-document-file')
+    const over = new File([new Uint8Array(50 * 1024 * 1024 + 1)], 'scan-zu-gross.pdf', { type: 'application/pdf' })
+    const files = new DataTransfer()
+    files.items.add(over)
+    input.files = files.files
+    input.dispatchEvent(new Event('change', { bubbles: true }))
   })
   await expect(page.getByText(/Die ausgewählte PDF ist .* groß/)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Dokument zustellen' })).toBeDisabled()
