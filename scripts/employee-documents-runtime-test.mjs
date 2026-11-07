@@ -253,3 +253,89 @@ assert.equal(unresolved.documents[0].senderName, 'Absender nicht zugeordnet')
 state.documents.pop()
 
 console.log('PASS: actual mailbox API handler: anonymous/pending isolation, admin-only sending, PDF validation, separate staff inboxes, download, audit, revocation and forbidden cross-account access')
+
+
+// Real large-document API integration: 8.85 MiB in five authenticated chunks.
+const largeBase = 'https://example.test/api/employee-documents-large'
+async function largeCall(query = '', method = 'GET', body = null) {
+  const init = { method }
+  if (body !== null) {
+    if (body instanceof Uint8Array) {
+      init.body = body
+      init.headers = { 'content-type': 'application/octet-stream' }
+    } else {
+      init.body = JSON.stringify(body)
+      init.headers = { 'content-type': 'application/json' }
+    }
+  }
+  return largeHandler(new Request(largeBase + query, init), { deploy: { context: 'deploy-preview' } })
+}
+const setup = {
+  employeeUserId: 'employee-a', documentType: 'payslip', title: '',
+  fileName: '8.85-MB-Scan.pdf', byteSize: Math.round(8.85 * 1024 * 1024),
+}
+selectActor(null)
+assert.equal((await largeCall('?action=info&id=a1b2c3d4-e5f6-4123-8123-aabbccddeeff')).status, 401)
+selectActor('a')
+assert.equal((await largeCall('?action=begin', 'POST', setup)).status, 403, 'Employee cannot stage files')
+selectActor('manager')
+assert.equal((await largeCall('?action=begin', 'POST', setup)).status, 403, 'Manager cannot stage files')
+selectActor('admin')
+assert.equal((await largeCall('?action=begin', 'POST', { ...setup, byteSize: 50 * 1024 * 1024 + 1 })).status, 400)
+assert.equal((await largeCall('?action=begin', 'POST', { ...setup, employeeUserId: 'inactive-1' })).status, 409)
+assert.equal((await largeCall('?action=begin', 'POST', { ...setup, employeeUserId: 'pending-1' })).status, 409)
+const preflight = await largeCall('?action=begin', 'POST', setup)
+assert.equal(preflight.status, 201)
+const session = await preflight.json()
+assert.ok(session.uploadId)
+assert.equal(session.chunkSize, 2 * 1024 * 1024)
+assert.equal(session.chunkCount, 5)
+const bytes = Buffer.alloc(setup.byteSize, 65)
+bytes.write('%PDF-', 0, 'ascii')
+const uploadId = session.uploadId
+for (let i = 0; i < session.chunkCount; i++) {
+  const chunk = bytes.subarray(i * session.chunkSize, (i + 1) * session.chunkSize)
+  const response = await largeCall('?action=chunk&id=' + uploadId + '&index=' + i, 'POST', chunk)
+  assert.equal(response.status, 200, 'Valid chunk ' + i)
+}
+assert.equal((await largeCall('?action=info&id=' + uploadId)).status, 404, 'Unpublished PDFs are invisible')
+const priorPushCount = state.pushCalls.length
+const finished = await largeCall('?action=finish&id=' + uploadId, 'POST', {})
+assert.equal(finished.status, 201, 'Large PDF finalized')
+assert.equal(state.pushCalls.length, priorPushCount + 1, 'Only one notification')
+assert.equal(state.pushCalls.at(-1), 'https://habun-push-test.invalid/a')
+const finishedAgain = await largeCall('?action=finish&id=' + uploadId, 'POST', {})
+assert.equal(finishedAgain.status, 200, 'Duplicate finalization is idempotent')
+assert.equal((await finishedAgain.json()).alreadyPublished, true)
+assert.equal(state.pushCalls.length, priorPushCount + 1)
+const largeDocument = state.documents.find((row) => row.id === uploadId)
+assert.equal(largeDocument.byte_size, setup.byteSize)
+assert.equal(largeDocument.title, 'Lohnabrechnung')
+assert.equal(largeDocument.blob_key, 'v2/' + uploadId + '/manifest')
+
+selectActor('b')
+assert.equal((await largeCall('?action=info&id=' + uploadId)).status, 404, 'Other staff cannot view large PDF metadata')
+assert.equal((await largeCall('?action=part&id=' + uploadId + '&index=0')).status, 404, 'Other staff cannot fetch document chunks')
+selectActor('a')
+const infoResponse = await largeCall('?action=info&id=' + uploadId)
+assert.equal(infoResponse.status, 200)
+const info = await infoResponse.json()
+assert.equal(info.chunkCount, 5)
+const received = []
+for (let i = 0; i < info.chunkCount; i++) {
+  const response = await largeCall('?action=part&id=' + uploadId + '&index=' + i)
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('content-type'), 'application/octet-stream')
+  received.push(Buffer.from(await response.arrayBuffer()))
+}
+const assembled = Buffer.concat(received)
+assert.deepEqual(assembled, bytes)
+assert.equal((await import('node:crypto')).createHash('sha256').update(assembled).digest('hex'), info.sha256)
+assert.equal(state.audit.filter((entry) => entry.documentId === uploadId && entry.action === 'download').length, 1)
+assert.equal((await largeCall('?action=part&id=' + uploadId + '&index=99')).status, 404)
+selectActor('admin')
+assert.equal((await call(base, 'DELETE', { id: uploadId })).status, 200)
+selectActor('a')
+assert.equal((await largeCall('?action=info&id=' + uploadId)).status, 404, 'Withdrawn PDFs stay private')
+assert.equal((await largeCall('?action=part&id=' + uploadId + '&index=0')).status, 404)
+console.log('PASS: secure 8.85 MB chunked PDF, verified integrity, role isolation, retry and revocation')
