@@ -36,6 +36,7 @@ function query(sql, params = []) {
   }
   if (normalized.startsWith('insert into employee_documents')) {
     const [id, employeeUserId, senderUserId, documentType, title, fileName, blobKey, sha256, byteSize] = params
+    if (normalized.includes('on conflict (id) do nothing') && state.documents.some((row) => row.id === id)) return { rows: [] }
     const row = {
       id, employee_user_id: employeeUserId, sender_user_id: senderUserId,
       document_type: documentType, title, file_name: fileName,
@@ -48,6 +49,9 @@ function query(sql, params = []) {
   }
   if (normalized.startsWith('select user_id, full_name from schedule_employees where user_id')) {
     return { rows: params[0].includes('former-admin') ? [{ user_id: 'former-admin', full_name: 'Ehemalige Verwaltung' }] : [] }
+  }
+  if (normalized.startsWith('select id from employee_documents where id =') && normalized.includes('and sender_user_id =')) {
+    return { rows: state.documents.filter((e) => e.id === params[0] && e.sender_user_id === params[1]).map((e) => ({ id: e.id })) }
   }
   if (normalized.startsWith('select * from employee_documents where id =')) {
     return { rows: state.documents.filter((item) => item.id === params[0]) }
@@ -94,8 +98,20 @@ const mocks = {
     "  if (!state.blobs.has(name)) state.blobs.set(name, new Map())",
     "  const files = state.blobs.get(name)",
     "  return {",
-    "    get: async (key) => files.has(key) ? await files.get(key).arrayBuffer() : null,",
+    "    get: async (key, options = {}) => {",
+    "      if (!files.has(key)) return null",
+    "      const value = files.get(key)",
+    "      if (options.type === 'json') return value",
+    "      if (options.type === 'arrayBuffer') {",
+    "        if (value instanceof ArrayBuffer) return value",
+    "        if (value instanceof Uint8Array || Buffer.isBuffer(value)) return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength)",
+    "        return await value.arrayBuffer()",
+    "      }",
+    "      return value",
+    "    },",
     "    set: async (key, file) => { files.set(key, file) },",
+    "    setJSON: async (key, value) => { files.set(key, value) },",
+    "    list: async ({ prefix }) => ({ blobs: [...files.keys()].filter((key) => key.startsWith(prefix)).map((key) => ({ key })) }),",
     "    delete: async (key) => { files.delete(key) },",
     "  }",
     "}",
@@ -113,6 +129,18 @@ const bundled = await build({
   }],
 })
 const { default: handler } = await import('data:text/javascript;base64,' + Buffer.from(bundled.outputFiles[0].text).toString('base64'))
+const bundledLarge = await build({
+  entryPoints: ['netlify/functions/employee-documents-large.mts'],
+  bundle: true, format: 'esm', platform: 'node', write: false,
+  plugins: [{
+    name: 'fake-netlify-runtime',
+    setup(context) {
+      context.onResolve({ filter: /^@netlify\/(identity|database|blobs)$/ }, (args) => ({ path: args.path, namespace: 'mailbox-mock' }))
+      context.onLoad({ filter: /.*/, namespace: 'mailbox-mock' }, (args) => ({ contents: mocks[args.path], loader: 'js' }))
+    },
+  }],
+})
+const { default: largeHandler } = await import('data:text/javascript;base64,' + Buffer.from(bundledLarge.outputFiles[0].text).toString('base64'))
 
 const actors = {
   admin: { id: 'admin-1', email: 'admin@example.test' },
@@ -225,3 +253,89 @@ assert.equal(unresolved.documents[0].senderName, 'Absender nicht zugeordnet')
 state.documents.pop()
 
 console.log('PASS: actual mailbox API handler: anonymous/pending isolation, admin-only sending, PDF validation, separate staff inboxes, download, audit, revocation and forbidden cross-account access')
+
+
+// Real large-document API integration: 8.85 MiB in five authenticated chunks.
+const largeBase = 'https://example.test/api/employee-documents-large'
+async function largeCall(query = '', method = 'GET', body = null) {
+  const init = { method }
+  if (body !== null) {
+    if (body instanceof Uint8Array) {
+      init.body = body
+      init.headers = { 'content-type': 'application/octet-stream' }
+    } else {
+      init.body = JSON.stringify(body)
+      init.headers = { 'content-type': 'application/json' }
+    }
+  }
+  return largeHandler(new Request(largeBase + query, init), { deploy: { context: 'deploy-preview' } })
+}
+const setup = {
+  employeeUserId: 'employee-a', documentType: 'payslip', title: '',
+  fileName: '8.85-MB-Scan.pdf', byteSize: Math.round(8.85 * 1024 * 1024),
+}
+selectActor(null)
+assert.equal((await largeCall('?action=info&id=a1b2c3d4-e5f6-4123-8123-aabbccddeeff')).status, 401)
+selectActor('a')
+assert.equal((await largeCall('?action=begin', 'POST', setup)).status, 403, 'Employee cannot stage files')
+selectActor('manager')
+assert.equal((await largeCall('?action=begin', 'POST', setup)).status, 403, 'Manager cannot stage files')
+selectActor('admin')
+assert.equal((await largeCall('?action=begin', 'POST', { ...setup, byteSize: 50 * 1024 * 1024 + 1 })).status, 400)
+assert.equal((await largeCall('?action=begin', 'POST', { ...setup, employeeUserId: 'inactive-1' })).status, 409)
+assert.equal((await largeCall('?action=begin', 'POST', { ...setup, employeeUserId: 'pending-1' })).status, 409)
+const preflight = await largeCall('?action=begin', 'POST', setup)
+assert.equal(preflight.status, 201)
+const session = await preflight.json()
+assert.ok(session.uploadId)
+assert.equal(session.chunkSize, 2 * 1024 * 1024)
+assert.equal(session.chunkCount, 5)
+const bytes = Buffer.alloc(setup.byteSize, 65)
+bytes.write('%PDF-', 0, 'ascii')
+const uploadId = session.uploadId
+for (let i = 0; i < session.chunkCount; i++) {
+  const chunk = bytes.subarray(i * session.chunkSize, (i + 1) * session.chunkSize)
+  const response = await largeCall('?action=chunk&id=' + uploadId + '&index=' + i, 'POST', chunk)
+  assert.equal(response.status, 200, 'Valid chunk ' + i)
+}
+assert.equal((await largeCall('?action=info&id=' + uploadId)).status, 404, 'Unpublished PDFs are invisible')
+const priorPushCount = state.pushCalls.length
+const finished = await largeCall('?action=finish&id=' + uploadId, 'POST', {})
+assert.equal(finished.status, 201, 'Large PDF finalized')
+assert.equal(state.pushCalls.length, priorPushCount + 1, 'Only one notification')
+assert.equal(state.pushCalls.at(-1), 'https://habun-push-test.invalid/a')
+const finishedAgain = await largeCall('?action=finish&id=' + uploadId, 'POST', {})
+assert.equal(finishedAgain.status, 200, 'Duplicate finalization is idempotent')
+assert.equal((await finishedAgain.json()).alreadyPublished, true)
+assert.equal(state.pushCalls.length, priorPushCount + 1)
+const largeDocument = state.documents.find((row) => row.id === uploadId)
+assert.equal(largeDocument.byte_size, setup.byteSize)
+assert.equal(largeDocument.title, 'Lohnabrechnung')
+assert.equal(largeDocument.blob_key, 'v2/' + uploadId + '/manifest')
+
+selectActor('b')
+assert.equal((await largeCall('?action=info&id=' + uploadId)).status, 404, 'Other staff cannot view large PDF metadata')
+assert.equal((await largeCall('?action=part&id=' + uploadId + '&index=0')).status, 404, 'Other staff cannot fetch document chunks')
+selectActor('a')
+const infoResponse = await largeCall('?action=info&id=' + uploadId)
+assert.equal(infoResponse.status, 200)
+const info = await infoResponse.json()
+assert.equal(info.chunkCount, 5)
+const received = []
+for (let i = 0; i < info.chunkCount; i++) {
+  const response = await largeCall('?action=part&id=' + uploadId + '&index=' + i)
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('content-type'), 'application/octet-stream')
+  received.push(Buffer.from(await response.arrayBuffer()))
+}
+const assembled = Buffer.concat(received)
+assert.deepEqual(assembled, bytes)
+assert.equal((await import('node:crypto')).createHash('sha256').update(assembled).digest('hex'), info.sha256)
+assert.equal(state.audit.filter((entry) => entry.documentId === uploadId && entry.action === 'download').length, 1)
+assert.equal((await largeCall('?action=part&id=' + uploadId + '&index=99')).status, 404)
+selectActor('admin')
+assert.equal((await call(base, 'DELETE', { id: uploadId })).status, 200)
+selectActor('a')
+assert.equal((await largeCall('?action=info&id=' + uploadId)).status, 404, 'Withdrawn PDFs stay private')
+assert.equal((await largeCall('?action=part&id=' + uploadId + '&index=0')).status, 404)
+console.log('PASS: secure 8.85 MB chunked PDF, verified integrity, role isolation, retry and revocation')

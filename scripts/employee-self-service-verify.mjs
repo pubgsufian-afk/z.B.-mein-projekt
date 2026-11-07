@@ -11,13 +11,15 @@ import {
 function source(name) { return readFileSync(new URL('../' + name, import.meta.url), 'utf8') }
 const ownHours = source('netlify/functions/employee-timesheet.mts')
 const postbox = source('netlify/functions/employee-documents.mts')
+const large = source('netlify/functions/employee-documents-large.mts')
+const expandedSql = source('netlify/database/migrations/20261107010000_employee_documents_max_50mb/migration.sql')
 const reportService = source('netlify/functions/_shared/portal-admin-report-service.mts')
 const app = source('frontend/src/App.jsx')
 const ui = source('frontend/src/EmployeeSelfService.jsx')
 const sql = source('netlify/database/migrations/20261106190000_employee_documents/migration.sql')
 
 // Parse the new backend and frontend files using the same JS/TS transformer as the build.
-for (const file of ['netlify/functions/employee-timesheet.mts', 'netlify/functions/employee-documents.mts',
+for (const file of ['netlify/functions/employee-timesheet.mts', 'netlify/functions/employee-documents.mts', 'netlify/functions/employee-documents-large.mts',
   'frontend/src/EmployeeSelfService.jsx', 'frontend/src/App.jsx']) {
   transformSync(source(file), { loader: file.endsWith('.jsx') ? 'jsx' : 'ts', format: 'esm', target: 'es2022' })
 }
@@ -101,8 +103,18 @@ assert.match(ui, /Stundenzettel der Verwaltung/)
 assert.match(ui, /Korrigiert \/ manuell/)
 assert.match(ui, /Excel herunterladen/)
 assert.match(ui, /Dokument zustellen/)
-assert.match(ui, /MAX_DOCUMENT_BYTES = 4 \* 1024 \* 1024/, 'Upload must reject files larger than 4 MB before sending')
+assert.match(ui, /MAX_DOCUMENT_BYTES = 50 \* 1024 \* 1024/, 'Upload must reject files larger than 50 MB before sending')
 assert.match(ui, /documentFileError\(file\)/, 'Upload submission must revalidate the selected PDF')
+assert.match(ui, /uploadLargeEmployeeDocument/, 'iPhone must split large files before upload')
+assert.match(ui, /downloadLargeEmployeeDocument/, 'iPhone must reconstruct large private PDFs')
+assert.match(large, /CHUNK_BYTES = 2 \* 1024 \* 1024/)
+assert.match(large, /MAX_BYTES = 50 \* 1024 \* 1024/)
+assert.match(large, /verifyRequestOrigin\(request\)/, 'New write endpoint must check origin')
+assert.match(large, /mayDownloadEmployeeDocument\(actor, row\)/, 'New download endpoint must check ownership on every chunk')
+assert.match(large, /session.senderUserId|info.senderUserId/, 'Upload session must bind to actual admin')
+assert.match(large, /sendPushToUsers\(\{[\s\S]*?userIds: \[session.employeeUserId\]/)
+assert.match(expandedSql, /52428800/, 'Postgres size check must allow full 50 MB')
+assert.match(expandedSql, /DROP CONSTRAINT employee_documents_byte_size_check/, 'Old database limit must be removed safely')
 assert.match(ui, /response\.status === 413/, 'Oversized Netlify responses must have actionable errors')
 assert.match(ui, /Dateigröße:/, 'Show PDF size before uploading')
 

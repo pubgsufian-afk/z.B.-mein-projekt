@@ -12,6 +12,7 @@ on:
       - 'frontend/src/employee-daily-reports.css'
       - 'frontend/src/employee-self-service.css'
       - 'netlify/functions/employee-documents.mts'
+      - 'netlify/functions/employee-documents-large.mts'
       - 'netlify/functions/employee-document-database-health.mts'
       - 'netlify/functions/_shared/employee-self-service-policy.mjs'
       - 'netlify/functions/_shared/portal-admin-report-service.mts'
