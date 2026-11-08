@@ -76,10 +76,11 @@ export default async function dailyReports(request: Request) {
     const store = reportStore()
 
     if (request.method === 'GET') {
+      if (!canManageDailyReport(current.role)) return response({ message: 'Nur Administratoren dürfen Tagesberichte einsehen.' }, 403)
       const date = url.searchParams.get('date')?.trim() || ''
       if (date && !isIsoDateKey(date)) return response({ message: 'Ungültiges Datum.' }, 400)
       const rows = await listDailyReports(store, date || undefined)
-      // Non-administrators can read only the reports written under their own login.
+      // Report archives are administrator-only, including reports authored by staff.
       return response({ reports: rows.map(({ report }) => report).filter((report) => mayReadDailyReport(current, report)) })
     }
 
