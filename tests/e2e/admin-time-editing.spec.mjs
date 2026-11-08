@@ -123,7 +123,9 @@ async function loginAndOpenTimes(page, role, initialPauseAdjustment = null, mode
   const menu = page.getByRole('button', { name: 'Menü öffnen' })
   if (await menu.isVisible().catch(() => false)) await menu.click()
   await page.getByRole('button', { name: 'Stempelprotokoll', exact: true }).click()
-  await expect(page.locator('.topbar h1')).toHaveText('Stempelprotokoll')
+  const title = page.locator('.topbar h1')
+  await expect(title).toHaveText('Stempelprotokoll')
+  await expect.poll(() => title.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
   return portal
 }
 

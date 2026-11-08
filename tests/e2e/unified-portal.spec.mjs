@@ -239,6 +239,18 @@ async function expectNoHorizontalPageOverflow(page) {
   expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth + 1)
 }
 
+test('sign-in and registration fit a narrow browser window', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 900 })
+  await mockLoggedOutIdentity(page)
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: 'Sicher anmelden' })).toBeInViewport({ ratio: 1 })
+  await expectNoHorizontalPageOverflow(page)
+
+  await page.getByRole('tab', { name: 'Registrierung' }).click()
+  await expect(page.getByLabel('Vollständiger Name')).toBeInViewport({ ratio: 1 })
+  await expectNoHorizontalPageOverflow(page)
+})
+
 test('public registration has no employee ID and remains usable on mobile', async ({ page }) => {
   await mockLoggedOutIdentity(page, { signupSucceeds: true })
   await page.goto('/')
@@ -290,8 +302,10 @@ test('digital attendance supports work, pause, resume and work end', async ({ pa
 test('mobile schedule opens a simple editor from a day card', async ({ page }, testInfo) => {
   await login(page, 'admin')
   await navigate(page, 'Dienstplan')
-  await expect(page.locator('.day-card')).toHaveCount(7)
-  await page.getByRole('button', { name: /Dienst am .* hinzufügen/ }).first().click()
+  const week = page.locator('.management-week-cards')
+  await expect(week.locator('.day-card')).toHaveCount(7)
+  await expect.poll(() => week.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+  await week.getByRole('button', { name: /Dienst am .* hinzufügen/ }).last().click()
   await expect(page.getByRole('heading', { name: 'Dienst erstellen' })).toBeVisible()
   await expect(page.getByText('Schnellwahl Zeit', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '07:00–17:00', exact: true })).toBeVisible()
