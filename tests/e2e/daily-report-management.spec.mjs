@@ -50,12 +50,21 @@ async function mockIdentity(page, user) {
 
 async function mockPortal(page, role) {
   const today = berlinToday()
+  const previous = new Date(`${today}T12:00:00Z`)
+  previous.setUTCDate(previous.getUTCDate() - 7)
+  const previousDay = previous.toISOString().slice(0, 10)
   let reports = [{
     id: 'report-1',
     text: 'Erster Testbericht',
     authorId: 'admin-daily',
     authorName: 'Daily Admin',
     createdAt: `${today}T08:15:00.000Z`,
+  }, {
+    id: 'report-old',
+    text: 'Älterer Testbericht',
+    authorId: 'employee-daily',
+    authorName: 'Daily Employee',
+    createdAt: `${previousDay}T09:15:00.000Z`,
   }]
   const pdfRequests = []
   let deleteCalls = 0
@@ -88,6 +97,7 @@ async function mockPortal(page, role) {
     const url = new URL(request.url())
 
     if (url.pathname === '/api/daily-reports-pdf') {
+      if (role !== 'admin') return route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ message: 'Nur Administratoren dürfen Tagesberichte herunterladen.' }) })
       pdfRequests.push({ id: url.searchParams.get('id'), date: url.searchParams.get('date') })
       return route.fulfill({
         status: 200,
@@ -97,11 +107,14 @@ async function mockPortal(page, role) {
       })
     }
 
-    if (role !== 'admin') return route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ message: 'Keine Berechtigung.' }) })
+    if (role !== 'admin') {
+      if (request.method() === 'POST') return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ report: { id: 'staff-submitted' } }) })
+      return route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ message: 'Nur Administratoren dürfen Tagesberichte einsehen.' }) })
+    }
 
     if (request.method() === 'GET') {
       const date = url.searchParams.get('date')
-      const visible = date === today ? reports : []
+      const visible = date ? reports.filter((report) => report.createdAt.slice(0, 10) === date) : reports
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ reports: visible }) })
     }
 
@@ -158,6 +171,15 @@ test('admin edits, downloads and permanently deletes daily reports with confirma
   await page.getByRole('button', { name: 'Berichte öffnen' }).click()
   await expect(page.getByLabel('Datum')).toHaveValue('')
   await expect(page.getByText('Erster Testbericht')).toBeVisible()
+  await expect(page.getByText('Älterer Testbericht')).toBeVisible()
+  await page.getByRole('searchbox', { name: 'Berichte suchen' }).fill('Älterer')
+  await expect(page.getByText('Erster Testbericht')).toHaveCount(0)
+  await expect(page.getByText('Älterer Testbericht')).toBeVisible()
+  await page.getByRole('button', { name: 'Alle Tage anzeigen' }).click()
+  await expect(page.getByText('Erster Testbericht')).toBeVisible()
+  await expect(page.getByText('Älterer Testbericht')).toBeVisible()
+  await page.getByLabel('Datum').fill(portal.today)
+  await expect(page.getByText('Älterer Testbericht')).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Bearbeiten' }).first().click()
   const editDialog = page.getByRole('dialog', { name: 'Bericht bearbeiten' })
@@ -187,11 +209,27 @@ test('admin edits, downloads and permanently deletes daily reports with confirma
   await page.getByRole('button', { name: 'Endgültig löschen' }).click()
   await expect.poll(() => portal.getDeleteCalls()).toBe(1)
   await expect(page.getByText('Bearbeiteter Testbericht')).toHaveCount(0)
-  await expect(page.getByText('Es sind noch keine Tagesberichte gespeichert.')).toBeVisible()
+  await expect(page.getByText('Keine Berichte für die gewählte Suche oder das Datum gefunden.')).toBeVisible()
 })
 
 test('normal employee never sees daily report management', async ({ page }) => {
   await login(page, 'employee')
   await expect(page.getByText('Tagesbericht', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Berichte öffnen' })).toHaveCount(0)
+})
+
+test('employee can submit but cannot list or download submitted reports', async ({ page }) => {
+  await login(page, 'employee')
+  await expect(page.getByRole('heading', { name: 'Tagesbericht melden' })).toBeVisible()
+  await page.getByRole('textbox', { name: 'Deine Meldung' }).fill('Ein Vorfall wurde gemeldet.')
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: 'Bericht verbindlich absenden' }).click()
+  await expect(page.getByText(/wurde an die Administratoren übermittelt/)).toBeVisible()
+  await expect(page.getByText('Meine gesendeten Berichte')).toHaveCount(0)
+  const statuses = await page.evaluate(async () => {
+    const list = await fetch('/api/daily-reports')
+    const pdf = await fetch('/api/daily-reports-pdf?id=report-1')
+    return { list: list.status, pdf: pdf.status }
+  })
+  expect(statuses).toEqual({ list: 403, pdf: 403 })
 })
