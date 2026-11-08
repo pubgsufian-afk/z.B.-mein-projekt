@@ -111,6 +111,9 @@ function DailyReportDialog({
   reports,
   loadingReports,
   reportDate,
+  reportSearch,
+  onSearchChange,
+  visibleReports,
   onDateChange,
   onDayPdf,
   onReportPdf,
@@ -163,20 +166,26 @@ function DailyReportDialog({
           </div>
         </div> : <div className="daily-report-history">
           <div className="daily-report-toolbar">
+            <label className="daily-report-search-field">
+              <span>Berichte durchsuchen</span>
+              <input aria-label="Berichte suchen" type="search" value={reportSearch} onChange={(event) => onSearchChange(event.target.value)} placeholder="Name, Datum oder Berichtstext" />
+            </label>
             <label className="daily-report-date-field">
-              <span>Datum</span>
+              <span>Datum filtern (optional)</span>
               <input aria-label="Datum" type="date" value={reportDate} onChange={(event) => onDateChange(event.target.value)} />
             </label>
-            <button type="button" className="daily-report-day-pdf" disabled={loadingReports || !reports.length || downloadingReport === 'day'} onClick={onDayPdf}>
+            <button type="button" className="daily-report-reset-filter" onClick={() => { onDateChange(''); onSearchChange('') }} disabled={!reportDate && !reportSearch}>Alle Tage anzeigen</button>
+            <button type="button" className="daily-report-day-pdf" disabled={loadingReports || !reportDate || !reports.some((report) => berlinDateKey(report.createdAt) === reportDate) || downloadingReport === 'day'} onClick={onDayPdf}>
               <Icon name="download" />
               <span>{downloadingReport === 'day' ? 'PDF wird erstellt …' : 'Tages-PDF herunterladen'}</span>
             </button>
           </div>
+          <p className="daily-report-archive-summary" role="status">{loadingReports ? 'Berichtsarchiv wird geladen …' : `${visibleReports.length} von ${reports.length} Berichten angezeigt`}{!reportDate && !loadingReports ? ' · Für eine Tages-PDF bitte ein Datum auswählen.' : ''}</p>
 
-          {loadingReports ? <div className="daily-report-loading">Berichte werden geladen …</div> : reports.length ? reports.map((report) => (
+          {loadingReports ? <div className="daily-report-loading">Berichte werden geladen …</div> : visibleReports.length ? visibleReports.map((report) => (
             <article className="daily-report-entry" key={report.id || report.createdAt}>
               <div className="daily-report-entry-meta">
-                <strong>{report.authorName || 'Admin'}</strong>
+                <strong>{formatReportDate(report.createdAt)} · {report.authorName || 'Admin'}</strong>
                 <span>Erstellt am {formatReportDate(report.createdAt)} um {formatReportTime(report.createdAt)} Uhr</span>
                 {report.updatedAt && <span className="daily-report-edited">Zuletzt bearbeitet am {formatReportDate(report.updatedAt)} um {formatReportTime(report.updatedAt)} Uhr{report.updatedByName ? ` · ${report.updatedByName}` : ''}</span>}
               </div>
@@ -195,7 +204,7 @@ function DailyReportDialog({
                 </div>
               </div>}
             </article>
-          )) : <div className="daily-report-loading">Für dieses Datum sind keine Tagesberichte gespeichert.</div>}
+          )) : <div className="daily-report-loading">{reports.length ? 'Keine Berichte für die gewählte Suche oder das Datum gefunden.' : 'Es sind noch keine Tagesberichte gespeichert.'}</div>}
           {notice && <div className={`daily-report-notice ${notice.tone}`}>{notice.text}</div>}
         </div>}
       </section>
@@ -221,7 +230,18 @@ export default function AdminOverview({ session, navigate }) {
   const [deletingBusy, setDeletingBusy] = useState(false)
   const [downloadingReport, setDownloadingReport] = useState('')
   const today = useMemo(() => berlinDateKey(), [])
-  const [reportDate, setReportDate] = useState(today)
+  const [reportDate, setReportDate] = useState('')
+  const [reportSearch, setReportSearch] = useState('')
+  const visibleReports = useMemo(() => {
+    const needle = reportSearch.trim().toLocaleLowerCase('de-DE')
+    return reports.filter((report) => {
+      const date = berlinDateKey(report.createdAt)
+      if (reportDate && reportDate !== date) return false
+      if (!needle) return true
+      return [report.authorName, report.text, date, formatReportDate(report.createdAt), formatReportTime(report.createdAt)]
+        .join(' ').toLocaleLowerCase('de-DE').includes(needle)
+    })
+  }, [reports, reportDate, reportSearch])
 
   const loadOverview = useCallback(async () => {
     try {
@@ -247,10 +267,10 @@ export default function AdminOverview({ session, navigate }) {
   const groups = useMemo(() => buildDeploymentGroups(schedule, liveAttendance, today), [schedule, liveAttendance, today])
   const todayShifts = useMemo(() => schedule.filter((entry) => entry?.date === today && entry?.status !== 'draft'), [schedule, today])
 
-  const loadReports = useCallback(async (date) => {
+  const loadReports = useCallback(async () => {
     setLoadingReports(true)
     try {
-      const data = await apiJson(`/api/daily-reports?date=${encodeURIComponent(date)}`)
+      const data = await apiJson('/api/daily-reports')
       setReports(Array.isArray(data.reports) ? data.reports : [])
     } catch (error) {
       setReports([])
@@ -279,7 +299,9 @@ export default function AdminOverview({ session, navigate }) {
     setDeletingReport(null)
     setReportMode('history')
     setReportNotice(null)
-    await loadReports(reportDate)
+    setReportDate('')
+    setReportSearch('')
+    await loadReports()
   }
 
   const saveReport = async () => {
@@ -317,19 +339,17 @@ export default function AdminOverview({ session, navigate }) {
       setEditingReport(null)
       setReportText('')
       setReportMode('history')
-      await loadReports(reportDate)
+      await loadReports()
       setReportNotice({ tone: 'success', text: 'Der Tagesbericht wurde bearbeitet.' })
     } catch (error) {
       setReportNotice({ tone: 'error', text: error.message || 'Der Tagesbericht konnte nicht bearbeitet werden.' })
     } finally { setSavingReport(false) }
   }
 
-  const changeReportDate = async (date) => {
-    if (!date) return
+  const changeReportDate = (date) => {
     setReportDate(date)
     setDeletingReport(null)
     setReportNotice(null)
-    await loadReports(date)
   }
 
   const confirmDeleteReport = async () => {
@@ -339,7 +359,7 @@ export default function AdminOverview({ session, navigate }) {
     try {
       await apiJson(`/api/daily-reports?id=${encodeURIComponent(deletingReport.id)}`, { method: 'DELETE' })
       setDeletingReport(null)
-      await loadReports(reportDate)
+      await loadReports()
       setReportNotice({ tone: 'success', text: 'Der Tagesbericht wurde endgültig gelöscht.' })
     } catch (error) {
       setReportNotice({ tone: 'error', text: error.message || 'Der Tagesbericht konnte nicht gelöscht werden.' })
@@ -357,7 +377,7 @@ export default function AdminOverview({ session, navigate }) {
   }
 
   const downloadDayPdf = async () => {
-    if (!reports.length) return
+    if (!reportDate || !reports.some((report) => berlinDateKey(report.createdAt) === reportDate)) return
     setDownloadingReport('day')
     setReportNotice(null)
     try {
@@ -433,6 +453,9 @@ export default function AdminOverview({ session, navigate }) {
       reports={reports}
       loadingReports={loadingReports}
       reportDate={reportDate}
+      reportSearch={reportSearch}
+      onSearchChange={setReportSearch}
+      visibleReports={visibleReports}
       onDateChange={changeReportDate}
       onDayPdf={downloadDayPdf}
       onReportPdf={downloadReportPdf}
