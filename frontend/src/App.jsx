@@ -502,6 +502,7 @@ function EmployeesPage({ session }) {
 function SchedulePage({ session }) {
   const management = MANAGEMENT.has(session.role)
   const [week, setWeek] = useState(mondayOf())
+  const [showPlanActions, setShowPlanActions] = useState(false)
   const [entries, setEntries] = useState([])
   const [objects, setObjects] = useState([])
   const [employees, setEmployees] = useState([])
@@ -632,8 +633,33 @@ function SchedulePage({ session }) {
   return <>
     <Notice notice={notice} onClose={() => setNotice(null)} />
     {!management && <section className="panel employee-schedule-intro"><PageHeader title="Mein Dienstplan" subtitle="Hier siehst du ausschließlich deine freigegebenen Dienste." /></section>}
-    <section className="panel schedule-toolbar"><div className="toolbar-row"><label>Woche ab<input type="date" value={week} onChange={(event) => setWeek(mondayOf(event.target.value))} /></label><div className="toolbar-actions"><button className="secondary-button" onClick={() => setWeek(mondayOf(addDays(week, -7)))}>‹ Vorherige</button><button className="secondary-button" onClick={() => setWeek(mondayOf())}>Aktuelle Woche</button><button className="secondary-button" onClick={() => setWeek(mondayOf(addDays(week, 7)))}>Nächste ›</button></div></div>{management && <div className="toolbar-actions"><button className="secondary-button" disabled={Boolean(busy)} onClick={() => post('copy-previous-week')}>Vorwoche kopieren</button><button className="secondary-button" disabled={Boolean(busy)} onClick={downloadSchedulePdf}>{busy === 'schedule-pdf' ? 'PDF wird erstellt …' : 'Dienstplan als PDF'}</button><button className="primary-button" disabled={Boolean(busy)} onClick={() => window.confirm('Diesen Wochenplan jetzt für Mitarbeiter freigeben?') && post('publish')}>Entwurf prüfen und freigeben</button></div>}</section>
-    {management ? <div className="week-cards management-week-cards">{days.map((date) => { const dayEntries = visibleEntries.filter((entry) => entry.date === date); return <section className="day-card" key={date}><header><div><span>{formatDate(date, { weekday: 'long' })}</span><strong>{formatDate(date, { day: '2-digit', month: '2-digit' })}</strong></div><button aria-label={`Dienst am ${formatDate(date)} hinzufügen`} onClick={() => startNew(date)}>＋</button></header><div>{dayEntries.length ? dayEntries.map((entry) => <button type="button" className="shift-item" key={entry.id} onClick={() => edit(entry)}><strong>{entry.start}–{entry.end}</strong><span>{entry.employeeName}</span><small>{entry.location} · {entry.workArea}</small><em>{entry.pauseMinutes || 0} Min. Pause · {entry.status === 'published' ? 'Freigegeben' : 'Entwurf'}</em></button>) : <span className="day-empty">Kein Dienst</span>}</div></section> })}</div> : sortedEmployeeEntries.length ? <div className="employee-shift-list">{sortedEmployeeEntries.map((entry) => <article className="employee-shift-card" key={entry.id}><header><div><span>{formatDate(entry.date, { weekday: 'long' })}</span><strong>{formatDate(entry.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong></div><strong className="employee-shift-time">{entry.start}–{entry.end}</strong></header><div className="employee-shift-details"><strong>{entry.location || 'Einsatzort nicht angegeben'}</strong><span>{entry.workArea || 'Arbeitsbereich nicht angegeben'}</span><small>{entry.pauseMinutes || 0} Min. Pause</small></div></article>)}</div> : <section className="panel employee-schedule-empty"><Empty>Für diese Woche ist kein freigegebener Dienst eingetragen.</Empty></section>}
+    <section className={management ? 'panel schedule-toolbar schedule-toolbar-management' : 'panel schedule-toolbar'}>
+      <div className="toolbar-row">
+        <label>Woche ab<input type="date" value={week} onChange={(event) => setWeek(mondayOf(event.target.value))} /></label>
+        <div className="toolbar-actions">
+          <button className="secondary-button" onClick={() => setWeek(mondayOf(addDays(week, -7)))}>‹ Vorherige</button>
+          <button className="secondary-button" onClick={() => setWeek(mondayOf())}>Aktuelle Woche</button>
+          <button className="secondary-button" onClick={() => setWeek(mondayOf(addDays(week, 7)))}>Nächste ›</button>
+        </div>
+      </div>
+      {management && <>
+        <button
+          type="button"
+          className="secondary-button schedule-actions-toggle"
+          aria-expanded={showPlanActions}
+          aria-controls="schedule-admin-actions"
+          onClick={() => setShowPlanActions((open) => !open)}
+        >
+          Plan verwalten
+        </button>
+        <div id="schedule-admin-actions" className="toolbar-actions schedule-admin-actions" data-expanded={showPlanActions}>
+          <button className="secondary-button" disabled={Boolean(busy)} onClick={() => post('copy-previous-week')}>Vorwoche kopieren</button>
+          <button className="secondary-button" disabled={Boolean(busy)} onClick={downloadSchedulePdf}>{busy === 'schedule-pdf' ? 'PDF wird erstellt …' : 'Dienstplan als PDF'}</button>
+          <button className="primary-button" disabled={Boolean(busy)} onClick={() => window.confirm('Diesen Wochenplan jetzt für Mitarbeiter freigeben?') && post('publish')}>Entwurf prüfen und freigeben</button>
+        </div>
+      </>}
+    </section>
+    {management ? <div className="week-cards management-week-cards">{days.map((date) => { const dayEntries = visibleEntries.filter((entry) => entry.date === date); return <section className="day-card" key={date}><header><div><span>{formatDate(date, { weekday: 'long' })}</span><strong>{formatDate(date, { day: '2-digit', month: '2-digit' })}</strong></div><button aria-label={`Dienst am ${formatDate(date)} hinzufügen`} onClick={() => startNew(date)}>+</button></header><div>{dayEntries.length ? dayEntries.map((entry) => <button type="button" className="shift-item" key={entry.id} onClick={() => edit(entry)}><strong>{entry.start}–{entry.end}</strong><span>{entry.employeeName}</span><small>{entry.location} · {entry.workArea}</small><em>{entry.pauseMinutes || 0} Min. Pause · {entry.status === 'published' ? 'Freigegeben' : 'Entwurf'}</em></button>) : <span className="day-empty">Kein Dienst</span>}</div></section> })}</div> : sortedEmployeeEntries.length ? <div className="employee-shift-list">{sortedEmployeeEntries.map((entry) => <article className="employee-shift-card" key={entry.id}><header><div><span>{formatDate(entry.date, { weekday: 'long' })}</span><strong>{formatDate(entry.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong></div><strong className="employee-shift-time">{entry.start}–{entry.end}</strong></header><div className="employee-shift-details"><strong>{entry.location || 'Einsatzort nicht angegeben'}</strong><span>{entry.workArea || 'Arbeitsbereich nicht angegeben'}</span><small>{entry.pauseMinutes || 0} Min. Pause</small></div></article>)}</div> : <section className="panel employee-schedule-empty"><Empty>Für diese Woche ist kein freigegebener Dienst eingetragen.</Empty></section>}
     {management && editing && <section className="panel editor-panel" ref={editorRef}>
       <PageHeader title={form.id ? 'Dienst bearbeiten' : 'Dienst erstellen'} subtitle="Häufige Zeiten schnell auswählen und vor dem Speichern prüfen." action={<button className="secondary-button compact" onClick={() => setEditing(false)}>Schließen</button>} />
       <form className="schedule-form" onSubmit={save}>
