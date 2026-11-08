@@ -298,6 +298,7 @@ export default async function dailyReportsPdf(request: Request) {
     const access = await requirePortalRole(['owner', 'admin', 'manager', 'employee'])
     if (!access.current) return jsonError('Nicht angemeldet.', 401)
     if (access.response) return access.response
+    if (!canManageDailyReport(access.current.role)) return jsonError('Nur Administratoren dürfen Tagesberichte herunterladen.', 403)
 
     const url = new URL(request.url)
     const id = url.searchParams.get('id')?.trim() || ''
