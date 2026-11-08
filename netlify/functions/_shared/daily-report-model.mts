@@ -54,8 +54,17 @@ export function safePdfFilenamePart(value: unknown) {
 }
 
 export async function listDailyReports(store = reportStore(), date?: string) {
-  const listed = await store.list({ prefix: 'reports/' })
-  const rows = await Promise.all(listed.blobs.map(async (blob) => ({
+  // Netlify Blobs paginates results. Without following the cursor, older
+  // submissions eventually disappear from an otherwise valid admin archive.
+  const blobs: Array<{ key: string }> = []
+  let cursor = ''
+  while (true) {
+    const listed = await store.list({ prefix: 'reports/', ...(cursor ? { cursor } : {}) })
+    blobs.push(...listed.blobs)
+    if (!listed.hasMore || !listed.cursor || listed.cursor === cursor) break
+    cursor = listed.cursor
+  }
+  const rows = await Promise.all(blobs.map(async (blob) => ({
     key: blob.key,
     report: await store.get(blob.key, { type: 'json' }) as DailyReport | null,
   })))

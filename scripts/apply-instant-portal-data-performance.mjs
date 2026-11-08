@@ -81,9 +81,12 @@ async function applyAdminOverview() {
   const [liveLoaded, setLiveLoaded] = useState(() => !isAdmin || initialLiveAttendance !== undefined)`
   apply(oldStateStart, newStateStart, 'AdminOverview Snapshot-State')
 
-  const duplicateToday = "  const today = useMemo(() => berlinDateKey(), [])\n  const [reportDate, setReportDate] = useState(today)"
+  // The report archive now starts with an empty optional date filter.
+  // Remove the old today declaration regardless of its filter default;
+  // the display-snapshot state above already defines today once.
+  const duplicateToday = "  const today = useMemo(() => berlinDateKey(), [])\n  const [reportDate, setReportDate] = useState("
   if (source.includes(duplicateToday)) {
-    source = source.replace(duplicateToday, "  const [reportDate, setReportDate] = useState(today)")
+    source = source.replace(duplicateToday, "  const [reportDate, setReportDate] = useState(")
     changed = true
   }
 

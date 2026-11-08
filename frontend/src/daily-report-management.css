@@ -1,6 +1,6 @@
 .daily-report-toolbar {
   display: grid;
-  grid-template-columns: minmax(170px, .72fr) minmax(210px, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: end;
   gap: 10px;
   margin-bottom: 14px;
@@ -10,7 +10,8 @@
   background: linear-gradient(145deg, #111719, #0a0f11);
 }
 
-.daily-report-date-field {
+.daily-report-date-field,
+.daily-report-search-field {
   display: grid;
   gap: 7px;
   min-width: 0;
@@ -19,7 +20,8 @@
   font-weight: 750;
 }
 
-.daily-report-date-field input {
+.daily-report-date-field input,
+.daily-report-search-field input {
   width: 100%;
   min-height: 44px;
   border: 1px solid #354147;
@@ -32,9 +34,32 @@
   font-size: 13px;
 }
 
-.daily-report-date-field input:focus {
+.daily-report-date-field input:focus,
+.daily-report-search-field input:focus {
   outline: 2px solid rgba(239, 199, 94, .2);
   border-color: rgba(239, 199, 94, .62);
+}
+
+.daily-report-search-field { grid-column: 1 / -1; }
+
+.daily-report-reset-filter {
+  min-height: 44px;
+  border: 1px solid #354147;
+  border-radius: 11px;
+  color: #dae1e4;
+  background: #161d20;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.daily-report-reset-filter:disabled { opacity: .55; cursor: default; }
+.daily-report-reset-filter:not(:disabled):hover { border-color: #d6ab44; }
+
+.daily-report-archive-summary {
+  margin: 0 0 12px;
+  color: #a6b2b8;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .daily-report-day-pdf {
@@ -163,6 +188,9 @@
   .daily-report-toolbar {
     grid-template-columns: 1fr;
   }
+
+  .daily-report-search-field { grid-column: auto; }
+  .daily-report-reset-filter { width: 100%; }
 
   .daily-report-day-pdf {
     width: 100%;

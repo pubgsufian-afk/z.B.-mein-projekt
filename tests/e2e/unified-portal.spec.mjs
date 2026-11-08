@@ -219,7 +219,7 @@ async function login(page, role = 'admin') {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
   await page.getByLabel('E-Mail-Adresse').fill(user.email)
-  await page.getByLabel('Passwort').fill('TestPasswort123!')
+  await page.getByLabel('Passwort').fill('test-login')
   await page.getByRole('button', { name: 'Sicher anmelden' }).click()
   await expect(page.getByRole('heading', { name: role === 'employee' ? 'Stempeluhr' : 'Übersicht', exact: true })).toBeVisible()
 }
@@ -383,25 +383,17 @@ test('employee sees only clock and own published schedule', async ({ page }, tes
 })
 
 
-test('employee can submit a locked daily report, see only own history and download own PDF', async ({ page }) => {
+test('employee can submit daily reports but cannot see submitted content', async ({ page }) => {
   await login(page, 'employee')
   await page.getByRole('button', { name: 'Berichte', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Tagesbericht melden' })).toBeVisible()
-  await expect(page.locator('.employee-report-item')).toHaveCount(0)
-
   await page.getByLabel('Deine Meldung').fill('Kontrollgang im Objekt Nord abgeschlossen. Notausgang geprüft.')
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Bericht verbindlich absenden' }).click()
-  await expect(page.getByText(/erfolgreich an die Verwaltung übermittelt/)).toBeVisible()
-  await expect(page.locator('.employee-report-item')).toHaveCount(1)
-  await expect(page.locator('.employee-report-item').getByText(/Kontrollgang im Objekt Nord/)).toBeVisible()
-  await expect(page.locator('.employee-report-item').getByText('Anna Beispiel')).toBeVisible()
-
-  // Staff can view and export, but not change or delete their submitted report.
-  await expect(page.locator('.employee-report-page').getByRole('button', { name: /Bearbeiten|Löschen|Änderungen speichern/ })).toHaveCount(0)
-  const pdf = page.waitForEvent('download')
-  await page.getByRole('button', { name: 'Eigenen Bericht als PDF' }).click()
-  expect((await pdf).suggestedFilename()).toMatch(/\.pdf$/i)
+  await expect(page.getByText(/an die Administratoren übermittelt/)).toBeVisible()
+  await expect(page.locator('.employee-report-item')).toHaveCount(0)
+  await expect(page.getByText('Meine gesendeten Berichte')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Eigenen Bericht als PDF' })).toHaveCount(0)
   await expectNoHorizontalPageOverflow(page)
 })
 
@@ -412,7 +404,7 @@ test('direct mailbox URL opens the admin postbox after login without sidebar cli
   await page.goto('/?view=mailbox')
   await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
   await page.getByLabel('E-Mail-Adresse').fill(user.email)
-  await page.getByLabel('Passwort').fill('TestPasswort123!')
+  await page.getByLabel('Passwort').fill('test-login')
   await page.getByRole('button', { name: 'Sicher anmelden' }).click()
   await expect(page.getByRole('heading', { name: 'Mitarbeiterpostfach verwalten' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Dokument zustellen' })).toBeVisible()
@@ -426,7 +418,7 @@ test('unknown direct URL does not bypass role-based navigation', async ({ page }
   await page.goto('/?view=employees')
   await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
   await page.getByLabel('E-Mail-Adresse').fill(user.email)
-  await page.getByLabel('Passwort').fill('TestPasswort123!')
+  await page.getByLabel('Passwort').fill('test-login')
   await page.getByRole('button', { name: 'Sicher anmelden' }).click()
   await expect(page.getByRole('heading', { name: 'Stempeluhr', exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Mitarbeiter', exact: true })).toHaveCount(0)

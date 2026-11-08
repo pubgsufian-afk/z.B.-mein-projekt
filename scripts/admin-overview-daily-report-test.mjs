@@ -74,7 +74,8 @@ assert.deepEqual(groups.notStarted.map((entry) => entry.name), ['Kwame'], 'missi
 
 assert.match(api, /requirePortalRole\(\['owner', 'admin', 'manager', 'employee'\]\)/, 'approved employees can submit reports')
 assert.match(api, /if \(!canManageDailyReport\(current\.role\)\)/, 'only admins can modify or delete reports')
-assert.match(api, /mayReadDailyReport\(current, report\)/, 'employee access must be author-scoped')
+assert.match(api, /if \(request.method === 'GET'\) \{\s*if \(!canManageDailyReport\(current\.role\)\)/, 'GET must reject non-admin actors')
+assert.match(api, /mayReadDailyReport\(current, report\)/, 'records must also use role-based policy')
 assert.match(api, /reportStore/, 'API must use the shared daily report store helper')
 assert.match(model, /portal-daily-reports/, 'shared model must keep the dedicated lightweight blob store')
 assert.match(api, /MAX_REPORT_WORDS\s*=\s*1000/, 'API must enforce the 1,000 word limit')

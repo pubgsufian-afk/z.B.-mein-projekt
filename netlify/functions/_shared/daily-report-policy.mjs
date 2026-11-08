@@ -1,4 +1,4 @@
-/** Tagesberichte are visible to the author or to company administrators only. */
+/** Only company administrators can read submitted daily reports. Staff can submit, never read. */
 export const DAILY_REPORT_ROLES = ['owner', 'admin', 'manager', 'employee']
 
 export function canSubmitDailyReport(role) {
@@ -10,8 +10,5 @@ export function canManageDailyReport(role) {
 }
 
 export function mayReadDailyReport(actor, report) {
-  if (!actor || !report || !actor.userId) return false
-  return canManageDailyReport(actor.role) || (
-    canSubmitDailyReport(actor.role) && report.authorId === actor.userId
-  )
+  return Boolean(actor?.userId && report?.id && canManageDailyReport(actor.role))
 }
