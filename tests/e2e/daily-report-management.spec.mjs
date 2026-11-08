@@ -220,6 +220,7 @@ test('normal employee never sees daily report management', async ({ page }) => {
 
 test('employee can submit but cannot list or download submitted reports', async ({ page }) => {
   await login(page, 'employee')
+  await page.getByRole('button', { name: 'Berichte', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Tagesbericht melden' })).toBeVisible()
   await page.getByRole('textbox', { name: 'Deine Meldung' }).fill('Ein Vorfall wurde gemeldet.')
   page.once('dialog', (dialog) => dialog.accept())
