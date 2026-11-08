@@ -16,7 +16,10 @@ for (const label of [
 ]) {
   assert.match(source, new RegExp(label.replace(/[?]/g, '\\?')), `report manager must render ${label}`)
 }
-assert.match(source, /type="date"/, 'history must provide a date filter')
+assert.match(source, /type="date"/, 'history must provide optional date filter')
+assert.match(source, /type="search"/, 'admins must be able to search the full archive')
+assert.match(source, /Alle Tage anzeigen/, 'all dates must be shown by default')
+assert.match(source, /apiJson\('\/api\/daily-reports'\)/, 'full archive must be loaded without requiring a date')
 assert.match(source, /method:\s*'PATCH'/, 'edit must use PATCH')
 assert.match(source, /method:\s*'DELETE'/, 'delete must use DELETE')
 assert.match(source, /daily-reports-pdf/, 'UI must use daily report PDF endpoint')
