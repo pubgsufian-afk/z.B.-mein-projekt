@@ -141,7 +141,7 @@ async function login(page, role = 'admin') {
   const portal = await mockPortal(page, role)
   await page.goto('/')
   await page.getByLabel('E-Mail-Adresse').fill(user.email)
-  await page.getByLabel('Passwort').fill('TestPasswort123!')
+  await page.getByLabel('Passwort').fill('test-login')
   await page.getByRole('button', { name: 'Sicher anmelden' }).click()
   if (role === 'admin') {
     await expect(page.locator('.topbar h1')).toHaveText('Übersicht')
@@ -156,7 +156,7 @@ test('admin edits, downloads and permanently deletes daily reports with confirma
   const portal = await login(page, 'admin')
 
   await page.getByRole('button', { name: 'Berichte öffnen' }).click()
-  await expect(page.getByLabel('Datum')).toHaveValue(portal.today)
+  await expect(page.getByLabel('Datum')).toHaveValue('')
   await expect(page.getByText('Erster Testbericht')).toBeVisible()
 
   await page.getByRole('button', { name: 'Bearbeiten' }).first().click()
@@ -170,6 +170,7 @@ test('admin edits, downloads and permanently deletes daily reports with confirma
   await page.getByRole('button', { name: 'PDF', exact: true }).click()
   await expect.poll(() => portal.pdfRequests.some((request) => request.id === 'report-1')).toBeTruthy()
 
+  await page.getByLabel('Datum').fill(portal.today)
   await page.getByRole('button', { name: 'Tages-PDF herunterladen' }).click()
   await expect.poll(() => portal.pdfRequests.some((request) => request.date === portal.today)).toBeTruthy()
 
@@ -186,7 +187,7 @@ test('admin edits, downloads and permanently deletes daily reports with confirma
   await page.getByRole('button', { name: 'Endgültig löschen' }).click()
   await expect.poll(() => portal.getDeleteCalls()).toBe(1)
   await expect(page.getByText('Bearbeiteter Testbericht')).toHaveCount(0)
-  await expect(page.getByText('Für dieses Datum sind keine Tagesberichte gespeichert.')).toBeVisible()
+  await expect(page.getByText('Es sind noch keine Tagesberichte gespeichert.')).toBeVisible()
 })
 
 test('normal employee never sees daily report management', async ({ page }) => {
