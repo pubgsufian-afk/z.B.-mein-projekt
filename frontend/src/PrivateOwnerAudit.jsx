@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import './PrivateOwnerAudit.css'
+import { describeAuditEvent, auditValue } from './private-audit-presentation.mjs'
 
 const CATEGORY_OPTIONS = [
   ['', 'Alle Bereiche'],
@@ -26,15 +27,15 @@ function csvCell(value) {
 }
 
 function downloadCsv(events) {
-  const head = ['Datum/Uhrzeit', 'Admin', 'Konto-ID', 'Bereich', 'Aktion', 'Betroffenes Objekt', 'Beschreibung', 'Vorher', 'Nachher']
+  const head = ['Datum/Uhrzeit', 'Admin', 'Konto-ID', 'Bereich', 'Aktion', 'Betroffene Person', 'Was genau gemacht wurde', 'Vorher', 'Nachher']
   const rows = events.map((event) => [
     berlinDateTime(event.occurredAt),
     event.actorName || event.actorEmail || event.actorId,
     event.actorId,
     event.category,
     event.action,
-    event.entityId,
-    event.summary,
+    event.targetName || event.entityId,
+    describeAuditEvent(event).title + ' ' + describeAuditEvent(event).changes.map((entry) => entry.label + ': ' + (entry.hasBefore ? entry.before : '–') + ' → ' + (entry.hasAfter ? entry.after : '–')).join('; '),
     event.before ? JSON.stringify(event.before) : '',
     event.after ? JSON.stringify(event.after) : '',
   ])
@@ -49,9 +50,17 @@ function downloadCsv(events) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-function Detail({ label, data }) {
-  if (!data || !Object.keys(data).length) return null
-  return <div className="private-audit-detail"><strong>{label}</strong><pre>{JSON.stringify(data, null, 2)}</pre></div>
+function ChangeLine({ change }) {
+  return <div className="private-audit-change-row">
+    <span className="private-audit-change-label">{change.label}</span>
+    <div className="private-audit-change-values">
+      {change.hasBefore && change.hasAfter
+        ? <><span className="private-audit-old">{change.before}</span><span className="private-audit-arrow" aria-hidden="true">→</span><strong>{change.after}</strong></>
+        : change.hasAfter
+          ? <strong>{change.after}</strong>
+          : <><span className="private-audit-old">{change.before}</span><strong>Entfernt</strong></>}
+    </div>
+  </div>
 }
 
 export default function PrivateOwnerAudit({ accountId }) {
@@ -140,27 +149,44 @@ export default function PrivateOwnerAudit({ accountId }) {
       {loading ? <p>Der geschützte Verlauf wird geladen …</p>
         : events.length === 0 ? <p>Keine protokollierten Änderungen zu diesen Filtern gefunden.</p>
           : <div className="private-audit-items">
-              {events.map((event, index) => <article className="private-audit-item" key={event.source + '-' + event.id + '-' + index}>
-                <div className="private-audit-item-head">
-                  <div><strong>{event.actorName || event.actorEmail || 'Unbekannter Admin'}</strong><span>{berlinDateTime(event.occurredAt)}</span></div>
-                  <span className="private-audit-chip">{event.category}</span>
-                </div>
-                <p><b>{event.action}</b>{event.summary ? ' · ' + event.summary : ''}</p>
-                {event.entityId && <small>Objekt / Mitarbeiter: {event.entityId}</small>}
-                <button type="button" className="private-audit-more" aria-expanded={expanded === index} onClick={() => setExpanded(expanded === index ? null : index)}>
-                  {expanded === index ? 'Details schließen' : 'Details anzeigen'}
-                </button>
-                {expanded === index && <div className="private-audit-expanded">
-                  <div><strong>Konto-ID:</strong> {event.actorId}</div>
-                  <div><strong>Berechtigung:</strong> {event.actorRole || '–'}</div>
-                  <div><strong>Quelle:</strong> {event.source || 'Portal'}</div>
-                  <div className="private-audit-diff">
-                    <Detail label="Vorher" data={event.before} />
-                    <Detail label="Nachher / Details" data={event.after} />
+              {events.map((event, index) => {
+                const presentation = describeAuditEvent(event)
+                const opened = expanded === index
+                return <article className="private-audit-item" key={event.source + '-' + event.id + '-' + index}>
+                  <div className="private-audit-item-head">
+                    <div><strong>{event.actorName || event.actorEmail || 'Unbekannter Admin'}</strong><span>{berlinDateTime(event.occurredAt)}</span></div>
+                    <span className="private-audit-chip">{event.category}</span>
                   </div>
-                  {!event.before && !event.after && <p>Für diesen älteren Vorgang wurden keine Vorher-/Nachher-Werte gespeichert.</p>}
-                </div>}
-              </article>)}
+                  <h4 className="private-audit-sentence">{presentation.title}</h4>
+                  {event.targetName
+                    ? <p className="private-audit-target"><strong>Betroffen:</strong> {event.targetName}</p>
+                    : event.category === 'Mitarbeiter'
+                      ? <p className="private-audit-target">Der Mitarbeitername ist in diesem älteren Eintrag nicht mehr verfügbar.</p>
+                      : null}
+                  {presentation.changes.length
+                    ? <div className="private-audit-changes">
+                        {(opened ? presentation.changes : presentation.changes.slice(0, 3)).map((change) => <ChangeLine key={change.key} change={change} />)}
+                        {!opened && presentation.changes.length > 3 && <p className="private-audit-muted">{presentation.changes.length - 3} weitere Änderungen in den Details</p>}
+                      </div>
+                    : <p className="private-audit-muted">Für diese Aktion wurden keine einzelnen alten und neuen Werte gespeichert.</p>}
+                  <button type="button" className="private-audit-more" aria-expanded={opened} onClick={() => setExpanded(opened ? null : index)}>
+                    {opened ? 'Details schließen' : 'Weitere Informationen'}
+                  </button>
+                  {opened && <div className="private-audit-expanded">
+                    <div><strong>Aktion:</strong> {event.action}</div>
+                    <div><strong>Durchgeführt von:</strong> {event.actorName || event.actorEmail || 'Unbekannt'}</div>
+                    <div><strong>Rolle des handelnden Kontos:</strong> {auditValue('role', event.actorRole) || '–'}</div>
+                    {event.targetName && <div><strong>Betroffener Mitarbeiter:</strong> {event.targetName}</div>}
+                    {event.summary && !event.summary.startsWith('POST /api/') && <div><strong>Begründung / Hinweis:</strong> {event.summary}</div>}
+                    <details className="private-audit-technical">
+                      <summary>Technische Angaben anzeigen</summary>
+                      <div><strong>Admin-Konto-ID:</strong> {event.actorId}</div>
+                      {event.entityId && <div><strong>Datensatz-ID:</strong> {event.entityId}</div>}
+                      <div><strong>Quelle:</strong> {event.source || 'Portal'}</div>
+                    </details>
+                  </div>}
+                </article>
+              })}
             </div>}
     </section>
     <section className="private-audit-footnote">
