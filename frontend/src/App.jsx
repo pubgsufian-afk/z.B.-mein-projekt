@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { plannedNetMinutes } from './timesheet-utils.js'
 import { EmployeeTimesheetPage, EmployeeMailboxPage } from './EmployeeSelfService.jsx'
 import EmployeeDailyReports from './EmployeeDailyReports.jsx'
+import PrivateOwnerAudit from './PrivateOwnerAudit.jsx'
 import {
   AuthError,
   getUser,
@@ -49,6 +50,7 @@ const NAVIGATION = [
   { key: 'corrections', label: 'Korrekturen', roles: ['owner', 'admin', 'manager'] },
   { key: 'reports', label: 'Berichte', roles: ['owner', 'admin', 'manager'] },
   { key: 'settings', label: 'Einstellungen', roles: ['owner', 'admin'] },
+  { key: 'private-audit', label: 'Mein Änderungsverlauf', roles: [] },
 ]
 
 async function apiJson(path, options = {}) {
@@ -266,9 +268,9 @@ function PendingScreen({ session, onLogout }) {
   return <main className="pending-page"><section className="pending-card"><Brand /><div className="pending-mark">✓</div><h1>Registrierung eingegangen</h1><p>Hallo {session.fullName || 'Mitarbeiter'}, dein Konto wartet auf die Freigabe durch Habun Security.</p><div className="pending-details"><div><span>Status</span><strong>Prüfung durch Admin</strong></div><div><span>Einsatzort</span><strong>{session.location || '–'}</strong></div></div><button className="secondary-button" onClick={onLogout}>Abmelden</button></section></main>
 }
 
-function PortalShell({ session, page, setPage, onLogout, children }) {
+function PortalShell({ session, page, setPage, onLogout, privateAuditAccess = false, children }) {
   const [drawer, setDrawer] = useState(false)
-  const items = NAVIGATION.filter((item) => item.roles.includes(session.role))
+  const items = NAVIGATION.filter((item) => item.key === 'private-audit' ? privateAuditAccess : item.roles.includes(session.role))
   const title = items.find((item) => item.key === page)?.label || 'Übersicht'
   const navigate = (key) => { setPage(key); setDrawer(false); window.scrollTo({ top: 0, behavior: 'smooth' }) }
 
@@ -854,7 +856,16 @@ function SettingsPage() {
 }
 
 function UnifiedPortal({ session, onLogout }) {
-  const allowed = NAVIGATION.filter((item) => item.roles.includes(session.role)).map((item) => item.key)
+  const [privateAuditAccess, setPrivateAuditAccess] = useState(false)
+  useEffect(() => {
+    if (session.role !== 'owner') { setPrivateAuditAccess(false); return }
+    let active = true
+    apiJson('/api/private-owner-audit?resource=access')
+      .then((data) => { if (active) setPrivateAuditAccess(data.allowed === true && data.userId === (session.userId || session.id)) })
+      .catch(() => { if (active) setPrivateAuditAccess(false) })
+    return () => { active = false }
+  }, [session.role, session.userId, session.id])
+  const allowed = NAVIGATION.filter((item) => item.key === 'private-audit' ? privateAuditAccess : item.roles.includes(session.role)).map((item) => item.key)
   const initialPage = session.role === 'employee' ? 'attendance' : 'overview'
   // An authenticated deep link lets users open a tab directly after login.
   // Only registered navigation keys for the current role are accepted.
@@ -875,8 +886,9 @@ function UnifiedPortal({ session, onLogout }) {
               : page === 'corrections' ? <CorrectionsPage session={session} />
                 : page === 'reports' ? <ReportsPage />
                   : page === 'settings' ? <SettingsPage />
+                  : page === 'private-audit' && privateAuditAccess ? <PrivateOwnerAudit accountId={session.userId || session.id} />
                     : <OverviewPage session={session} navigate={setPage} />
-  return <PortalShell session={session} page={page} setPage={setPage} onLogout={onLogout}>{content}</PortalShell>
+  return <PortalShell session={session} page={page} setPage={setPage} onLogout={onLogout} privateAuditAccess={privateAuditAccess}>{content}</PortalShell>
 }
 
 export default function App() {
