@@ -323,9 +323,7 @@ async function upsertObject(current: NonNullable<Awaited<ReturnType<typeof curre
   const radius = Number(body.radiusMeters || 500)
   if (!Number.isFinite(radius) || radius < 0 || radius > 10000) return json({ message: 'Der Prüfradius ist ungültig.' }, 400)
   const site: WorkSite = { id, name, address, latitude: lat, longitude: lon, radiusMeters: radius, updatedAt: new Date().toISOString(), updatedBy: current.userId }
-  const previous = await legacyScheduleStore().get(`objects/${id}`, { type: 'json' }) as WorkSite | null
   await legacyScheduleStore().setJSON(`objects/${id}`, site)
-  await tryRecordPortalAdminChange({ actor: current, category: 'Einsatzorte', action: previous ? 'Einsatzort geändert' : 'Einsatzort erstellt', entityId: id, before: previous, after: site })
   return json({ object: site }, 201)
 }
 
@@ -400,7 +398,13 @@ export default async function scheduleV2Neon(request: Request, _context: Context
     if (action === 'publish') return await publishWeek(current, String(body.week || body.date || ''))
     if (action === 'copy-previous-week') return await copyPreviousWeek(current, String(body.week || ''))
     if (action === 'repeat') return await repeatShift(current, body)
-    if (action === 'object-upsert') return await upsertObject(current, body)
+    if (action === 'object-upsert') {
+      const id = String(body.id || '').trim()
+      const previous = id ? await legacyScheduleStore().get(`objects/${id}`, { type: 'json' }) as WorkSite | null : null
+      const result = await upsertObject(current, body)
+      if (result.ok) await tryRecordPortalAdminChange({ actor: current, category: 'Einsatzorte', action: previous ? 'Einsatzort geändert' : 'Einsatzort erstellt', entityId: id, before: previous, after: { name: body.name, address: body.address, latitude: body.latitude, longitude: body.longitude, radiusMeters: body.radiusMeters } })
+      return result
+    }
     if (action === 'object-delete') return await deleteObject(current, body)
     return json({ message: 'Unbekannte Dienstplanaktion.' }, 400)
   } catch (error) {
