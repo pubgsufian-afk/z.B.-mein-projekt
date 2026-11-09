@@ -3,6 +3,7 @@ import { getStore } from '@netlify/blobs'
 import { getUser, verifyRequestOrigin } from '@netlify/identity'
 import { databaseConnectionString } from './_shared/database-connection.mts'
 import { resolveGoogleMapsLocation } from './_shared/google-maps-location.mts'
+import { tryRecordPortalAdminChange } from './_shared/portal-private-audit-service.mts'
 
 type Role = 'owner' | 'admin' | 'manager' | 'employee' | 'pending'
 type AccessRecord = { role?: Role; status?: string } | null
@@ -71,6 +72,7 @@ export default async function worksiteV2(request: Request, _context: Context) {
     return json({ message: 'Die Koordinaten sind ungültig.' }, 400)
   }
   if (!Number.isFinite(radiusMeters) || radiusMeters < 0 || radiusMeters > 10000) return json({ message: 'Der Prüfradius ist ungültig.' }, 400)
+  const previous = await siteStore.get(`objects/${id}`, { type: 'json' }) as Record<string, unknown> | null
   const object = { id, name, address, latitude, longitude, accuracyMeters, radiusMeters, updatedAt: new Date().toISOString(), updatedBy: current.userId }
   await siteStore.setJSON(`objects/${id}`, object)
   const url = databaseConnectionString()
@@ -86,6 +88,7 @@ export default async function worksiteV2(request: Request, _context: Context) {
       [id, latitude, longitude, accuracyMeters, radiusMeters, current.userId],
     )
   }
+  await tryRecordPortalAdminChange({ actor: current, category: 'Einsatzorte', action: previous ? 'Einsatzort geändert' : 'Einsatzort erstellt', entityId: id, before: previous, after: object })
   return json({ object, databaseSynced: Boolean(url) }, 201)
 }
 
