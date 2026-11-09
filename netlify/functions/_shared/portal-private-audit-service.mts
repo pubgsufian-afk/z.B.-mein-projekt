@@ -97,6 +97,14 @@ export async function recordPortalAdminChange(input: {
   await store().setJSON(STORE_PREFIX + order + '-' + id, event)
 }
 
+export async function tryRecordPortalAdminChange(input: Parameters<typeof recordPortalAdminChange>[0]) {
+  try {
+    await recordPortalAdminChange(input)
+  } catch (error) {
+    console.error('Admin activity audit write failed', error)
+  }
+}
+
 export async function listPortalAdminChanges(limit = 350) {
   const audit = store()
   const list = await audit.list({ prefix: STORE_PREFIX })
