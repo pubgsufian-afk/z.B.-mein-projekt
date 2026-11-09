@@ -61,6 +61,14 @@ async function employeeName(actor: Actor): Promise<string> {
 }
 
 async function resolveEmployee(userId: string) {
+  // The registration directory is authoritative; schedule_employees can lag behind a new signup.
+  const access = await getStore({ name: 'portal-access', consistency: 'strong' })
+    .get('access/' + userId, { type: 'json' }) as { fullName?: string; status?: string } | null
+  if (access) {
+    return access.status === 'active' && String(access.fullName || '').trim()
+      ? { user_id: userId, full_name: String(access.fullName).trim() } : null
+  }
+  // Legacy owner or scheduler accounts may predate the access directory.
   const result = await getDatabase().pool.query(
     "SELECT user_id, full_name FROM schedule_employees WHERE user_id = $1 AND status = 'active'",
     [userId],
