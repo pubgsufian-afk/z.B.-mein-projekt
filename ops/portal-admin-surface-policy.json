@@ -126,6 +126,7 @@
     "/api/employee-timesheet": "Berechtigungsgeprüfter Self-Service für persönliche Stunden und PDF/Excel. Die Mitarbeiter-ID wird ausschließlich aus der eigenen Sitzung abgeleitet; nicht an globale Admin-Relay-Befehle anbinden.",
     "/api/employee-documents": "Vertrauliche Personalakten und Entgeltabrechnungen: Dokumente dürfen aus Datenschutzgründen nur über geschützte, protokollierte Direktendpunkte bereitgestellt werden; kein Admin-Relay/Assistant-Zugriff.",
     "/api/employee-documents-large": "Vertrauliche Personal-PDFs bis 50 MB: pro Chunk überprüfte, ausschließlich authentifizierte Direkt-Upload- und Download-Schnittstelle ohne Admin-Relay-Zugriff.",
-    "/api/private-owner-audit": "Ausschließlich per einmalig gebundener persönlicher Identity-Konto-ID und geheim konfigurierter E-Mail geschützte Leseansicht für den einzigen Inhaber; darf nie für Admin-Relay, Geschäftsführer oder andere Administratoren freigeschaltet werden."
+    "/api/private-owner-audit": "Ausschließlich per einmalig gebundener persönlicher Identity-Konto-ID und geheim konfigurierter E-Mail geschützte Leseansicht für den einzigen Inhaber; darf nie für Admin-Relay, Geschäftsführer oder andere Administratoren freigeschaltet werden.",
+    "/api/time-off": "Vertrauliche persönliche Freiwunschgründe: direkter, rollen- und identitätsgeprüfter Employee-/Manager-Endpunkt, ohne globalen Admin-Relay- oder Assistant-Zugriff. Administratoren entscheiden ausschließlich mit gültiger Sitzung."
   }
 }
