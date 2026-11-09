@@ -4,6 +4,7 @@ import { EmployeeTimesheetPage, EmployeeMailboxPage } from './EmployeeSelfServic
 import EmployeeDailyReports from './EmployeeDailyReports.jsx'
 import PrivateOwnerAudit from './PrivateOwnerAudit.jsx'
 import TimeOffPage from './TimeOffPage.jsx'
+import { schedulableEmployees } from './time-off-policy.mjs'
 import {
   AuthError,
   getUser,
@@ -683,7 +684,7 @@ function SchedulePage({ session }) {
       <PageHeader title={scheduleMode === 'off' ? 'Dienstfrei eintragen' : form.id ? 'Dienst bearbeiten' : 'Dienst erstellen'} subtitle="Dienst oder freien Tag verbindlich eintragen." action={<button className="secondary-button compact" onClick={() => setEditing(false)}>Schließen</button>} />
       <form className="schedule-form" onSubmit={save}>
         <div className="form-grid three">
-          <label>Mitarbeiter<select value={form.employeeUserId} onChange={update('employeeUserId')} required><option value="">Bitte wählen</option>{employees.filter((employee) => scheduleMode === 'off' || !daysOff.some((day) => day.date === form.date && day.employeeUserId === String(employee.userId || employee.id))).map((employee) => <option key={employee.userId || employee.id} value={employee.userId || employee.id}>{employee.fullName}</option>)}</select></label>
+          <label>Mitarbeiter<select value={form.employeeUserId} onChange={update('employeeUserId')} required><option value="">Bitte wählen</option>{(scheduleMode === 'off' ? employees : schedulableEmployees(employees, daysOff, form.date)).map((employee) => <option key={employee.userId || employee.id} value={employee.userId || employee.id}>{employee.fullName}</option>)}</select></label>
           <label>Datum<input type="date" value={form.date} onChange={update('date')} required /></label>
           {scheduleMode === 'shift' && <label>Einsatzort<select value={form.objectId} onChange={selectScheduleObject}><option value="">Ohne gespeicherten Einsatzort</option>{objects.map((object) => <option value={object.id} key={object.id}>{object.name}</option>)}</select></label>}
         </div>
