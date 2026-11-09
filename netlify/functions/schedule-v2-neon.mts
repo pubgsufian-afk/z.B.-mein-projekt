@@ -1,5 +1,6 @@
 import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
+import { getDatabase } from '@netlify/database'
 import { verifyRequestOrigin } from '@netlify/identity'
 import { currentPortalActor } from './_shared/portal-role.mts'
 import { tryRecordPortalAdminChange } from './_shared/portal-private-audit-service.mts'
@@ -368,11 +369,13 @@ export default async function scheduleV2Neon(request: Request, _context: Context
       const start = String(url.searchParams.get('start') || '')
       const end = String(url.searchParams.get('end') || '')
       const employees = await listActiveScheduleEmployees()
+      const offRows = ISO_DATE.test(date) ? await getDatabase().pool.query('SELECT employee_user_id FROM schedule_days_off WHERE day_off_date = $1::date', [date]) : { rows: [] }
+      const onLeave = new Set(offRows.rows.map((row) => String(row.employee_user_id)))
       const suggestions = await Promise.all(employees.map(async (employee) => {
         const conflicts = ISO_DATE.test(date) && TIME.test(start) && TIME.test(end)
           ? await listScheduleOverlaps({ employeeUserId: employee.userId, date, start, end })
           : []
-        return { employeeUserId: employee.userId, employeeName: employee.fullName, available: conflicts.length === 0, conflicts: conflicts.map((entry) => entry.id) }
+        return { employeeUserId: employee.userId, employeeName: employee.fullName, available: conflicts.length === 0 && !onLeave.has(employee.userId), dayOff: onLeave.has(employee.userId), conflicts: conflicts.map((entry) => entry.id) }
       }))
       return json({ suggestions })
     }
@@ -411,6 +414,9 @@ export default async function scheduleV2Neon(request: Request, _context: Context
     return json({ message: 'Unbekannte Dienstplanaktion.' }, 400)
   } catch (error) {
     if (error instanceof TypeError || error instanceof RangeError) return json({ message: error.message }, 400)
+    if (String((error as Error)?.message || '').includes('HABUN_DAY_OFF_CONFLICT')) {
+      return json({ message: 'Der Mitarbeiter hat an diesem Tag genehmigtes Dienstfrei und darf nicht eingeplant werden.', code: 'DAY_OFF_CONFLICT' }, 409)
+    }
     if (String((error as { code?: unknown })?.code || '') === '23505') {
       return json({ message: 'Dieser Dienst ist bereits exakt vorhanden.', code: 'EXACT_DUPLICATE' }, 409)
     }
