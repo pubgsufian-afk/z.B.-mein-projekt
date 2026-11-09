@@ -11,6 +11,7 @@ export type PrivateAuditEvent = {
   category: string
   action: string
   entityId: string
+  targetName?: string
   summary: string
   before: Record<string, unknown> | null
   after: Record<string, unknown> | null
@@ -71,6 +72,7 @@ export async function recordPortalAdminChange(input: {
   category: string
   action: string
   entityId?: string
+  targetName?: string
   summary?: string
   before?: unknown
   after?: unknown
@@ -87,6 +89,7 @@ export async function recordPortalAdminChange(input: {
     category: compact(input.category, 64),
     action: compact(input.action, 100),
     entityId: compact(input.entityId, 180),
+    targetName: compact(input.targetName, 180),
     summary: compact(input.summary, 280),
     before: details(input.before),
     after: details(input.after),
