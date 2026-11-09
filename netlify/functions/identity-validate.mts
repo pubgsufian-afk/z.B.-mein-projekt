@@ -1,42 +1,33 @@
-import type { Handler, HandlerEvent } from '@netlify/functions'
-import { connectLambda } from '@netlify/blobs'
 import { findRegistrationEmailConflict, normalizeRegistrationEmail, readPortalRegistrationIdentities } from './_shared/registration-email-guard.mts'
 
 /**
- * Reject a second signup before a new Netlify Identity account is created.
- * Existing employees must recover their password instead of signing up again.
+ * Netlify Identity validation hook. Use the modern Request/Response handler:
+ * Netlify automatically provides the Blobs context, unlike the legacy Lambda API.
+ * Fail closed when the registration directory cannot be checked.
  */
-const handler: Handler = async (event: HandlerEvent) => {
-  let data: { user?: { id?: string; email?: string } } = {}
-  try {
-    data = JSON.parse(event.body || '{}')
-  } catch {
-    return { statusCode: 400, body: 'Ungültige Registrierungsdaten.' }
+export default async (request: Request): Promise<Response> => {
+  if (request.method !== 'POST') {
+    return new Response('Methode nicht erlaubt.', { status: 405 })
   }
 
-  const email = normalizeRegistrationEmail(data.user?.email)
-  if (!email) return { statusCode: 400, body: 'Bitte eine gültige E-Mail-Adresse eingeben.' }
+  const data = await request.json().catch(() => null) as { user?: { email?: string } } | null
+  const email = normalizeRegistrationEmail(data?.user?.email)
+  if (!email) {
+    return new Response('Bitte gültige Registrierungsdaten übermitteln.', { status: 400 })
+  }
 
   try {
-    // Legacy Netlify Identity webhooks run in Lambda compatibility mode.
-    // Blobs must be connected to this invocation before reading registrations.
-    connectLambda(event)
     const existing = await readPortalRegistrationIdentities()
-    // There is no account ID yet in the validate event. Any pending or approved
-    // record for this mailbox means the person must use the existing account.
+    // Any older pending or approved registration blocks a second signup.
+    // Approval rechecks this condition, too.
     const probe = { id: '__new_signup__', email, status: 'pending', createdAt: '9999-12-31T23:59:59Z' }
     if (findRegistrationEmailConflict(probe, existing)) {
-      return {
-        statusCode: 409,
-        body: 'Diese E-Mail-Adresse wurde bereits verwendet. Bitte anmelden oder „Passwort vergessen“ nutzen.',
-      }
+      return new Response('Diese E-Mail-Adresse wurde bereits verwendet. Bitte anmelden oder „Passwort vergessen“ nutzen.', { status: 409 })
     }
-    return { statusCode: 200, body: '{}' }
+    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
   } catch (error) {
-    // Do not log the signup payload or employee email.
+    // Never log the applicant email, password or the webhook payload.
     console.error('[identity-validate] Registration lookup failed', error instanceof Error ? `${error.name}: ${error.message}` : 'Unknown error')
-    return { statusCode: 503, body: 'Registrierung vorübergehend nicht verfügbar. Bitte später erneut versuchen.' }
+    return new Response('Registrierung vorübergehend nicht verfügbar. Bitte später erneut versuchen.', { status: 503 })
   }
 }
-
-export { handler }
