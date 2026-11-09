@@ -32,3 +32,19 @@
 .private-audit-footnote code{overflow-wrap:anywhere}
 @media(max-width:900px){.private-audit-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.private-audit-summary{grid-template-columns:1fr}.private-audit-fields,.private-audit-diff{grid-template-columns:1fr}.private-audit-page .page-heading>button{width:100%}.private-audit-toolbar button{flex:1;min-width:135px}.private-audit-item-head{align-items:flex-start}.private-audit-chip{white-space:normal;text-align:center;max-width:50%}}
+
+/* Human-readable activity cards: make the actual change prominent. */
+.private-audit-sentence{font-size:clamp(16px,1.5vw,20px);line-height:1.45;margin:15px 0 12px;overflow-wrap:anywhere}
+.private-audit-target{font-size:14px;line-height:1.4;margin:6px 0 14px!important;overflow-wrap:anywhere}
+.private-audit-changes{display:grid;gap:8px;margin:14px 0}
+.private-audit-change-row{display:grid;grid-template-columns:minmax(105px,1fr) minmax(0,2.6fr);align-items:start;gap:10px;padding:12px 14px;border:1px solid rgba(135,145,160,.3);border-radius:10px;background:rgba(127,137,157,.08);line-height:1.45;min-width:0}
+.private-audit-change-label{font-weight:700;font-size:13px;overflow-wrap:anywhere}
+.private-audit-change-values{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:14px;min-width:0}
+.private-audit-change-values>strong{color:inherit;overflow-wrap:anywhere}
+.private-audit-old{opacity:.72;overflow-wrap:anywhere}
+.private-audit-arrow{font-weight:700;opacity:.65}
+.private-audit-expanded{margin-top:10px;line-height:1.55}
+.private-audit-technical{margin-top:8px;border-top:1px solid rgba(127,137,157,.3);padding-top:10px;overflow-wrap:anywhere}
+.private-audit-technical summary{cursor:pointer;font-weight:600;margin-bottom:9px}
+.private-audit-technical>div{padding:3px 0}
+@media(max-width:620px){.private-audit-sentence{font-size:16px}.private-audit-change-row{grid-template-columns:1fr;gap:6px;padding:11px}.private-audit-change-values{font-size:14px;gap:7px}}
