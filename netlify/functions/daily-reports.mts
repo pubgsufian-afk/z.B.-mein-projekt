@@ -3,6 +3,7 @@ import { getStore } from '@netlify/blobs'
 import { verifyRequestOrigin } from '@netlify/identity'
 import { randomUUID } from 'node:crypto'
 import { requirePortalRole } from './_shared/portal-role.mts'
+import { tryRecordPortalAdminChange } from './_shared/portal-private-audit-service.mts'
 import { canManageDailyReport, canSubmitDailyReport, mayReadDailyReport } from './_shared/daily-report-policy.mjs'
 import {
   findDailyReportById,
@@ -105,6 +106,7 @@ export default async function dailyReports(request: Request) {
       }
       const chronologicalKey = `${String(Date.parse(createdAt)).padStart(13, '0')}-${id}`
       await store.setJSON(`reports/${chronologicalKey}`, report)
+      await tryRecordPortalAdminChange({ actor: current, category: 'Berichte', action: 'Tagesbericht erstellt', entityId: id, after: { authorName: report.authorName, createdAt, words: validation.words } })
       return response({ report }, 201)
     }
 
@@ -131,10 +133,12 @@ export default async function dailyReports(request: Request) {
         updatedByName: await authorNameFor(current),
       }
       await store.setJSON(found.key, updated)
+      await tryRecordPortalAdminChange({ actor: current, category: 'Berichte', action: 'Tagesbericht bearbeitet', entityId: id, before: { authorName: found.report.authorName, words: countWords(found.report.text) }, after: { updatedByName: updated.updatedByName, words: validation.words } })
       return response({ report: updated })
     }
 
     await store.delete(found.key)
+    await tryRecordPortalAdminChange({ actor: current, category: 'Berichte', action: 'Tagesbericht gelöscht', entityId: id, before: { authorName: found.report.authorName, createdAt: found.report.createdAt, words: countWords(found.report.text) } })
     return response({ deleted: true, id })
   } catch (error) {
     console.error('Habun daily reports', error)
