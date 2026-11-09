@@ -392,7 +392,8 @@ export default async function scheduleV2Neon(request: Request, _context: Context
       const existing = await findScheduleShift(id)
       if (!existing) return json({ message: 'Dienst nicht gefunden.' }, 404)
       await deleteScheduleShift(id)
-      await writeScheduleAudit({ actorId: current.userId, actorType: 'portal', action: 'shift-deleted', shiftId: id, details: { before: { date: existing.date, start: existing.start, end: existing.end, pauseMinutes: existing.pauseMinutes, location: existing.location, workArea: existing.workArea, employeeName: existing.employeeName } } })
+      await writeScheduleAudit({ actorId: current.userId, actorType: 'portal', action: 'shift-deleted', shiftId: id })
+      await tryRecordPortalAdminChange({ actor: current, category: 'Dienstplan', action: 'Dienst gelöscht', entityId: id, before: { date: existing.date, start: existing.start, end: existing.end, pauseMinutes: existing.pauseMinutes, location: existing.location, workArea: existing.workArea, employeeName: existing.employeeName } })
       return json({ deleted: true, id })
     }
     if (action === 'publish') return await publishWeek(current, String(body.week || body.date || ''))
