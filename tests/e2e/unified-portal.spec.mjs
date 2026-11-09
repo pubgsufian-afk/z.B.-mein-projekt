@@ -128,6 +128,59 @@ async function mockPortalApis(page, role = 'admin') {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, version: 2 }) })
   })
 
+  const dayOff = []
+  const freeRequests = []
+  await page.route('**/api/time-off**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const permitted = (item) => role !== 'employee' || item.employeeUserId === 'employee-anna'
+    const respond = (data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) })
+    if (request.method() === 'GET') {
+      const from = url.searchParams.get('from')
+      const to = url.searchParams.get('to')
+      const days = dayOff.filter((item) => permitted(item) && (!from || item.date >= from) && (!to || item.date <= to))
+      const requests = freeRequests.filter(permitted)
+      return respond({ daysOff: days, requests })
+    }
+    const data = request.postDataJSON()
+    if (data.action === 'request') {
+      const item = { id: 'free-' + (freeRequests.length + 1), employeeUserId: role === 'employee' ? 'employee-anna' : 'admin-1', employeeName: role === 'employee' ? 'Anna Beispiel' : 'Test Admin', date: data.date, reason: data.reason, status: 'pending', hasShift: false, decisionNote: '' }
+      freeRequests.push(item)
+      return respond({ request: item }, 201)
+    }
+    if (data.action === 'set-day-off') {
+      if (role === 'employee') return respond({ message: 'Keine Berechtigung.' }, 403)
+      if (dayOff.some((item) => item.employeeUserId === data.employeeUserId && item.date === data.date)) return respond({ message: 'Bereits dienstfrei.' }, 409)
+      const employee = employees.find((person) => person.userId === data.employeeUserId)
+      const item = { employeeUserId: data.employeeUserId, employeeName: employee?.fullName || '', date: data.date, source: 'manual' }
+      dayOff.push(item)
+      return respond({ dayOff: item }, 201)
+    }
+    if (data.action === 'decide') {
+      if (role === 'employee') return respond({ message: 'Keine Berechtigung.' }, 403)
+      const item = freeRequests.find((entry) => entry.id === data.id)
+      if (!item || item.status !== 'pending') return respond({ message: 'Anfrage nicht mehr offen.' }, 409)
+      item.status = data.decision === 'approve' ? 'approved' : 'rejected'
+      item.decisionNote = data.note || ''
+      if (item.status === 'approved') dayOff.push({ employeeUserId: item.employeeUserId, employeeName: item.employeeName, date: item.date, source: 'request' })
+      return respond({ request: item })
+    }
+    if (data.action === 'withdraw') {
+      const item = freeRequests.find((entry) => entry.id === data.id && permitted(entry))
+      if (!item || item.status !== 'pending') return respond({ message: 'Keine offene eigene Anfrage.' }, 409)
+      item.status = 'withdrawn'
+      return respond({ request: item })
+    }
+    if (data.action === 'remove-day-off') {
+      if (role === 'employee') return respond({ message: 'Keine Berechtigung.' }, 403)
+      const index = dayOff.findIndex((item) => item.date === data.date && item.employeeUserId === data.employeeUserId)
+      if (index < 0) return respond({ message: 'Nicht gefunden.' }, 404)
+      dayOff.splice(index, 1)
+      return respond({ removed: true })
+    }
+    return respond({ message: 'Unbekannte Aktion.' }, 400)
+  })
+
   await page.route('**/api/attendance**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
