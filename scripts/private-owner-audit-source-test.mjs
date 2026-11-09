@@ -36,7 +36,7 @@ assert.match(page, /Nachher/)
 assert.match(page, /downloadCsv/)
 assert.match(proxy, /response\.ok/)
 assert.match(proxy, /recordPortalAdminChange/)
-assert.match(schedule, /shift-deleted.*details: \{ before:/)
+assert.match(schedule, /action: 'Dienst gelöscht'.*before:/)
 assert.match(reports, /Tagesbericht gelöscht/)
 assert.match(registrations, /Berechtigung geändert/)
 
