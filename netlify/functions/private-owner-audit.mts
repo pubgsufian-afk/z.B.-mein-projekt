@@ -127,28 +127,78 @@ export default async function privateOwnerAudit(request: Request, _context: Cont
 
   try {
     const [stored, historic] = await Promise.all([listPortalAdminChanges(500), historicalEvents()])
-    const actorIds = Array.from(new Set([...stored, ...historic.events].map((item) => item.actorId).filter(Boolean))).slice(0, 80)
-    const access = getStore({ name: 'portal-access', consistency: 'strong' })
-    const actorNames = Object.fromEntries((await Promise.all(actorIds.map(async (id) => {
-      if (id === current.userId) return [id, 'Sufian']
-      try {
-        const row = await access.get('access/' + id, { type: 'json' }) as { fullName?: string } | null
-        return [id, String(row?.fullName || '')]
-      } catch { return [id, ''] }
-    }))).filter((row) => row[1]))
-
     const from = validDate(url.searchParams.get('from'))
     const to = validDate(url.searchParams.get('to'))
     const q = String(url.searchParams.get('q') || '').toLocaleLowerCase('de').trim().slice(0, 100)
     const category = String(url.searchParams.get('category') || '').trim()
-    const items = [...stored, ...historic.events]
+
+    const recent = [...stored, ...historic.events]
       .filter((event) => !from || event.occurredAt.slice(0, 10) >= from)
       .filter((event) => !to || event.occurredAt.slice(0, 10) <= to)
       .filter((event) => !category || event.category === category)
-      .filter((event) => !q || [event.actorId, actorNames[event.actorId], event.category, event.action, event.summary, event.entityId].some((field) => String(field || '').toLocaleLowerCase('de').includes(q)))
-      .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
-      .slice(0, 500)
-      .map((event) => ({ ...event, actorName: actorNames[event.actorId] || event.actorEmail || event.actorId }))
+      .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
+      .slice(0, 900)
+
+    // Derive affected employee IDs, not unrelated shift/report/document UUIDs.
+    // Historical logs often contain IDs only; resolve names from the current
+    // access directory, then from the scheduling directory if still available.
+    const affectedId = (event: PrivateAuditEvent): string => {
+      for (const candidate of [
+        event.after?.employeeUserId, event.before?.employeeUserId,
+        event.after?.userId, event.before?.userId,
+        event.category === 'Mitarbeiter' ? event.entityId : null,
+      ]) {
+        if (typeof candidate === 'string' && candidate.trim()) return candidate.trim()
+      }
+      return ''
+    }
+    const requestedIds = Array.from(new Set(
+      recent.flatMap((item) => [item.actorId, affectedId(item)])
+        .filter((id) => id && id.length <= 180),
+    )).slice(0, 350)
+
+    const access = getStore({ name: 'portal-access', consistency: 'strong' })
+    const namePairs = await Promise.all(requestedIds.map(async (id) => {
+      try {
+        const record = await access.get('access/' + id, { type: 'json' }) as { fullName?: string } | null
+        return [id, String(record?.fullName || '').trim()] as const
+      } catch {
+        return [id, ''] as const
+      }
+    }))
+    const names: Record<string, string> = Object.fromEntries(namePairs.filter(([, name]) => Boolean(name)))
+    if (!names[current.userId]) {
+      const meta = current.user as { userMetadata?: { full_name?: string; fullName?: string } }
+      names[current.userId] = String(meta?.userMetadata?.full_name || meta?.userMetadata?.fullName || 'Sufian').trim()
+    }
+    const unresolved = requestedIds.filter((id) => !names[id])
+    if (unresolved.length) {
+      try {
+        const database = getDatabase()
+        const result = await database.pool.query(
+          'SELECT user_id, full_name FROM schedule_employees WHERE user_id = ANY($1::text[]) LIMIT 350',
+          [unresolved],
+        )
+        for (const row of result.rows || []) {
+          if (row.user_id && row.full_name) names[String(row.user_id)] = String(row.full_name).trim()
+        }
+      } catch {
+        // Deleted accounts without a retained directory record have no
+        // verifiable name. Never guess or attribute changes to someone else.
+      }
+    }
+
+    const items = recent.map((event) => {
+      const employeeId = affectedId(event)
+      return {
+        ...event,
+        actorName: names[event.actorId] || event.actorEmail || event.actorId || 'Unbekanntes Konto',
+        targetName: String(event.targetName || names[employeeId] || event.before?.fullName || event.after?.fullName || '').trim(),
+      }
+    }).filter((event) => !q || [
+      event.actorName, event.targetName, event.actorId, event.category,
+      event.action, event.summary, event.entityId,
+    ].some((field) => String(field || '').toLocaleLowerCase('de').includes(q))).slice(0, 500)
 
     return json({ events: items, warnings: historic.warnings, limit: 500, accountId: current.userId, partial: Boolean(historic.warnings.length) })
   } catch (error) {
