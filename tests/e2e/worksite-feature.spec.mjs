@@ -57,6 +57,8 @@ async function mockPortal(page) {
     body: JSON.stringify({ requests: [], employees, archived: [] }),
   }))
 
+  await page.route('**/api/time-off**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ daysOff: [], requests: [] }) }))
+
   await page.route('**/api/schedule-v2**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
