@@ -525,10 +525,12 @@ function SchedulePage({ session }) {
     try {
       const from = week
       const to = addDays(week, 6)
-      const calls = [apiJson(`/api/schedule-v2?resource=entries&from=${from}&to=${to}`), apiJson(`/api/time-off?resource=days&from=${from}&to=${to}`)]
+      const dayOffRequest = apiJson(`/api/time-off?resource=days&from=${from}&to=${to}`)
+      const calls = [apiJson(`/api/schedule-v2?resource=entries&from=${from}&to=${to}`)]
       if (management) calls.push(apiJson('/api/schedule-v2?resource=objects'), apiJson('/api/registrations'))
-      const [shiftData, offData, objectData, employeeData] = await Promise.all(calls)
+      const [shiftData, objectData, employeeData] = await Promise.all(calls)
       setEntries(shiftData.entries || [])
+      const offData = await dayOffRequest
       setDaysOff(offData.daysOff || [])
       setObjects(objectData?.objects || [])
       setEmployees(employeeData?.employees || [])
