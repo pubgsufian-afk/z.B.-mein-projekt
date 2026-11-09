@@ -47,8 +47,8 @@ function dbEvent(row: Record<string, unknown>, category: string, source: string)
     action: String(row.action || ''),
     entityId: String(row.entity_id || row.shift_id || row.entry_id || ''),
     summary: String(row.reason || meta?.summary || ''),
-    before: safeObject(row.before_data),
-    after: safeObject(row.after_data) || meta,
+    before: safeObject(row.before_data) || safeObject(meta?.before),
+    after: safeObject(row.after_data) || safeObject(meta?.after) || meta,
     source,
   }
 }
@@ -62,12 +62,17 @@ async function historicalEvents() {
       {
         category: 'Dienstplan',
         source: 'schedule_audit_log',
-        sql: "SELECT id,occurred_at,actor_id,actor_type,action,shift_id,details FROM schedule_audit_log WHERE actor_type = 'portal' ORDER BY occurred_at DESC LIMIT 300",
+        sql: "SELECT id,occurred_at,actor_id,actor_type,action,shift_id,details FROM schedule_audit_log WHERE actor_type <> 'migration' ORDER BY occurred_at DESC LIMIT 300",
       },
       {
         category: 'Arbeitszeiten',
         source: 'attendance_audit_log',
         sql: "SELECT id,occurred_at,actor_id,actor_email,actor_role,action,entity_id,reason,before_data,after_data FROM attendance_audit_log WHERE actor_role IN ('owner','admin','manager') ORDER BY occurred_at DESC LIMIT 300",
+      },
+      {
+        category: 'Dokumente',
+        source: 'employee_document_access_audit',
+        sql: "SELECT a.id,a.occurred_at,a.actor_user_id AS actor_id,a.action,a.document_id AS entity_id,jsonb_build_object('employeeUserId',d.employee_user_id,'documentType',d.document_type,'title',d.title) AS after_data FROM employee_document_access_audit a JOIN employee_documents d ON d.id = a.document_id WHERE a.action IN ('upload','revoke') ORDER BY a.occurred_at DESC LIMIT 300",
       },
       {
         category: 'Stundenzettel',
