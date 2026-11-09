@@ -4,6 +4,7 @@ import { verifyRequestOrigin } from '@netlify/identity';
 import { proxyToProductionBackend } from "./_shared/proxy.mts";
 import { employeeManagementPolicy, type EmployeeManagementAction } from './_shared/employee-management-policy.mts';
 import { requirePortalRole } from "./_shared/portal-role.mts";
+import { tryRecordPortalAdminChange } from './_shared/portal-private-audit-service.mts';
 import { deactivateScheduleEmployee } from './_shared/schedule-employee-management.mts';
 import { upsertScheduleEmployee, type ScheduleEmployee } from "./_shared/schedule-neon-repository.mts";
 import { findRegistrationEmailConflict, normalizeRegistrationEmail, readPortalRegistrationIdentities } from './_shared/registration-email-guard.mts';
@@ -237,6 +238,7 @@ async function manageActiveEmployee(
     };
     await store.setJSON(key, employee);
     await deactivateScheduleEmployee(String(employee.userId || id));
+    await tryRecordPortalAdminChange({ actor: access.current, category: 'Mitarbeiter', action: 'Konto deaktiviert', entityId: id, before: { status: target.status, role: target.role }, after: { status: employee.status, role: employee.role } });
     return json({ ok: true, employee, deactivated: true });
   }
 
@@ -263,6 +265,7 @@ async function manageActiveEmployee(
       status: 'active',
       location,
     });
+    await tryRecordPortalAdminChange({ actor: access.current, category: 'Mitarbeiter', action: 'Mitarbeiterprofil geändert', entityId: id, before: { fullName: target.fullName, company: target.company, location: target.location }, after: { fullName, company, location } });
     return json({ ok: true, employee });
   }
 
@@ -286,6 +289,7 @@ async function manageActiveEmployee(
     });
   }
 
+  await tryRecordPortalAdminChange({ actor: access.current, category: 'Mitarbeiter', action: 'Berechtigung geändert', entityId: id, before: { role: target.role }, after: { role: requestedRole } });
   return json({ ok: true, employee, role: requestedRole });
 }
 

@@ -2,6 +2,7 @@ import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { verifyRequestOrigin } from '@netlify/identity'
 import { currentPortalActor } from './_shared/portal-role.mts'
+import { tryRecordPortalAdminChange } from './_shared/portal-private-audit-service.mts'
 import {
   deleteScheduleShift,
   findExactScheduleDuplicate,
@@ -243,6 +244,7 @@ async function saveShift(current: NonNullable<Awaited<ReturnType<typeof currentP
       shiftId: shift.id,
       details: { date: shift.date, employeeUserId: shift.employeeUserId, status: shift.status },
     })
+    await tryRecordPortalAdminChange({ actor: current, category: 'Dienstplan', action: existing ? 'Dienst bearbeitet' : 'Dienst erstellt', entityId: shift.id, before: existing ? { date: existing.date, start: existing.start, end: existing.end, pauseMinutes: existing.pauseMinutes, location: existing.location, workArea: existing.workArea, employeeName: existing.employeeName } : undefined, after: { date: shift.date, start: shift.start, end: shift.end, pauseMinutes: shift.pauseMinutes, location: shift.location, workArea: shift.workArea, employeeName: shift.employeeName } })
     return json({
       shift,
       warnings: overlaps.map((entry) => ({ code: 'OVERLAP', shiftId: entry.id, employeeName: entry.employeeName, date: entry.date, start: entry.start, end: entry.end })),
@@ -285,6 +287,7 @@ async function copyPreviousWeek(current: NonNullable<Awaited<ReturnType<typeof c
     if (await findExactScheduleDuplicate(candidate)) continue
     created.push(await upsertScheduleShift(candidate))
   }
+  if (created.length) await tryRecordPortalAdminChange({ actor: current, category: 'Dienstplan', action: 'Vorwoche kopiert', summary: String(created.length) + ' Dienste kopiert', after: { sourceWeek: previousMonday, targetWeek: targetMonday, count: created.length } })
   return json({ created, sourceWeek: previousMonday, targetWeek: targetMonday }, 201)
 }
 
@@ -299,6 +302,7 @@ async function repeatShift(current: NonNullable<Awaited<ReturnType<typeof curren
     if (await findExactScheduleDuplicate(candidate)) continue
     created.push(await upsertScheduleShift(candidate))
   }
+  if (created.length) await tryRecordPortalAdminChange({ actor: current, category: 'Dienstplan', action: 'Dienst wiederholt', entityId: source.id, summary: String(created.length) + ' wiederholte Dienste', after: { employeeName: source.employeeName, dates, count: created.length } })
   return json({ created, repeatGroupId: group }, 201)
 }
 
@@ -332,6 +336,7 @@ async function deleteObject(current: NonNullable<Awaited<ReturnType<typeof curre
   const existing = await legacyScheduleStore().get(key, { type: 'json' }) as WorkSite | null
   if (!existing) return json({ message: 'Der Einsatzort wurde nicht gefunden.' }, 404)
   await legacyScheduleStore().delete(key)
+  await tryRecordPortalAdminChange({ actor: current, category: 'Einsatzorte', action: 'Einsatzort gelöscht', entityId: id, before: existing })
   return json({ deleted: true, id })
 }
 
@@ -389,12 +394,19 @@ export default async function scheduleV2Neon(request: Request, _context: Context
       if (!existing) return json({ message: 'Dienst nicht gefunden.' }, 404)
       await deleteScheduleShift(id)
       await writeScheduleAudit({ actorId: current.userId, actorType: 'portal', action: 'shift-deleted', shiftId: id })
+      await tryRecordPortalAdminChange({ actor: current, category: 'Dienstplan', action: 'Dienst gelöscht', entityId: id, before: { date: existing.date, start: existing.start, end: existing.end, pauseMinutes: existing.pauseMinutes, location: existing.location, workArea: existing.workArea, employeeName: existing.employeeName } })
       return json({ deleted: true, id })
     }
     if (action === 'publish') return await publishWeek(current, String(body.week || body.date || ''))
     if (action === 'copy-previous-week') return await copyPreviousWeek(current, String(body.week || ''))
     if (action === 'repeat') return await repeatShift(current, body)
-    if (action === 'object-upsert') return await upsertObject(current, body)
+    if (action === 'object-upsert') {
+      const id = String(body.id || '').trim()
+      const previous = id ? await legacyScheduleStore().get(`objects/${id}`, { type: 'json' }) as WorkSite | null : null
+      const result = await upsertObject(current, body)
+      if (result.ok) await tryRecordPortalAdminChange({ actor: current, category: 'Einsatzorte', action: previous ? 'Einsatzort geändert' : 'Einsatzort erstellt', entityId: id, before: previous, after: { name: body.name, address: body.address, latitude: body.latitude, longitude: body.longitude, radiusMeters: body.radiusMeters } })
+      return result
+    }
     if (action === 'object-delete') return await deleteObject(current, body)
     return json({ message: 'Unbekannte Dienstplanaktion.' }, 400)
   } catch (error) {

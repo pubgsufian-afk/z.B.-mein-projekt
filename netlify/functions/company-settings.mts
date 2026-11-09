@@ -8,6 +8,7 @@ import {
 } from './_shared/company-settings.mts'
 import { resetCustomPdfLogo, saveCustomPdfLogo } from './_shared/pdf-branding.mts'
 import { requirePortalRole } from './_shared/portal-role.mts'
+import { tryRecordPortalAdminChange } from './_shared/portal-private-audit-service.mts'
 
 function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex' } })
@@ -26,6 +27,7 @@ export default async function companySettings(request: Request, _context: Contex
   try {
     const body = await request.json().catch(() => null) as Record<string, unknown> | null
     if (!body) return json({ message: 'Ungültige Anfrage.' }, 400)
+    const previous = await readCompanySettings()
 
     const hasLogoUpload = typeof body.pdfLogoDataUrl === 'string' && Boolean(String(body.pdfLogoDataUrl).trim())
     const hasLogoReset = body.resetPdfLogo === true
@@ -53,6 +55,8 @@ export default async function companySettings(request: Request, _context: Contex
       }, { userId: current.userId })
     }
 
+    const safeValues = (data: Record<string, unknown>) => Object.fromEntries(['companyName', 'phone', 'email', 'address', 'logoUrl', 'logoVersion'].map((key) => [key, data[key] ?? null]))
+    await tryRecordPortalAdminChange({ actor: current, category: 'Firmendaten', action: hasLogoUpload ? 'PDF-Logo geändert' : hasLogoReset ? 'PDF-Logo zurückgesetzt' : 'Firmendaten geändert', before: safeValues(previous as Record<string, unknown>), after: safeValues(settings as Record<string, unknown>) })
     return json({ settings })
   } catch (error) {
     if (error instanceof TypeError) return json({ message: error.message }, 400)
