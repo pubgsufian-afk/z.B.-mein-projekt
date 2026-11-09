@@ -8,6 +8,7 @@ const CATEGORY_OPTIONS = [
   ['Stundenzettel', 'Stundenzettel'],
   ['Mitarbeiter', 'Mitarbeiter'],
   ['Berichte', 'Berichte'],
+  ['Dokumente', 'Dokumente'],
   ['Einsatzorte', 'Einsatzorte'],
   ['Firmendaten', 'Firmendaten'],
   ['Portalverwaltung', 'Portalverwaltung'],
