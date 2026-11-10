@@ -6,7 +6,10 @@
     "method": "POST",
     "action": "inspect-employee-history",
     "classification": "relay-read-only",
-    "relay": { "domain": "portal", "action": "inspect-employee-history" }
+    "relay": {
+      "domain": "portal",
+      "action": "inspect-employee-history"
+    }
   },
   {
     "id": "portal.rebind-employee-history",
@@ -15,7 +18,10 @@
     "method": "POST",
     "action": "rebind-employee-history",
     "classification": "relay-supported",
-    "relay": { "domain": "portal", "action": "rebind-employee-history" }
+    "relay": {
+      "domain": "portal",
+      "action": "rebind-employee-history"
+    }
   },
   {
     "id": "employees.get",
@@ -24,7 +30,10 @@
     "method": "PATCH",
     "action": "get",
     "classification": "relay-read-only",
-    "relay": { "domain": "employees", "action": "get" }
+    "relay": {
+      "domain": "employees",
+      "action": "get"
+    }
   },
   {
     "id": "employees.list",
@@ -33,7 +42,10 @@
     "method": "GET",
     "action": "list",
     "classification": "relay-read-only",
-    "relay": { "domain": "employees", "action": "list" }
+    "relay": {
+      "domain": "employees",
+      "action": "list"
+    }
   },
   {
     "id": "employees.update-profile",
@@ -42,7 +54,10 @@
     "method": "PATCH",
     "action": "update-profile",
     "classification": "relay-supported",
-    "relay": { "domain": "employees", "action": "update-profile" }
+    "relay": {
+      "domain": "employees",
+      "action": "update-profile"
+    }
   },
   {
     "id": "employees.update-role",
@@ -51,7 +66,10 @@
     "method": "PATCH",
     "action": "update-role",
     "classification": "relay-supported",
-    "relay": { "domain": "employees", "action": "update-role" }
+    "relay": {
+      "domain": "employees",
+      "action": "update-role"
+    }
   },
   {
     "id": "employees.deactivate-account",
@@ -60,7 +78,10 @@
     "method": "PATCH",
     "action": "deactivate-account",
     "classification": "relay-supported",
-    "relay": { "domain": "employees", "action": "deactivate-account" }
+    "relay": {
+      "domain": "employees",
+      "action": "deactivate-account"
+    }
   },
   {
     "id": "registrations.list",
@@ -69,7 +90,10 @@
     "method": "GET",
     "action": "list",
     "classification": "relay-read-only",
-    "relay": { "domain": "registrations", "action": "list" }
+    "relay": {
+      "domain": "registrations",
+      "action": "list"
+    }
   },
   {
     "id": "registrations.approve",
@@ -78,7 +102,10 @@
     "method": "PATCH",
     "action": "approve",
     "classification": "relay-supported",
-    "relay": { "domain": "registrations", "action": "approve" }
+    "relay": {
+      "domain": "registrations",
+      "action": "approve"
+    }
   },
   {
     "id": "registrations.reject",
@@ -87,7 +114,10 @@
     "method": "PATCH",
     "action": "reject",
     "classification": "relay-supported",
-    "relay": { "domain": "registrations", "action": "reject" }
+    "relay": {
+      "domain": "registrations",
+      "action": "reject"
+    }
   },
   {
     "id": "schedule.sync-directory",
@@ -96,7 +126,10 @@
     "method": "POST",
     "action": "sync-directory",
     "classification": "relay-supported",
-    "relay": { "domain": "schedule", "action": "sync-directory" }
+    "relay": {
+      "domain": "schedule",
+      "action": "sync-directory"
+    }
   },
   {
     "id": "schedule.resolve-employees",
@@ -105,7 +138,10 @@
     "method": "POST",
     "action": "resolve-employees",
     "classification": "relay-read-only",
-    "relay": { "domain": "schedule", "action": "resolve-employees" }
+    "relay": {
+      "domain": "schedule",
+      "action": "resolve-employees"
+    }
   },
   {
     "id": "schedule.publish-shifts",
@@ -114,7 +150,10 @@
     "method": "POST",
     "action": "publish-shifts",
     "classification": "relay-supported",
-    "relay": { "domain": "schedule", "action": "publish-shifts" }
+    "relay": {
+      "domain": "schedule",
+      "action": "publish-shifts"
+    }
   },
   {
     "id": "schedule.list-shifts",
@@ -123,7 +162,10 @@
     "method": "POST",
     "action": "list-shifts",
     "classification": "relay-read-only",
-    "relay": { "domain": "schedule", "action": "list-shifts" }
+    "relay": {
+      "domain": "schedule",
+      "action": "list-shifts"
+    }
   },
   {
     "id": "schedule.get-shift",
@@ -132,7 +174,10 @@
     "method": "POST",
     "action": "get-shift",
     "classification": "relay-read-only",
-    "relay": { "domain": "schedule", "action": "get-shift" }
+    "relay": {
+      "domain": "schedule",
+      "action": "get-shift"
+    }
   },
   {
     "id": "schedule.find-duplicates",
@@ -141,7 +186,10 @@
     "method": "POST",
     "action": "find-duplicates",
     "classification": "relay-read-only",
-    "relay": { "domain": "schedule", "action": "find-duplicates" }
+    "relay": {
+      "domain": "schedule",
+      "action": "find-duplicates"
+    }
   },
   {
     "id": "schedule.update-shift",
@@ -150,7 +198,10 @@
     "method": "POST",
     "action": "update-shift",
     "classification": "relay-supported",
-    "relay": { "domain": "schedule", "action": "update-shift" }
+    "relay": {
+      "domain": "schedule",
+      "action": "update-shift"
+    }
   },
   {
     "id": "schedule.bulk-update-shifts",
@@ -159,7 +210,10 @@
     "method": "POST",
     "action": "bulk-update-shifts",
     "classification": "relay-supported",
-    "relay": { "domain": "schedule", "action": "bulk-update-shifts" }
+    "relay": {
+      "domain": "schedule",
+      "action": "bulk-update-shifts"
+    }
   },
   {
     "id": "schedule.delete-shift",
@@ -168,7 +222,10 @@
     "method": "POST",
     "action": "delete-shift",
     "classification": "relay-supported",
-    "relay": { "domain": "schedule", "action": "delete-shift" }
+    "relay": {
+      "domain": "schedule",
+      "action": "delete-shift"
+    }
   },
   {
     "id": "attendance.list",
@@ -177,7 +234,10 @@
     "method": "POST",
     "action": "list-attendance",
     "classification": "relay-read-only",
-    "relay": { "domain": "attendance", "action": "list" }
+    "relay": {
+      "domain": "attendance",
+      "action": "list"
+    }
   },
   {
     "id": "attendance.find-duplicates",
@@ -186,7 +246,10 @@
     "method": "POST",
     "action": "find-attendance-duplicates",
     "classification": "relay-read-only",
-    "relay": { "domain": "attendance", "action": "find-duplicates" }
+    "relay": {
+      "domain": "attendance",
+      "action": "find-duplicates"
+    }
   },
   {
     "id": "attendance.update-session",
@@ -195,7 +258,10 @@
     "method": "POST",
     "action": "update-attendance-session",
     "classification": "relay-supported",
-    "relay": { "domain": "attendance", "action": "update-session" }
+    "relay": {
+      "domain": "attendance",
+      "action": "update-session"
+    }
   },
   {
     "id": "attendance.bulk-update-sessions",
@@ -204,7 +270,10 @@
     "method": "POST",
     "action": "bulk-update-attendance-sessions",
     "classification": "relay-supported",
-    "relay": { "domain": "attendance", "action": "bulk-update-sessions" }
+    "relay": {
+      "domain": "attendance",
+      "action": "bulk-update-sessions"
+    }
   },
   {
     "id": "attendance.create-session",
@@ -213,7 +282,10 @@
     "method": "POST",
     "action": "create-attendance-session",
     "classification": "relay-supported",
-    "relay": { "domain": "attendance", "action": "create-session" }
+    "relay": {
+      "domain": "attendance",
+      "action": "create-session"
+    }
   },
   {
     "id": "attendance.delete-events",
@@ -222,7 +294,10 @@
     "method": "POST",
     "action": "delete-attendance-events",
     "classification": "relay-supported",
-    "relay": { "domain": "attendance", "action": "delete-events" }
+    "relay": {
+      "domain": "attendance",
+      "action": "delete-events"
+    }
   },
   {
     "id": "worksites.list",
@@ -231,7 +306,10 @@
     "method": "GET",
     "action": "list",
     "classification": "relay-read-only",
-    "relay": { "domain": "worksites", "action": "list" }
+    "relay": {
+      "domain": "worksites",
+      "action": "list"
+    }
   },
   {
     "id": "worksites.get",
@@ -240,7 +318,10 @@
     "method": "GET",
     "action": "get",
     "classification": "relay-read-only",
-    "relay": { "domain": "worksites", "action": "get" }
+    "relay": {
+      "domain": "worksites",
+      "action": "get"
+    }
   },
   {
     "id": "worksites.save",
@@ -249,7 +330,10 @@
     "method": "POST",
     "action": "save",
     "classification": "relay-supported",
-    "relay": { "domain": "worksites", "action": "save" }
+    "relay": {
+      "domain": "worksites",
+      "action": "save"
+    }
   },
   {
     "id": "worksites.resolve-map",
@@ -258,7 +342,10 @@
     "method": "POST",
     "action": "resolve-map",
     "classification": "relay-read-only",
-    "relay": { "domain": "worksites", "action": "resolve-map" }
+    "relay": {
+      "domain": "worksites",
+      "action": "resolve-map"
+    }
   },
   {
     "id": "worksites.delete",
@@ -267,7 +354,10 @@
     "method": "POST",
     "action": "delete",
     "classification": "relay-supported",
-    "relay": { "domain": "worksites", "action": "delete" }
+    "relay": {
+      "domain": "worksites",
+      "action": "delete"
+    }
   },
   {
     "id": "company.get",
@@ -276,7 +366,10 @@
     "method": "GET",
     "action": "get",
     "classification": "relay-read-only",
-    "relay": { "domain": "company", "action": "get" }
+    "relay": {
+      "domain": "company",
+      "action": "get"
+    }
   },
   {
     "id": "company.update",
@@ -285,7 +378,10 @@
     "method": "PUT",
     "action": "update",
     "classification": "relay-supported",
-    "relay": { "domain": "company", "action": "update" }
+    "relay": {
+      "domain": "company",
+      "action": "update"
+    }
   },
   {
     "id": "company.set-logo",
@@ -294,7 +390,10 @@
     "method": "PUT",
     "action": "set-logo",
     "classification": "relay-supported",
-    "relay": { "domain": "company", "action": "set-logo" }
+    "relay": {
+      "domain": "company",
+      "action": "set-logo"
+    }
   },
   {
     "id": "company.reset-logo",
@@ -303,7 +402,10 @@
     "method": "PUT",
     "action": "reset-logo",
     "classification": "relay-supported",
-    "relay": { "domain": "company", "action": "reset-logo" }
+    "relay": {
+      "domain": "company",
+      "action": "reset-logo"
+    }
   },
   {
     "id": "reports.timesheet-export",
@@ -312,7 +414,10 @@
     "method": "POST",
     "action": "timesheet-export",
     "classification": "relay-supported",
-    "relay": { "domain": "reports", "action": "timesheet-export" }
+    "relay": {
+      "domain": "reports",
+      "action": "timesheet-export"
+    }
   },
   {
     "id": "reports.schedule-export",
@@ -321,7 +426,10 @@
     "method": "POST",
     "action": "schedule-export",
     "classification": "relay-supported",
-    "relay": { "domain": "reports", "action": "schedule-export" }
+    "relay": {
+      "domain": "reports",
+      "action": "schedule-export"
+    }
   },
   {
     "id": "reports.daily-list",
@@ -330,7 +438,10 @@
     "method": "GET",
     "action": "daily-list",
     "classification": "relay-read-only",
-    "relay": { "domain": "reports", "action": "daily-list" }
+    "relay": {
+      "domain": "reports",
+      "action": "daily-list"
+    }
   },
   {
     "id": "reports.daily-create",
@@ -339,7 +450,10 @@
     "method": "POST",
     "action": "daily-create",
     "classification": "relay-supported",
-    "relay": { "domain": "reports", "action": "daily-create" }
+    "relay": {
+      "domain": "reports",
+      "action": "daily-create"
+    }
   },
   {
     "id": "reports.daily-update",
@@ -348,7 +462,10 @@
     "method": "PATCH",
     "action": "daily-update",
     "classification": "relay-supported",
-    "relay": { "domain": "reports", "action": "daily-update" }
+    "relay": {
+      "domain": "reports",
+      "action": "daily-update"
+    }
   },
   {
     "id": "reports.daily-delete",
@@ -357,7 +474,10 @@
     "method": "DELETE",
     "action": "daily-delete",
     "classification": "relay-supported",
-    "relay": { "domain": "reports", "action": "daily-delete" }
+    "relay": {
+      "domain": "reports",
+      "action": "daily-delete"
+    }
   },
   {
     "id": "reports.daily-export",
@@ -366,6 +486,33 @@
     "method": "GET",
     "action": "daily-export",
     "classification": "relay-supported",
-    "relay": { "domain": "reports", "action": "daily-export" }
+    "relay": {
+      "domain": "reports",
+      "action": "daily-export"
+    }
+  },
+  {
+    "id": "schedule.list-days-off",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-oidc-trigger",
+    "method": "POST",
+    "action": "list-days-off",
+    "classification": "relay-read-only",
+    "relay": {
+      "domain": "schedule",
+      "action": "list-days-off"
+    }
+  },
+  {
+    "id": "schedule.batch-set-days-off",
+    "surface": "Dienstplan",
+    "endpoint": "/api/schedule-oidc-trigger",
+    "method": "POST",
+    "action": "batch-set-days-off",
+    "classification": "relay-supported",
+    "relay": {
+      "domain": "schedule",
+      "action": "batch-set-days-off"
+    }
   }
 ]

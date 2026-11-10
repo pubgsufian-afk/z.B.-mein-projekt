@@ -1,12 +1,14 @@
 import type { Context } from '@netlify/functions'
 import scheduleAssistant from '../schedule-assistant.mts'
 import { bulkUpdateScheduleShifts } from './portal-admin-bulk-schedule.mts'
+import { listScheduleDaysOff, batchSetScheduleDaysOff } from './portal-admin-days-off.mts'
 import {
   ScheduleAssistAdminError,
   scheduleAssistAdminService,
   type ScheduleAssistAdminActor,
 } from './schedule-assist-admin-service.mts'
 import type { PortalAdminHandler } from './portal-admin-router.mts'
+
 
 const RELAY_ACTOR: ScheduleAssistAdminActor = { userId: 'portal-admin-relay', role: 'owner' }
 
@@ -31,6 +33,14 @@ function publishResultStatus(data: Record<string, unknown>) {
 
 export function createSchedulePortalAdminHandler(context: Context): PortalAdminHandler {
   return async (operation, commandContext) => {
+    if (operation.action === 'list-days-off') {
+      const result = await listScheduleDaysOff(operation.input)
+      return { itemId: operation.itemId, domain: operation.domain, action: operation.action, ...result }
+    }
+    if (operation.action === 'batch-set-days-off') {
+      const result = await batchSetScheduleDaysOff(operation.input, commandContext.commandId)
+      return { itemId: operation.itemId, domain: operation.domain, action: operation.action, ...result }
+    }
     if (operation.action === 'bulk-update-shifts') {
       const data = await bulkUpdateScheduleShifts(operation.input, commandContext.commandId)
       const results = Array.isArray(data.results) ? data.results : []
