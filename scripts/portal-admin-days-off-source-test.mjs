@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+const read = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf8')
+const source = read('netlify/functions/_shared/portal-admin-days-off.mts')
+const handler = read('netlify/functions/_shared/portal-admin-schedule.mts')
+const capabilities = JSON.parse(read('ops/portal-admin-capabilities-extra.json'))
+const migration = read('netlify/database/migrations/20261109234000_time_off_management/migration.sql')
+const old = read('ops/portal-admin-surface-policy.json')
+assert.match(source, /relayListDaysOff/)
+assert.match(source, /relayBulkSetDaysOff/)
+assert.match(source, /EMPLOYEE_NOT_ACTIVE/)
+assert.match(source, /HABUN_SHIFT_CONFLICT/)
+assert.match(source, /ON CONFLICT \(employee_user_id, day_off_date\) DO NOTHING/)
+assert.match(source, /portal-access/)
+assert.match(source, /source, created_by/)
+assert.match(source, /'manual'/)
+assert.match(source, /tryRecordPortalAdminChange/)
+assert.match(handler, /operation.action === 'list-days-off'/)
+assert.match(handler, /operation.action === 'bulk-set-days-off'/)
+for (const action of ['list-days-off', 'bulk-set-days-off']) {
+  const entry = capabilities.find((x) => x.id === 'schedule.' + action)
+  assert.equal(entry?.relay?.action, action)
+  assert.equal(entry?.relay?.domain, 'schedule')
+}
+assert.match(migration, /CREATE TABLE IF NOT EXISTS schedule_days_off/)
+assert.match(migration, /CREATE TRIGGER habun_day_off_shift_guard/)
+assert.ok(old.excluded['/api/time-off'].includes('Vertrauliche'))
+console.log('PR73 protected Dienstfrei relay safety contract tests passed')
