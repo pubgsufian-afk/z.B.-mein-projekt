@@ -511,6 +511,7 @@ function SchedulePage({ session }) {
   const [showPlanActions, setShowPlanActions] = useState(false)
   const [entries, setEntries] = useState([])
   const [daysOff, setDaysOff] = useState([])
+  const [editingDayOff, setEditingDayOff] = useState(null)
   const [scheduleMode, setScheduleMode] = useState('shift')
   const [objects, setObjects] = useState([])
   const [employees, setEmployees] = useState([])
@@ -572,16 +573,54 @@ function SchedulePage({ session }) {
   }
 
   function startNew(date, mode = 'shift') {
+    setEditingDayOff(null)
     setScheduleMode(mode)
     setForm({ ...emptyForm, date })
     setEditing(true)
     window.setTimeout(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30)
   }
   function edit(entry) {
+    setEditingDayOff(null)
     setScheduleMode('shift')
     setForm({ ...entry, repeatDays: [], pauseMinutes: Number(entry.pauseMinutes || 0) })
     setEditing(true)
     window.setTimeout(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30)
+  }
+
+  function editDayOff(day) {
+    setEditing(false)
+    setEditingDayOff(day)
+    window.setTimeout(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30)
+  }
+
+  async function revokeDayOff(planShift = false) {
+    if (!editingDayOff || busy) return
+    const day = editingDayOff
+    if (!window.confirm(`Dienstfrei für ${day.employeeName} am ${formatDate(day.date)} aufheben?`)) return
+    setBusy('remove-day-off')
+    try {
+      await apiJson('/api/time-off', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'remove-day-off', employeeUserId: day.employeeUserId, date: day.date }),
+      })
+      await load()
+      setEditingDayOff(null)
+      if (planShift) {
+        setScheduleMode('shift')
+        setForm({ ...emptyForm, employeeUserId: day.employeeUserId, employeeName: day.employeeName, date: day.date })
+        setEditing(true)
+      }
+      setNotice({
+        tone: 'success',
+        text: planShift
+          ? 'Dienstfrei aufgehoben. Der Mitarbeiter ist wieder auswählbar. Bitte die neue Schicht speichern.'
+          : 'Dienstfrei aufgehoben. Der Mitarbeiter ist für diesen Tag wieder einplanbar.',
+      })
+    } catch (error) {
+      setNotice({ tone: 'error', text: error.message })
+    } finally {
+      setBusy('')
+    }
   }
 
   async function save(event) {
@@ -680,8 +719,22 @@ function SchedulePage({ session }) {
         </div>
       </>}
     </section>
-    {management ? <div className="week-cards management-week-cards">{days.map((date) => { const dayEntries = visibleEntries.filter((entry) => entry.date === date); const dayOffEntries = daysOff.filter((day) => day.date === date); return <section className="day-card" key={date}><header><div><span>{formatDate(date, { weekday: 'long' })}</span><strong>{formatDate(date, { day: '2-digit', month: '2-digit' })}</strong></div><button aria-label={`Dienst am ${formatDate(date)} hinzufügen`} onClick={() => startNew(date)}>+</button></header><div>{dayOffEntries.map((off) => <div className="schedule-day-off-item" key={off.employeeUserId}><strong>{off.employeeName} · Dienstfrei</strong><small>Keine Schicht · bestätigt</small></div>)}<button type="button" className="secondary-button compact" onClick={() => startNew(date, 'off')}>+ Frei</button>{dayEntries.length ? dayEntries.map((entry) => <button type="button" className="shift-item" key={entry.id} onClick={() => edit(entry)}><strong>{entry.start}–{entry.end}</strong><span>{entry.employeeName}</span><small>{entry.location} · {entry.workArea}</small><em>{entry.pauseMinutes || 0} Min. Pause · {entry.status === 'published' ? 'Freigegeben' : 'Entwurf'}</em></button>) : <span className="day-empty">Kein Dienst</span>}</div></section> })}</div> : sortedEmployeeEntries.length ? <div className="employee-shift-list">{sortedEmployeeEntries.map((entry) => <article className="employee-shift-card" key={entry.id}><header><div><span>{formatDate(entry.date, { weekday: 'long' })}</span><strong>{formatDate(entry.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong></div><strong className="employee-shift-time">{entry.start}–{entry.end}</strong></header><div className="employee-shift-details"><strong>{entry.location || 'Einsatzort nicht angegeben'}</strong><span>{entry.workArea || 'Arbeitsbereich nicht angegeben'}</span><small>{entry.pauseMinutes || 0} Min. Pause</small></div></article>)}</div> : <section className="panel employee-schedule-empty"><Empty>Für diese Woche ist kein freigegebener Dienst eingetragen.</Empty></section>}
+    {management ? <div className="week-cards management-week-cards">{days.map((date) => { const dayEntries = visibleEntries.filter((entry) => entry.date === date); const dayOffEntries = daysOff.filter((day) => day.date === date); return <section className="day-card" key={date}><header><div><span>{formatDate(date, { weekday: 'long' })}</span><strong>{formatDate(date, { day: '2-digit', month: '2-digit' })}</strong></div><button aria-label={`Dienst am ${formatDate(date)} hinzufügen`} onClick={() => startNew(date)}>+</button></header><div>{dayOffEntries.map((off) => <button type="button" className="schedule-day-off-item" key={off.employeeUserId} disabled={Boolean(busy)} onClick={() => editDayOff(off)} aria-label={`${off.employeeName}: Dienstfrei am ${formatDate(off.date)} bearbeiten`}><strong>{off.employeeName} · Dienstfrei</strong><small>Keine Schicht · bestätigt · Bearbeiten</small></button>)}<button type="button" className="secondary-button compact" onClick={() => startNew(date, 'off')}>+ Frei</button>{dayEntries.length ? dayEntries.map((entry) => <button type="button" className="shift-item" key={entry.id} onClick={() => edit(entry)}><strong>{entry.start}–{entry.end}</strong><span>{entry.employeeName}</span><small>{entry.location} · {entry.workArea}</small><em>{entry.pauseMinutes || 0} Min. Pause · {entry.status === 'published' ? 'Freigegeben' : 'Entwurf'}</em></button>) : <span className="day-empty">Kein Dienst</span>}</div></section> })}</div> : sortedEmployeeEntries.length ? <div className="employee-shift-list">{sortedEmployeeEntries.map((entry) => <article className="employee-shift-card" key={entry.id}><header><div><span>{formatDate(entry.date, { weekday: 'long' })}</span><strong>{formatDate(entry.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong></div><strong className="employee-shift-time">{entry.start}–{entry.end}</strong></header><div className="employee-shift-details"><strong>{entry.location || 'Einsatzort nicht angegeben'}</strong><span>{entry.workArea || 'Arbeitsbereich nicht angegeben'}</span><small>{entry.pauseMinutes || 0} Min. Pause</small></div></article>)}</div> : <section className="panel employee-schedule-empty"><Empty>Für diese Woche ist kein freigegebener Dienst eingetragen.</Empty></section>}
     {!management && daysOff.length > 0 && <section className="panel"><PageHeader title="Meine freien Tage" subtitle="Diese Tage sind verbindlich als dienstfrei eingetragen." /><div className="employee-shift-list">{daysOff.map((off) => <article className="employee-shift-card" key={off.employeeUserId + off.date}><header><div><span>{formatDate(off.date, { weekday: 'long' })}</span><strong>{formatDate(off.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong></div><strong className="employee-shift-time">Dienstfrei</strong></header><div className="employee-shift-details"><span>Keine Schicht geplant</span></div></article>)}</div></section>}
+    {management && editingDayOff && <section className="panel editor-panel" ref={editorRef}>
+      <PageHeader
+        title="Dienstfrei bearbeiten"
+        subtitle={`${editingDayOff.employeeName} · ${formatDate(editingDayOff.date)}`}
+        action={<button type="button" className="secondary-button compact" disabled={Boolean(busy)} onClick={() => setEditingDayOff(null)}>Schließen</button>}
+      />
+      <p className="schedule-off-note">Dieser Tag ist als dienstfrei bestätigt. Du kannst die Freistellung aufheben oder sie aufheben und unmittelbar einen neuen Dienst für diesen Mitarbeiter planen. Andere Dienste und Arbeitszeiten bleiben unverändert.</p>
+      {editingDayOff.source === 'request' && <p className="schedule-off-note">Hinweis: Dieser Eintrag stammt aus einem genehmigten Freiwunsch. Beim Aufheben wird dessen Genehmigung widerrufen.</p>}
+      <div className="form-actions">
+        <button type="button" className="danger-outline" disabled={Boolean(busy)} onClick={() => revokeDayOff(false)}>{busy === 'remove-day-off' ? 'Wird aufgehoben …' : 'Dienstfrei aufheben'}</button>
+        <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => revokeDayOff(true)}>Aufheben und Dienst planen</button>
+        <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => setEditingDayOff(null)}>Abbrechen</button>
+      </div>
+    </section>}
     {management && editing && <section className="panel editor-panel" ref={editorRef}>
       <PageHeader title={scheduleMode === 'off' ? 'Dienstfrei eintragen' : form.id ? 'Dienst bearbeiten' : 'Dienst erstellen'} subtitle="Dienst oder freien Tag verbindlich eintragen." action={<button className="secondary-button compact" onClick={() => setEditing(false)}>Schließen</button>} />
       <form className="schedule-form" onSubmit={save}>
