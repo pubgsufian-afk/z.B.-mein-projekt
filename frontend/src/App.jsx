@@ -3,6 +3,8 @@ import { plannedNetMinutes } from './timesheet-utils.js'
 import { EmployeeTimesheetPage, EmployeeMailboxPage } from './EmployeeSelfService.jsx'
 import EmployeeDailyReports from './EmployeeDailyReports.jsx'
 import PrivateOwnerAudit from './PrivateOwnerAudit.jsx'
+import TimeOffPage from './TimeOffPage.jsx'
+import { schedulableEmployees } from './time-off-policy.mjs'
 import {
   AuthError,
   getUser,
@@ -42,6 +44,7 @@ const NAVIGATION = [
   { key: 'attendance', label: 'Zeiterfassung', roles: ['owner', 'admin', 'manager', 'employee'] },
   { key: 'employees', label: 'Mitarbeiter', roles: ['owner', 'admin', 'manager'] },
   { key: 'schedule', label: 'Dienstplan', roles: ['owner', 'admin', 'manager', 'employee'] },
+  { key: 'time-off', label: 'Freiwünsche', roles: ['owner', 'admin', 'manager', 'employee'] },
   { key: 'my-hours', label: 'Meine Stunden', roles: ['owner', 'admin', 'manager', 'employee'] },
   { key: 'mailbox', label: 'Postfach', roles: ['owner', 'admin', 'manager', 'employee'] },
   { key: 'daily-reports', label: 'Tagesberichte', roles: ['manager', 'employee'] },
@@ -284,11 +287,12 @@ function PortalShell({ session, page, setPage, onLogout, privateAuditAccess = fa
         <nav className="employee-kiosk-nav" aria-label="Mitarbeiterbereiche">
           <button type="button" className={page === 'attendance' ? 'active' : ''} onClick={() => navigate('attendance')}>Stempeluhr</button>
           <button type="button" className={page === 'schedule' ? 'active' : ''} onClick={() => navigate('schedule')}>Dienstplan</button>
+          <button type="button" className={page === 'time-off' ? 'active' : ''} onClick={() => navigate('time-off')}>Freiwünsche</button>
           <button type="button" className={page === 'my-hours' ? 'active' : ''} onClick={() => navigate('my-hours')}>Stunden</button>
           <button type="button" className={page === 'mailbox' ? 'active' : ''} onClick={() => navigate('mailbox')}>Postfach</button>
           <button type="button" className={page === 'daily-reports' ? 'active' : ''} onClick={() => navigate('daily-reports')}>Berichte</button>
         </nav>
-        <main className="employee-kiosk-main" aria-label={page === 'schedule' ? 'Eigener Dienstplan' : page === 'my-hours' ? 'Eigene Arbeitsstunden' : page === 'mailbox' ? 'Persönliches Postfach' : page === 'daily-reports' ? 'Eigene Tagesberichte' : 'Mitarbeiter-Zeiterfassung'}>{children}</main>
+        <main className="employee-kiosk-main" aria-label={page === 'schedule' ? 'Eigener Dienstplan' : page === 'time-off' ? 'Freiwünsche' : page === 'my-hours' ? 'Eigene Arbeitsstunden' : page === 'mailbox' ? 'Persönliches Postfach' : page === 'daily-reports' ? 'Eigene Tagesberichte' : 'Mitarbeiter-Zeiterfassung'}>{children}</main>
       </div>
     )
   }
@@ -506,6 +510,8 @@ function SchedulePage({ session }) {
   const [week, setWeek] = useState(mondayOf())
   const [showPlanActions, setShowPlanActions] = useState(false)
   const [entries, setEntries] = useState([])
+  const [daysOff, setDaysOff] = useState([])
+  const [scheduleMode, setScheduleMode] = useState('shift')
   const [objects, setObjects] = useState([])
   const [employees, setEmployees] = useState([])
   const [editing, setEditing] = useState(false)
@@ -519,10 +525,13 @@ function SchedulePage({ session }) {
     try {
       const from = week
       const to = addDays(week, 6)
+      const dayOffRequest = apiJson(`/api/time-off?resource=days&from=${from}&to=${to}`)
       const calls = [apiJson(`/api/schedule-v2?resource=entries&from=${from}&to=${to}`)]
       if (management) calls.push(apiJson('/api/schedule-v2?resource=objects'), apiJson('/api/registrations'))
       const [shiftData, objectData, employeeData] = await Promise.all(calls)
       setEntries(shiftData.entries || [])
+      const offData = await dayOffRequest
+      setDaysOff(offData.daysOff || [])
       setObjects(objectData?.objects || [])
       setEmployees(employeeData?.employees || [])
       setNotice(null)
@@ -562,12 +571,14 @@ function SchedulePage({ session }) {
     }))
   }
 
-  function startNew(date) {
+  function startNew(date, mode = 'shift') {
+    setScheduleMode(mode)
     setForm({ ...emptyForm, date })
     setEditing(true)
     window.setTimeout(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30)
   }
   function edit(entry) {
+    setScheduleMode('shift')
     setForm({ ...entry, repeatDays: [], pauseMinutes: Number(entry.pauseMinutes || 0) })
     setEditing(true)
     window.setTimeout(() => editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30)
@@ -577,6 +588,14 @@ function SchedulePage({ session }) {
     event.preventDefault()
     setBusy('save')
     try {
+      if (scheduleMode === 'off') {
+        await apiJson('/api/time-off', { method: 'POST', body: JSON.stringify({ action: 'set-day-off', employeeUserId: form.employeeUserId, date: form.date }) })
+        setNotice({ tone: 'success', text: 'Dienstfrei eingetragen. Der Mitarbeiter ist an diesem Tag nicht mehr auswählbar.' })
+        setEditing(false)
+        setForm({ ...emptyForm })
+        await load()
+        return
+      }
       const employee = employees.find((item) => String(item.userId || item.id) === form.employeeUserId)
       const object = objects.find((item) => item.id === form.objectId)
       const payload = {
@@ -661,16 +680,19 @@ function SchedulePage({ session }) {
         </div>
       </>}
     </section>
-    {management ? <div className="week-cards management-week-cards">{days.map((date) => { const dayEntries = visibleEntries.filter((entry) => entry.date === date); return <section className="day-card" key={date}><header><div><span>{formatDate(date, { weekday: 'long' })}</span><strong>{formatDate(date, { day: '2-digit', month: '2-digit' })}</strong></div><button aria-label={`Dienst am ${formatDate(date)} hinzufügen`} onClick={() => startNew(date)}>+</button></header><div>{dayEntries.length ? dayEntries.map((entry) => <button type="button" className="shift-item" key={entry.id} onClick={() => edit(entry)}><strong>{entry.start}–{entry.end}</strong><span>{entry.employeeName}</span><small>{entry.location} · {entry.workArea}</small><em>{entry.pauseMinutes || 0} Min. Pause · {entry.status === 'published' ? 'Freigegeben' : 'Entwurf'}</em></button>) : <span className="day-empty">Kein Dienst</span>}</div></section> })}</div> : sortedEmployeeEntries.length ? <div className="employee-shift-list">{sortedEmployeeEntries.map((entry) => <article className="employee-shift-card" key={entry.id}><header><div><span>{formatDate(entry.date, { weekday: 'long' })}</span><strong>{formatDate(entry.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong></div><strong className="employee-shift-time">{entry.start}–{entry.end}</strong></header><div className="employee-shift-details"><strong>{entry.location || 'Einsatzort nicht angegeben'}</strong><span>{entry.workArea || 'Arbeitsbereich nicht angegeben'}</span><small>{entry.pauseMinutes || 0} Min. Pause</small></div></article>)}</div> : <section className="panel employee-schedule-empty"><Empty>Für diese Woche ist kein freigegebener Dienst eingetragen.</Empty></section>}
+    {management ? <div className="week-cards management-week-cards">{days.map((date) => { const dayEntries = visibleEntries.filter((entry) => entry.date === date); const dayOffEntries = daysOff.filter((day) => day.date === date); return <section className="day-card" key={date}><header><div><span>{formatDate(date, { weekday: 'long' })}</span><strong>{formatDate(date, { day: '2-digit', month: '2-digit' })}</strong></div><button aria-label={`Dienst am ${formatDate(date)} hinzufügen`} onClick={() => startNew(date)}>+</button></header><div>{dayOffEntries.map((off) => <div className="schedule-day-off-item" key={off.employeeUserId}><strong>{off.employeeName} · Dienstfrei</strong><small>Keine Schicht · bestätigt</small></div>)}<button type="button" className="secondary-button compact" onClick={() => startNew(date, 'off')}>+ Frei</button>{dayEntries.length ? dayEntries.map((entry) => <button type="button" className="shift-item" key={entry.id} onClick={() => edit(entry)}><strong>{entry.start}–{entry.end}</strong><span>{entry.employeeName}</span><small>{entry.location} · {entry.workArea}</small><em>{entry.pauseMinutes || 0} Min. Pause · {entry.status === 'published' ? 'Freigegeben' : 'Entwurf'}</em></button>) : <span className="day-empty">Kein Dienst</span>}</div></section> })}</div> : sortedEmployeeEntries.length ? <div className="employee-shift-list">{sortedEmployeeEntries.map((entry) => <article className="employee-shift-card" key={entry.id}><header><div><span>{formatDate(entry.date, { weekday: 'long' })}</span><strong>{formatDate(entry.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong></div><strong className="employee-shift-time">{entry.start}–{entry.end}</strong></header><div className="employee-shift-details"><strong>{entry.location || 'Einsatzort nicht angegeben'}</strong><span>{entry.workArea || 'Arbeitsbereich nicht angegeben'}</span><small>{entry.pauseMinutes || 0} Min. Pause</small></div></article>)}</div> : <section className="panel employee-schedule-empty"><Empty>Für diese Woche ist kein freigegebener Dienst eingetragen.</Empty></section>}
+    {!management && daysOff.length > 0 && <section className="panel"><PageHeader title="Meine freien Tage" subtitle="Diese Tage sind verbindlich als dienstfrei eingetragen." /><div className="employee-shift-list">{daysOff.map((off) => <article className="employee-shift-card" key={off.employeeUserId + off.date}><header><div><span>{formatDate(off.date, { weekday: 'long' })}</span><strong>{formatDate(off.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong></div><strong className="employee-shift-time">Dienstfrei</strong></header><div className="employee-shift-details"><span>Keine Schicht geplant</span></div></article>)}</div></section>}
     {management && editing && <section className="panel editor-panel" ref={editorRef}>
-      <PageHeader title={form.id ? 'Dienst bearbeiten' : 'Dienst erstellen'} subtitle="Häufige Zeiten schnell auswählen und vor dem Speichern prüfen." action={<button className="secondary-button compact" onClick={() => setEditing(false)}>Schließen</button>} />
+      <PageHeader title={scheduleMode === 'off' ? 'Dienstfrei eintragen' : form.id ? 'Dienst bearbeiten' : 'Dienst erstellen'} subtitle="Dienst oder freien Tag verbindlich eintragen." action={<button className="secondary-button compact" onClick={() => setEditing(false)}>Schließen</button>} />
       <form className="schedule-form" onSubmit={save}>
         <div className="form-grid three">
-          <label>Mitarbeiter<select value={form.employeeUserId} onChange={update('employeeUserId')} required><option value="">Bitte wählen</option>{employees.map((employee) => <option key={employee.userId || employee.id} value={employee.userId || employee.id}>{employee.fullName}</option>)}</select></label>
+          <label>Mitarbeiter<select value={form.employeeUserId} onChange={update('employeeUserId')} required><option value="">Bitte wählen</option>{(scheduleMode === 'off' ? employees : schedulableEmployees(employees, daysOff, form.date)).map((employee) => <option key={employee.userId || employee.id} value={employee.userId || employee.id}>{employee.fullName}</option>)}</select></label>
           <label>Datum<input type="date" value={form.date} onChange={update('date')} required /></label>
-          <label>Einsatzort<select value={form.objectId} onChange={selectScheduleObject}><option value="">Ohne gespeicherten Einsatzort</option>{objects.map((object) => <option value={object.id} key={object.id}>{object.name}</option>)}</select></label>
+          {scheduleMode === 'shift' && <label>Einsatzort<select value={form.objectId} onChange={selectScheduleObject}><option value="">Ohne gespeicherten Einsatzort</option>{objects.map((object) => <option value={object.id} key={object.id}>{object.name}</option>)}</select></label>}
         </div>
 
+        <div className="schedule-mode-row" role="group" aria-label="Art des Eintrags"><button type="button" className="secondary-button compact" aria-pressed={scheduleMode === 'shift'} onClick={() => setScheduleMode('shift')}>Dienst</button><button type="button" className="secondary-button compact" aria-pressed={scheduleMode === 'off'} onClick={() => setScheduleMode('off')}>Dienstfrei</button></div>
+        {scheduleMode === 'off' ? <p className="schedule-off-note">Der ausgewählte Mitarbeiter erhält für dieses Datum „Dienstfrei“. Es werden keine Stunden erfasst. Vorhandene Dienste müssen vorher bewusst geklärt werden.</p> : <>
         <div className="schedule-quick-section">
           <strong>Schnellwahl Zeit</strong>
           <div className="schedule-preset-row">{SCHEDULE_TIME_PRESETS.map(([label, start, end]) => <button key={label} className={form.start === start && form.end === end ? 'schedule-preset active' : 'schedule-preset'} type="button" aria-pressed={form.start === start && form.end === end} onClick={() => applyTimePreset(start, end)}>{label}</button>)}</div>
@@ -701,7 +723,8 @@ function SchedulePage({ session }) {
           {days.filter((date) => date !== form.date).map((date) => <label key={date}><input type="checkbox" checked={form.repeatDays?.includes(date) || false} onChange={(event) => setForm((current) => ({ ...current, repeatDays: event.target.checked ? [...(current.repeatDays || []), date] : (current.repeatDays || []).filter((item) => item !== date) }))} /><span>{formatDate(date, { weekday: 'short', day: '2-digit', month: '2-digit' })}</span></label>)}
         </fieldset>
 
-        <div className="form-actions"><button className="primary-button" disabled={Boolean(busy)}>{busy === 'save' ? 'Wird gespeichert …' : 'Als Entwurf speichern'}</button>{form.id && <button type="button" className="danger-outline" disabled={Boolean(busy)} onClick={remove}>Dienst löschen</button>}<button type="button" className="secondary-button" onClick={() => { setForm({ ...emptyForm }); setEditing(false) }}>Abbrechen</button></div>
+        </>}
+        <div className="form-actions"><button className="primary-button" disabled={Boolean(busy)}>{busy === 'save' ? 'Wird gespeichert …' : scheduleMode === 'off' ? 'Dienstfrei eintragen' : 'Als Entwurf speichern'}</button>{form.id && scheduleMode === 'shift' && <button type="button" className="danger-outline" disabled={Boolean(busy)} onClick={remove}>Dienst löschen</button>}<button type="button" className="secondary-button" onClick={() => { setForm({ ...emptyForm }); setEditing(false) }}>Abbrechen</button></div>
       </form>
     </section>}
   </>
@@ -878,6 +901,7 @@ function UnifiedPortal({ session, onLogout }) {
     : page === 'attendance' ? <AttendancePage session={session} />
       : page === 'employees' ? <EmployeesPage session={session} />
         : page === 'schedule' ? <SchedulePage session={session} />
+          : page === 'time-off' ? <TimeOffPage session={session} />
           : page === 'my-hours' ? <EmployeeTimesheetPage />
             : page === 'mailbox' ? <EmployeeMailboxPage session={session} />
             : page === 'daily-reports' ? <EmployeeDailyReports />

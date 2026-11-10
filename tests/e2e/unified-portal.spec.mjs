@@ -128,6 +128,59 @@ async function mockPortalApis(page, role = 'admin') {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, version: 2 }) })
   })
 
+  const dayOff = []
+  const freeRequests = []
+  await page.route('**/api/time-off**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+    const permitted = (item) => role !== 'employee' || item.employeeUserId === 'employee-anna'
+    const respond = (data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) })
+    if (request.method() === 'GET') {
+      const from = url.searchParams.get('from')
+      const to = url.searchParams.get('to')
+      const days = dayOff.filter((item) => permitted(item) && (!from || item.date >= from) && (!to || item.date <= to))
+      const requests = freeRequests.filter(permitted)
+      return respond({ daysOff: days, requests })
+    }
+    const data = request.postDataJSON()
+    if (data.action === 'request') {
+      const item = { id: 'free-' + (freeRequests.length + 1), employeeUserId: role === 'employee' ? 'employee-anna' : 'admin-1', employeeName: role === 'employee' ? 'Anna Beispiel' : 'Test Admin', date: data.date, reason: data.reason, status: 'pending', hasShift: false, decisionNote: '' }
+      freeRequests.push(item)
+      return respond({ request: item }, 201)
+    }
+    if (data.action === 'set-day-off') {
+      if (role === 'employee') return respond({ message: 'Keine Berechtigung.' }, 403)
+      if (dayOff.some((item) => item.employeeUserId === data.employeeUserId && item.date === data.date)) return respond({ message: 'Bereits dienstfrei.' }, 409)
+      const employee = employees.find((person) => person.userId === data.employeeUserId)
+      const item = { employeeUserId: data.employeeUserId, employeeName: employee?.fullName || '', date: data.date, source: 'manual' }
+      dayOff.push(item)
+      return respond({ dayOff: item }, 201)
+    }
+    if (data.action === 'decide') {
+      if (role === 'employee') return respond({ message: 'Keine Berechtigung.' }, 403)
+      const item = freeRequests.find((entry) => entry.id === data.id)
+      if (!item || item.status !== 'pending') return respond({ message: 'Anfrage nicht mehr offen.' }, 409)
+      item.status = data.decision === 'approve' ? 'approved' : 'rejected'
+      item.decisionNote = data.note || ''
+      if (item.status === 'approved') dayOff.push({ employeeUserId: item.employeeUserId, employeeName: item.employeeName, date: item.date, source: 'request' })
+      return respond({ request: item })
+    }
+    if (data.action === 'withdraw') {
+      const item = freeRequests.find((entry) => entry.id === data.id && permitted(entry))
+      if (!item || item.status !== 'pending') return respond({ message: 'Keine offene eigene Anfrage.' }, 409)
+      item.status = 'withdrawn'
+      return respond({ request: item })
+    }
+    if (data.action === 'remove-day-off') {
+      if (role === 'employee') return respond({ message: 'Keine Berechtigung.' }, 403)
+      const index = dayOff.findIndex((item) => item.date === data.date && item.employeeUserId === data.employeeUserId)
+      if (index < 0) return respond({ message: 'Nicht gefunden.' }, 404)
+      dayOff.splice(index, 1)
+      return respond({ removed: true })
+    }
+    return respond({ message: 'Unbekannte Aktion.' }, 400)
+  })
+
   await page.route('**/api/attendance**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
@@ -209,19 +262,20 @@ async function mockPortalApis(page, role = 'admin') {
     })
   })
 
-  return { getAttendanceEvents: () => attendanceEvents, getCompany: () => company }
+  return { getAttendanceEvents: () => attendanceEvents, getCompany: () => company, addFreeRequest: (item) => freeRequests.push(item), getDaysOff: () => dayOff }
 }
 
 async function login(page, role = 'admin') {
   const user = users[role]
   await mockIdentity(page, user)
-  await mockPortalApis(page, role)
+  const mockState = await mockPortalApis(page, role)
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
   await page.getByLabel('E-Mail-Adresse').fill(user.email)
   await page.getByLabel('Passwort').fill('test-login')
   await page.getByRole('button', { name: 'Sicher anmelden' }).click()
   await expect(page.getByRole('heading', { name: role === 'employee' ? 'Stempeluhr' : 'Übersicht', exact: true })).toBeVisible()
+  return mockState
 }
 
 async function navigate(page, label) {
@@ -319,6 +373,46 @@ test('mobile schedule opens a simple editor from a day card', async ({ page }, t
   await page.getByRole('button', { name: 'Als Entwurf speichern' }).click()
   await expect(page.getByRole('heading', { name: 'Dienst erstellen' })).toHaveCount(0)
   await expectNoHorizontalPageOverflow(page)
+})
+
+test('admin can mark Dienstfrei and hide the employee for that date', async ({ page }) => {
+  await login(page, 'admin')
+  await navigate(page, 'Dienstplan')
+  const finalDay = page.locator('.management-week-cards .day-card').last()
+  await finalDay.getByRole('button', { name: /Dienst am .* hinzufügen/ }).click()
+  await page.getByRole('button', { name: 'Dienstfrei', exact: true }).click()
+  await page.getByLabel('Mitarbeiter').selectOption('employee-anna')
+  await page.getByRole('button', { name: 'Dienstfrei eintragen', exact: true }).click()
+  await expect(finalDay.getByText('Anna Beispiel · Dienstfrei')).toBeVisible()
+  await finalDay.getByRole('button', { name: /Dienst am .* hinzufügen/ }).click()
+  await expect(page.getByLabel('Mitarbeiter').locator('option[value="employee-anna"]')).toHaveCount(0)
+  await expect(page.getByLabel('Mitarbeiter').locator('option[value="employee-bernd"]')).toHaveCount(1)
+})
+
+test('employee can send a Freiwunsch, see its pending status, and cannot approve', async ({ page }) => {
+  await login(page, 'employee')
+  await page.getByRole('button', { name: 'Freiwünsche', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Freiwünsche & Dienstfrei' })).toBeVisible()
+  const requestedDate = new Date(Date.now() + 8 * 86400000).toISOString().slice(0, 10)
+  await page.getByLabel('Gewünschter freier Tag').fill(requestedDate)
+  await page.getByLabel('Grund oder Termin').fill('Wichtiger privater Termin')
+  await page.getByRole('button', { name: 'Freiwunsch senden' }).click()
+  await expect(page.getByText(/Dein Freiwunsch wurde übermittelt/)).toBeVisible()
+  await expect(page.getByText('Wichtiger privater Termin')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Genehmigen' })).toHaveCount(0)
+})
+
+test('admin can approve an employee Freiwunsch and show confirmed Dienstfrei', async ({ page }) => {
+  const state = await login(page, 'admin')
+  const requestedDate = new Date(Date.now() + 8 * 86400000).toISOString().slice(0, 10)
+  state.addFreeRequest({ id: 'wish-anna', employeeUserId: 'employee-anna', employeeName: 'Anna Beispiel', date: requestedDate, reason: 'Arzttermin', status: 'pending', decisionNote: '', hasShift: false })
+  await navigate(page, 'Freiwünsche')
+  await expect(page.getByText('Arzttermin')).toBeVisible()
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: 'Genehmigen' }).click()
+  await expect(page.locator('.time-off-notice.success')).toContainText('Freiwunsch genehmigt')
+  await expect(page.getByText(/Dienstfrei/).first()).toBeVisible()
+  expect(state.getDaysOff()).toEqual(expect.arrayContaining([expect.objectContaining({ date: requestedDate, employeeUserId: 'employee-anna' })]))
 })
 
 test('management downloads a valid schedule PDF', async ({ page }) => {

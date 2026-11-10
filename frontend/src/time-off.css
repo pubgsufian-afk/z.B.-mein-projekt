@@ -1,0 +1,51 @@
+.time-off-page { display: grid; gap: 18px; }
+.time-off-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.time-off-heading h2 { margin: 0 0 6px; }
+.time-off-heading p, .time-off-hint { color: var(--muted, #a6afb7); line-height: 1.55; }
+.time-off-heading p { margin: 0; }
+.time-off-panel { display: grid; gap: 14px; }
+.time-off-panel h3 { margin: 0; font-size: 1.12rem; }
+.time-off-panel .time-off-hint { margin: 0; font-size: .89rem; }
+.time-off-form { display: grid; gap: 16px; }
+.time-off-form label, .time-off-request label { display: grid; gap: 7px; font-weight: 600; }
+.time-off-form input, .time-off-form textarea, .time-off-request textarea {
+  width: 100%; box-sizing: border-box; min-width: 0; border-radius: 10px;
+  border: 1px solid rgba(152,160,180,.32); background: var(--surface, #17212b); color: inherit;
+  padding: 12px; font: inherit;
+}
+.time-off-form textarea, .time-off-request textarea { resize: vertical; }
+.time-off-form .primary-button { justify-self: start; }
+.time-off-stack { display: grid; gap: 12px; }
+.time-off-request, .time-off-day {
+  border: 1px solid rgba(162,171,190,.22); border-radius: 12px; padding: 15px;
+  background: rgba(128,140,160,.055); min-width: 0;
+}
+.time-off-request { display: grid; gap: 10px; }
+.time-off-request header, .time-off-day { display: flex; justify-content: space-between; align-items: start; gap: 10px; flex-wrap: wrap; }
+.time-off-request header div, .time-off-day div { display: grid; gap: 5px; min-width: 0; }
+.time-off-request header span, .time-off-day small { color: var(--muted, #a6afb7); }
+.time-off-request .time-off-reason { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.time-off-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.time-off-state { border-radius: 99px; padding: 4px 10px; border: 1px solid currentColor; font-size: .78rem; font-weight: 700; }
+.time-off-state.approved { color: #49bd90; } .time-off-state.pending { color: #e1bc62; }
+.time-off-state.rejected, .time-off-state.revoked { color: #e88983; }
+.time-off-state.withdrawn { color: #aeb6c2; }
+.time-off-notice { padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(170,180,196,.4); line-height: 1.5; }
+.time-off-notice.error, .time-off-warning { border-color: rgba(220,114,105,.7); color: #ef9c95; }
+.time-off-notice.success { color: #60cda1; }
+.time-off-warning { margin: 0; border: 1px solid; border-radius: 8px; padding: 10px; font-size: .9rem; }
+.time-off-empty { margin: 0; color: var(--muted, #a6afb7); }
+.time-off-response { margin: 0; color: var(--muted, #a6afb7); overflow-wrap: anywhere; }
+.schedule-day-off-item { display: grid; gap: 4px; padding: 10px; border: 1px dashed rgba(200,180,100,.6); border-radius: 10px; margin: 6px 0; }
+.schedule-day-off-item strong { font-size: .9rem; }
+.schedule-day-off-item small { color: var(--muted, #a6afb7); }
+.schedule-mode-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.schedule-mode-row button[aria-pressed="true"] { border-color: #d2b56b; outline: 1px solid #d2b56b; }
+.schedule-off-note { line-height: 1.5; color: var(--muted, #a6afb7); margin: 0; }
+@media (max-width: 620px) {
+  .time-off-heading { display: grid; }
+  .time-off-heading > button { justify-self: start; }
+  .time-off-panel { padding: 16px; }
+  .time-off-form .primary-button { width: 100%; }
+  .time-off-actions button { flex: 1; min-width: 105px; }
+}

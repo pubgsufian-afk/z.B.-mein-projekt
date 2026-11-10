@@ -106,7 +106,7 @@ async function buildSchedulePdf(request: Request, entries: ScheduleEntry[], from
       safePdfText(entry.employeeName || 'Mitarbeiter', 22),
       safePdfText(entry.start || '-', 8),
       safePdfText(entry.end || '-', 8),
-      `${Number(entry.pauseMinutes || 0)} Min.`,
+      entry.workArea === 'Dienstfrei' ? '-' : `${Number(entry.pauseMinutes || 0)} Min.`,
       safePdfText(entry.location || '-', 28),
       safePdfText(entry.workArea || '-', 24),
     ]
@@ -136,10 +136,20 @@ export default async function schedulePdfFixed(request: Request, _context: Conte
     const response = await fetch(url, { headers: request.headers, cache: 'no-store' })
     if (!response.ok) return json({ message: 'Der Dienstplan konnte nicht geladen werden.', code: 'SCHEDULE_QUERY_FAILED' }, 502)
     const payload = await response.json().catch(() => ({})) as { entries?: ScheduleEntry[] }
-    const entries = (Array.isArray(payload.entries) ? payload.entries : [])
-      .filter((entry) => entry.status === 'published')
+    const offUrl = new URL('/api/time-off', request.url)
+    offUrl.searchParams.set('resource', 'days')
+    offUrl.searchParams.set('from', from)
+    offUrl.searchParams.set('to', to)
+    const offResponse = await fetch(offUrl, { headers: request.headers, cache: 'no-store' })
+    if (!offResponse.ok) return json({ message: 'Bestätigte freie Tage konnten nicht geladen werden.', code: 'DAY_OFF_QUERY_FAILED' }, 502)
+    const offPayload = await offResponse.json().catch(() => ({})) as { daysOff?: Array<{ date: string; employeeName: string }> }
+    const offEntries: ScheduleEntry[] = (offPayload.daysOff || []).map((day) => ({
+      date: day.date, employeeName: day.employeeName, start: '-', end: '-', pauseMinutes: 0,
+      location: '-', workArea: 'Dienstfrei', status: 'published',
+    }))
+    const entries = [...(Array.isArray(payload.entries) ? payload.entries : []).filter((entry) => entry.status === 'published'), ...offEntries]
       .sort((a, b) => `${a.date || ''}-${a.start || ''}-${a.employeeName || ''}`.localeCompare(`${b.date || ''}-${b.start || ''}-${b.employeeName || ''}`, 'de'))
-    if (!entries.length) return json({ message: 'Für diesen Zeitraum sind keine freigegebenen Dienste vorhanden.', code: 'NO_SCHEDULE_DATA' }, 404)
+    if (!entries.length) return json({ message: 'Für diesen Zeitraum sind keine Dienste oder freien Tage vorhanden.', code: 'NO_SCHEDULE_DATA' }, 404)
 
     const bytes = await buildSchedulePdf(request, entries, from, to)
     return new Response(bytes as BodyInit, {
