@@ -14,6 +14,8 @@ assert.deepEqual(resolveScheduleWorkArea('Lager/Aufzug'), { key: 'lager-aufzug',
 assert.deepEqual(resolveScheduleWorkArea('Baureinigung'), { key: 'baureinigung', label: 'Baureinigung' })
 assert.deepEqual(resolveScheduleWorkArea('Bauhelfer'), { key: 'bauhelfer', label: 'Bauhelfer' })
 assert.deepEqual(resolveScheduleWorkArea('WC'), { key: 'wc', label: 'WC' })
+assert.deepEqual(resolveScheduleWorkArea('Büro'), { key: 'buero', label: 'Büro' })
+assert.deepEqual(resolveScheduleWorkArea('buero'), { key: 'buero', label: 'Büro' })
 assert.equal(resolveScheduleWorkArea('Unbekannter Bereich'), null)
 
 assert.equal(resolveSchedulePause({ workAreaKey: 'brandwache', start: '07:00', end: '17:00' }), 60)
@@ -24,6 +26,7 @@ assert.equal(resolveSchedulePause({ workAreaKey: 'baureinigung', start: '07:30',
 assert.equal(resolveSchedulePause({ workAreaKey: 'lager-aufzug', start: '07:30', end: '16:30' }), 60)
 assert.equal(resolveSchedulePause({ workAreaKey: 'bauhelfer', start: '08:30', end: '17:00' }), 30)
 assert.equal(resolveSchedulePause({ workAreaKey: 'zuko', start: '06:00', end: '17:00' }), 0)
+assert.equal(resolveSchedulePause({ workAreaKey: 'buero', start: '09:00', end: '18:00', explicitPause: 60 }), 60)
 assert.equal(resolveSchedulePause({ workAreaKey: 'brandwache', start: '07:00', end: '17:00', explicitPause: 0 }), 0)
 assert.equal(resolveSchedulePause({ workAreaKey: 'brandwache', start: '07:00', end: '17:00', explicitPause: 30 }), 30)
 assert.equal(resolveSchedulePause({ workAreaKey: 'brandwache', start: '07:00', end: '17:00', explicitPause: -1 }), null)
