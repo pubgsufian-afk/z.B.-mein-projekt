@@ -1,7 +1,6 @@
 import type { Context } from '@netlify/functions'
 import { getDatabase } from '@netlify/database'
 import scheduleAssistant from '../schedule-assistant.mts'
-import { getStore } from '@netlify/blobs'
 import { bulkUpdateScheduleShifts } from './portal-admin-bulk-schedule.mts'
 import {
   ScheduleAssistAdminError,
