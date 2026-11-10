@@ -6,7 +6,10 @@
     "method": "GET",
     "action": "list-corrections",
     "classification": "relay-read-only",
-    "relay": { "domain": "attendance", "action": "list-corrections" }
+    "relay": {
+      "domain": "attendance",
+      "action": "list-corrections"
+    }
   },
   {
     "id": "attendance.decide-correction",
@@ -15,7 +18,10 @@
     "method": "POST",
     "action": "decide-correction",
     "classification": "relay-supported",
-    "relay": { "domain": "attendance", "action": "decide-correction" }
+    "relay": {
+      "domain": "attendance",
+      "action": "decide-correction"
+    }
   },
   {
     "id": "attendance.retention-dry-run",
@@ -24,7 +30,10 @@
     "method": "POST",
     "action": "retention-dry-run",
     "classification": "relay-read-only",
-    "relay": { "domain": "attendance", "action": "retention-dry-run" }
+    "relay": {
+      "domain": "attendance",
+      "action": "retention-dry-run"
+    }
   },
   {
     "id": "attendance.retention-apply",
@@ -33,7 +42,10 @@
     "method": "POST",
     "action": "retention-apply",
     "classification": "relay-supported",
-    "relay": { "domain": "attendance", "action": "retention-apply" }
+    "relay": {
+      "domain": "attendance",
+      "action": "retention-apply"
+    }
   },
   {
     "id": "schedule.list-templates",
@@ -42,7 +54,10 @@
     "method": "GET",
     "action": "list-templates",
     "classification": "relay-read-only",
-    "relay": { "domain": "schedule", "action": "list-templates" }
+    "relay": {
+      "domain": "schedule",
+      "action": "list-templates"
+    }
   },
   {
     "id": "schedule.suggestions",
@@ -51,7 +66,10 @@
     "method": "GET",
     "action": "suggestions",
     "classification": "relay-read-only",
-    "relay": { "domain": "schedule", "action": "suggestions" }
+    "relay": {
+      "domain": "schedule",
+      "action": "suggestions"
+    }
   },
   {
     "id": "schedule.review-week",
@@ -60,7 +78,10 @@
     "method": "GET",
     "action": "review-week",
     "classification": "relay-read-only",
-    "relay": { "domain": "schedule", "action": "review-week" }
+    "relay": {
+      "domain": "schedule",
+      "action": "review-week"
+    }
   },
   {
     "id": "schedule.save-template",
@@ -69,7 +90,10 @@
     "method": "POST",
     "action": "save-template",
     "classification": "relay-supported",
-    "relay": { "domain": "schedule", "action": "save-template" }
+    "relay": {
+      "domain": "schedule",
+      "action": "save-template"
+    }
   },
   {
     "id": "schedule.delete-template",
@@ -78,7 +102,10 @@
     "method": "POST",
     "action": "delete-template",
     "classification": "relay-supported",
-    "relay": { "domain": "schedule", "action": "delete-template" }
+    "relay": {
+      "domain": "schedule",
+      "action": "delete-template"
+    }
   },
   {
     "id": "timesheets.list",
@@ -87,7 +114,10 @@
     "method": "GET",
     "action": "list",
     "classification": "relay-read-only",
-    "relay": { "domain": "attendance", "action": "timesheet-list" }
+    "relay": {
+      "domain": "attendance",
+      "action": "timesheet-list"
+    }
   },
   {
     "id": "timesheets.manual-create",
@@ -96,7 +126,10 @@
     "method": "POST",
     "action": "manual-create",
     "classification": "relay-supported",
-    "relay": { "domain": "attendance", "action": "timesheet-manual-create" }
+    "relay": {
+      "domain": "attendance",
+      "action": "timesheet-manual-create"
+    }
   },
   {
     "id": "timesheets.manual-update",
@@ -105,7 +138,10 @@
     "method": "PATCH",
     "action": "manual-update",
     "classification": "relay-supported",
-    "relay": { "domain": "attendance", "action": "timesheet-manual-update" }
+    "relay": {
+      "domain": "attendance",
+      "action": "timesheet-manual-update"
+    }
   },
   {
     "id": "timesheets.manual-delete",
@@ -114,7 +150,10 @@
     "method": "DELETE",
     "action": "manual-delete",
     "classification": "relay-supported",
-    "relay": { "domain": "attendance", "action": "timesheet-manual-delete" }
+    "relay": {
+      "domain": "attendance",
+      "action": "timesheet-manual-delete"
+    }
   },
   {
     "id": "timesheets.restore-schedule",
@@ -123,7 +162,10 @@
     "method": "POST",
     "action": "restore-schedule",
     "classification": "relay-supported",
-    "relay": { "domain": "attendance", "action": "timesheet-restore-schedule" }
+    "relay": {
+      "domain": "attendance",
+      "action": "timesheet-restore-schedule"
+    }
   },
   {
     "id": "reports.stamp-comparison-export",
@@ -132,7 +174,10 @@
     "method": "POST",
     "action": "stamp-comparison-export",
     "classification": "relay-supported",
-    "relay": { "domain": "reports", "action": "stamp-comparison-export" }
+    "relay": {
+      "domain": "reports",
+      "action": "stamp-comparison-export"
+    }
   },
   {
     "id": "employees.reactivate-account",
@@ -141,7 +186,10 @@
     "method": "PATCH",
     "action": "reactivate-account",
     "classification": "relay-supported",
-    "relay": { "domain": "employees", "action": "reactivate-account" }
+    "relay": {
+      "domain": "employees",
+      "action": "reactivate-account"
+    }
   },
   {
     "id": "employees.portal-health",
@@ -150,7 +198,10 @@
     "method": "POST",
     "action": "portal-health",
     "classification": "relay-read-only",
-    "relay": { "domain": "employees", "action": "portal-health" }
+    "relay": {
+      "domain": "employees",
+      "action": "portal-health"
+    }
   },
   {
     "id": "employees.list-aliases",
@@ -159,7 +210,10 @@
     "method": "GET",
     "action": "list-aliases",
     "classification": "relay-read-only",
-    "relay": { "domain": "employees", "action": "list-aliases" }
+    "relay": {
+      "domain": "employees",
+      "action": "list-aliases"
+    }
   },
   {
     "id": "employees.save-alias",
@@ -168,7 +222,10 @@
     "method": "POST",
     "action": "save-alias",
     "classification": "relay-supported",
-    "relay": { "domain": "employees", "action": "save-alias" }
+    "relay": {
+      "domain": "employees",
+      "action": "save-alias"
+    }
   },
   {
     "id": "employees.delete-alias",
@@ -177,6 +234,33 @@
     "method": "DELETE",
     "action": "delete-alias",
     "classification": "relay-supported",
-    "relay": { "domain": "employees", "action": "delete-alias" }
+    "relay": {
+      "domain": "employees",
+      "action": "delete-alias"
+    }
+  },
+  {
+    "id": "schedule.list-days-off",
+    "surface": "Dienstplan – Dienstfrei",
+    "endpoint": "/api/time-off",
+    "method": "GET",
+    "action": "list-days-off",
+    "classification": "relay-read-only",
+    "relay": {
+      "domain": "schedule",
+      "action": "list-days-off"
+    }
+  },
+  {
+    "id": "schedule.bulk-set-days-off",
+    "surface": "Dienstplan – Dienstfrei",
+    "endpoint": "/api/time-off",
+    "method": "POST",
+    "action": "bulk-set-days-off",
+    "classification": "relay-supported",
+    "relay": {
+      "domain": "schedule",
+      "action": "bulk-set-days-off"
+    }
   }
 ]
