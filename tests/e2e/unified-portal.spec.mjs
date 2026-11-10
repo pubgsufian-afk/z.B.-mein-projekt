@@ -410,7 +410,7 @@ test('admin can approve an employee Freiwunsch and show confirmed Dienstfrei', a
   await expect(page.getByText('Arzttermin')).toBeVisible()
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Genehmigen' }).click()
-  await expect(page.getByText(/Freiwunsch genehmigt/)).toBeVisible()
+  await expect(page.locator('.time-off-notice.success')).toContainText('Freiwunsch genehmigt')
   await expect(page.getByText(/Dienstfrei/).first()).toBeVisible()
   expect(state.getDaysOff()).toEqual(expect.arrayContaining([expect.objectContaining({ date: requestedDate, employeeUserId: 'employee-anna' })]))
 })
