@@ -36,7 +36,10 @@
 .time-off-warning { margin: 0; border: 1px solid; border-radius: 8px; padding: 10px; font-size: .9rem; }
 .time-off-empty { margin: 0; color: var(--muted, #a6afb7); }
 .time-off-response { margin: 0; color: var(--muted, #a6afb7); overflow-wrap: anywhere; }
-.schedule-day-off-item { display: grid; gap: 4px; padding: 10px; border: 1px dashed rgba(200,180,100,.6); border-radius: 10px; margin: 6px 0; }
+.schedule-day-off-item { display: grid; gap: 4px; width: 100%; text-align: left; font: inherit; color: inherit; background: transparent; cursor: pointer; padding: 10px; border: 1px dashed rgba(200,180,100,.6); border-radius: 10px; margin: 6px 0; }
+.schedule-day-off-item:hover:not(:disabled) { border-color: #d2b56b; background: rgba(210,181,107,.09); }
+.schedule-day-off-item:focus-visible { outline: 2px solid #d2b56b; outline-offset: 2px; }
+.schedule-day-off-item:disabled { cursor: progress; opacity: .7; }
 .schedule-day-off-item strong { font-size: .9rem; }
 .schedule-day-off-item small { color: var(--muted, #a6afb7); }
 .schedule-mode-row { display: flex; gap: 8px; flex-wrap: wrap; }
