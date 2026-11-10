@@ -1,6 +1,7 @@
 import type { Context } from '@netlify/functions'
 import scheduleAssistant from '../schedule-assistant.mts'
 import { bulkUpdateScheduleShifts } from './portal-admin-bulk-schedule.mts'
+import { relayBulkSetDaysOff, relayListDaysOff } from './portal-admin-days-off.mts'
 import {
   ScheduleAssistAdminError,
   scheduleAssistAdminService,
@@ -31,6 +32,24 @@ function publishResultStatus(data: Record<string, unknown>) {
 
 export function createSchedulePortalAdminHandler(context: Context): PortalAdminHandler {
   return async (operation, commandContext) => {
+    if (operation.action === 'list-days-off') {
+      try {
+        const data = await relayListDaysOff(operation.input)
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'success', data }
+      } catch {
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'rejected', code: 'INVALID_DAY_OFF_QUERY' }
+      }
+    }
+    if (operation.action === 'bulk-set-days-off') {
+      try {
+        const data = await relayBulkSetDaysOff(operation.input, commandContext.commandId)
+        const failed = data.results.some((result) => result.status === 'rejected' || result.status === 'conflict')
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action,
+          status: failed ? 'conflict' : 'success', ...(failed ? { code: 'PARTIAL_DAYS_OFF' } : {}), data }
+      } catch {
+        return { itemId: operation.itemId, domain: operation.domain, action: operation.action, status: 'rejected', code: 'INVALID_DAYS_OFF_BATCH' }
+      }
+    }
     if (operation.action === 'bulk-update-shifts') {
       const data = await bulkUpdateScheduleShifts(operation.input, commandContext.commandId)
       const results = Array.isArray(data.results) ? data.results : []
