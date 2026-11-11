@@ -520,7 +520,7 @@ function ScheduleDayContents({ day, busy, edit, editDayOff, startNew }) {
             </button>
           : <span className="schedule-free-automatic" key={person.employeeUserId}>{person.employeeName}</span>)}
       </div>}
-      <button type="button" className="schedule-add-free" disabled={Boolean(busy)} onClick={() => startNew(day.date, 'off')} aria-label="Dienstfrei eintragen"><span className="schedule-add-free-long">+ Dienstfrei eintragen</span><span className="schedule-add-free-short">+ Frei</span></button>
+      <button type="button" className="schedule-add-free" disabled={Boolean(busy)} onClick={() => startNew(day.date, 'off')}><span className="schedule-add-free-long">+ Dienstfrei eintragen</span><span className="schedule-add-free-short">+ Frei</span></button>
     </section>
     {day.groups.length ? day.groups.map((group) =>
       <section className="schedule-area-group" key={group.label}>
