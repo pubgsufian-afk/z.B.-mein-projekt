@@ -33,13 +33,13 @@ schedule = schedule.replace('await ensureLegacyScheduleMigrated()', 'await ensur
 if (!schedule.includes('classifyAssistantDuplicate(candidate, dateShifts, activeEmployees)')) {
   const oldBlock = `  if (await findExactScheduleDuplicate(candidate, candidate.id)) {\n    return json({ message: 'Dieser Dienst ist bereits exakt vorhanden.', code: 'EXACT_DUPLICATE' }, 409)\n  }\n  const overlaps = await listScheduleOverlaps(candidate, candidate.id)`
   assert.ok(schedule.includes(oldBlock), 'Alter Duplikatblock im Portal-Dienstplan wurde nicht gefunden.')
-  const newBlock = `  const activeEmployees = await listActiveScheduleEmployees()\n  const dateShifts = (await listScheduleShifts({ from: candidate.date, to: candidate.date }))\n    .filter((entry) => entry.id !== candidate.id)\n  const classifiedDuplicate = classifyAssistantDuplicate(candidate, dateShifts, activeEmployees)\n  if (classifiedDuplicate.exact) {\n    return json({ message: 'Dieser Dienst ist bereits exakt vorhanden.', code: 'EXACT_DUPLICATE', shiftId: classifiedDuplicate.exact.id }, 409)\n  }\n  if (classifiedDuplicate.time) {\n    return json({ message: 'Für diesen Mitarbeiter existiert zur selben Zeit bereits ein Dienst.', code: 'TIME_DUPLICATE', shiftId: classifiedDuplicate.time.id }, 409)\n  }\n  const overlaps = classifiedDuplicate.overlaps`
+  const newBlock = `  const activeEmployees = await listActiveScheduleEmployees()\n  const dateShifts = (await listScheduleShifts({ from: candidate.date, to: candidate.date }))\n    .filter((entry) => entry.id !== candidate.id)\n  const classifiedDuplicate = classifyAssistantDuplicate(candidate, dateShifts, activeEmployees)\n  if (classifiedDuplicate.exact) {\n    return json({ message: 'Dieser Dienst ist bereits exakt vorhanden.', code: 'EXACT_DUPLICATE', shiftId: classifiedDuplicate.exact.id }, 409)\n  }\n  // Gleiche Zeiten in unterschiedlichen Bereichen werden über die Admin-Zustimmung geprüft.\n  const overlaps = await listScheduleOverlaps(candidate, candidate.id)`
   schedule = schedule.replace(oldBlock, newBlock)
 }
 
 assert.match(schedule, /ensureSharedLegacyScheduleMigrated/)
 assert.match(schedule, /classifyAssistantDuplicate\(candidate, dateShifts, activeEmployees\)/)
-assert.match(schedule, /TIME_DUPLICATE/)
+assert.match(schedule, /SHIFT_OVERLAP/)
 
 await writeFile(schedulePath, schedule)
 console.log('Schedule assistant full-control portal patch applied')

@@ -75,6 +75,7 @@ async function apiJson(path, options = {}) {
     const error = new Error(body.message || `Die Anfrage ist fehlgeschlagen (${response.status}).`)
     error.status = response.status
     error.code = body.code
+    error.conflicts = Array.isArray(body.conflicts) ? body.conflicts : []
     throw error
   }
   return body
@@ -636,6 +637,38 @@ function SchedulePage({ session }) {
     }
   }
 
+  async function scheduleRequestWithOverlapApproval(payload) {
+    const send = (data) => apiJson('/api/schedule-v2', { method: 'POST', body: JSON.stringify(data) })
+    try {
+      return await send(payload)
+    } catch (error) {
+      if (!['SHIFT_OVERLAP', 'OVERLAP_CONFIRMATION_STALE'].includes(error.code) || !error.conflicts?.length) throw error
+      const details = error.conflicts.slice(0, 10).map((item) =>
+        `${item.employeeName} · ${item.date}: ${item.start}–${item.end} Uhr · ${item.workArea || item.location || 'Dienst'}`
+      ).join('\n')
+      if (!ADMINISTRATION.has(session.role)) {
+        throw new Error(`Schichtüberschneidung:\n${details}\nNur Hauptadmins oder Admins dürfen diese Ausnahme erlauben.`)
+      }
+      const label = payload.action === 'copy-previous-week' ? 'Kopieren der Vorwoche'
+        : payload.action === 'repeat' ? 'Wiederholen der Schicht'
+          : `${payload.employeeName} · ${payload.date}: ${payload.start}–${payload.end} Uhr`
+      const additional = error.conflicts.length > 10 ? `\n… und ${error.conflicts.length - 10} weitere Überschneidung(en)` : ''
+      const approved = window.confirm(
+        `Achtung: Doppelte Dienstzeiten!\n\n${label}\n\nBestehende Dienste:\n${details}${additional}\n\nTrotzdem ausnahmsweise eintragen?`
+      )
+      if (!approved) {
+        const cancelled = new Error('Keine weitere Eintragung: Die Überschneidung wurde nicht bestätigt.')
+        cancelled.cancelled = true
+        throw cancelled
+      }
+      return await send({
+        ...payload,
+        allowOverlap: true,
+        confirmedOverlapIds: error.conflicts.map((item) => item.shiftId),
+      })
+    }
+  }
+
   async function save(event) {
     event.preventDefault()
     setBusy('save')
@@ -658,25 +691,25 @@ function SchedulePage({ session }) {
         pauseMinutes: Number(form.pauseMinutes || 0), objectId: form.objectId || null,
         location: object?.name || form.location, workArea: form.workArea, note: form.note, status: 'draft',
       }
-      const result = await apiJson('/api/schedule-v2', { method: 'POST', body: JSON.stringify(payload) })
+      const result = await scheduleRequestWithOverlapApproval(payload)
       if (form.repeatDays?.length) {
-        await apiJson('/api/schedule-v2', { method: 'POST', body: JSON.stringify({ action: 'repeat', id: result.shift.id, dates: form.repeatDays }) })
+        await scheduleRequestWithOverlapApproval({ action: 'repeat', id: result.shift.id, dates: form.repeatDays })
       }
       setNotice({ tone: result.warnings?.length ? 'warning' : 'success', text: result.warnings?.length ? `Dienst gespeichert. ${result.warnings.length} Überschneidung(en) bitte prüfen.` : 'Dienst als Entwurf gespeichert.' })
       setEditing(false)
       setForm({ ...emptyForm })
       await load()
-    } catch (error) { setNotice({ tone: 'error', text: error.message }) }
+    } catch (error) { setNotice({ tone: error.cancelled ? 'warning' : 'error', text: error.message }) }
     finally { setBusy('') }
   }
 
   async function post(action, extra = {}) {
     setBusy(action)
     try {
-      await apiJson('/api/schedule-v2', { method: 'POST', body: JSON.stringify({ action, week, ...extra }) })
+      await scheduleRequestWithOverlapApproval({ action, week, ...extra })
       setNotice({ tone: 'success', text: action === 'publish' ? 'Der Wochenplan wurde freigegeben.' : 'Die Vorwoche wurde als Entwurf kopiert.' })
       await load()
-    } catch (error) { setNotice({ tone: 'error', text: error.message }) }
+    } catch (error) { setNotice({ tone: error.cancelled ? 'warning' : 'error', text: error.message }) }
     finally { setBusy('') }
   }
 

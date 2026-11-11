@@ -230,6 +230,51 @@ async function getEntries(current: NonNullable<Awaited<ReturnType<typeof current
   return listScheduleShifts({ from, to })
 }
 
+type OverlapConflict = {
+  shiftId: string
+  employeeName: string
+  date: string
+  start: string
+  end: string
+  workArea: string
+  location: string
+}
+
+function toOverlapConflict(entry: ScheduleShift): OverlapConflict {
+  return {
+    shiftId: entry.id, employeeName: entry.employeeName, date: entry.date,
+    start: entry.start, end: entry.end, workArea: entry.workArea, location: entry.location,
+  }
+}
+
+function requireOverlapApproval(role: string, body: Record<string, unknown>, conflicts: OverlapConflict[]) {
+  if (!conflicts.length) return null
+  const existingIds = conflicts.map((entry) => entry.shiftId).sort()
+  const confirmedIds = Array.isArray(body.confirmedOverlapIds) ? body.confirmedOverlapIds.map(String).sort() : []
+  if (body.allowOverlap !== true) {
+    return json({
+      message: 'Der Mitarbeiter ist in diesem Zeitraum bereits eingeteilt. Nur nach ausdrücklicher Admin-Bestätigung erlaubt.',
+      code: 'SHIFT_OVERLAP',
+      conflicts,
+    }, 409)
+  }
+  if (!['owner', 'admin'].includes(role)) {
+    return json({
+      message: 'Nur Hauptadmins oder Admins dürfen eine Schichtüberschneidung bestätigen.',
+      code: 'OVERLAP_ADMIN_REQUIRED',
+      conflicts,
+    }, 403)
+  }
+  if (existingIds.length !== confirmedIds.length || existingIds.some((id, index) => id !== confirmedIds[index])) {
+    return json({
+      message: 'Die Überschneidungen haben sich geändert. Bitte erneut prüfen und bestätigen.',
+      code: 'OVERLAP_CONFIRMATION_STALE',
+      conflicts,
+    }, 409)
+  }
+  return null
+}
+
 async function saveShift(current: NonNullable<Awaited<ReturnType<typeof currentPortalActor>>>, body: Record<string, unknown>) {
   const existing = body.id ? await findScheduleShift(String(body.id)) : null
   const candidate = makeShift(body, current.userId, existing || undefined)
@@ -237,6 +282,9 @@ async function saveShift(current: NonNullable<Awaited<ReturnType<typeof currentP
     return json({ message: 'Dieser Dienst ist bereits exakt vorhanden.', code: 'EXACT_DUPLICATE' }, 409)
   }
   const overlaps = await listScheduleOverlaps(candidate, candidate.id)
+  const conflicts = overlaps.map(toOverlapConflict)
+  const confirmationError = requireOverlapApproval(String(current.role), body, conflicts)
+  if (confirmationError) return confirmationError
   try {
     const shift = await upsertScheduleShift(candidate)
     await writeScheduleAudit({
@@ -246,10 +294,19 @@ async function saveShift(current: NonNullable<Awaited<ReturnType<typeof currentP
       shiftId: shift.id,
       details: { date: shift.date, employeeUserId: shift.employeeUserId, status: shift.status },
     })
+    if (conflicts.length) {
+      await writeScheduleAudit({
+        actorId: current.userId,
+        actorType: 'portal',
+        action: 'shift-overlap-admin-approved',
+        shiftId: shift.id,
+        details: { employeeUserId: shift.employeeUserId, date: shift.date, confirmedOverlapIds: conflicts.map((entry) => entry.shiftId) },
+      })
+    }
     await tryRecordPortalAdminChange({ actor: current, category: 'Dienstplan', action: existing ? 'Dienst bearbeitet' : 'Dienst erstellt', entityId: shift.id, before: existing ? { date: existing.date, start: existing.start, end: existing.end, pauseMinutes: existing.pauseMinutes, location: existing.location, workArea: existing.workArea, employeeName: existing.employeeName } : undefined, after: { date: shift.date, start: shift.start, end: shift.end, pauseMinutes: shift.pauseMinutes, location: shift.location, workArea: shift.workArea, employeeName: shift.employeeName } })
     return json({
       shift,
-      warnings: overlaps.map((entry) => ({ code: 'OVERLAP', shiftId: entry.id, employeeName: entry.employeeName, date: entry.date, start: entry.start, end: entry.end })),
+      warnings: conflicts.map((entry) => ({ code: 'OVERLAP', ...entry })),
     }, existing ? 200 : 201)
   } catch (error) {
     if (String((error as { code?: unknown })?.code || '') === '23505') {
@@ -272,11 +329,12 @@ async function publishWeek(current: NonNullable<Awaited<ReturnType<typeof curren
   return json({ week, version: result.version, published: result.published })
 }
 
-async function copyPreviousWeek(current: NonNullable<Awaited<ReturnType<typeof currentPortalActor>>>, targetWeek: string) {
+async function copyPreviousWeek(current: NonNullable<Awaited<ReturnType<typeof currentPortalActor>>>, targetWeek: string, body: Record<string, unknown>) {
   const targetMonday = mondayOf(targetWeek)
   const previousMonday = addDays(targetMonday, -7)
   const source = await listScheduleShifts({ from: previousMonday, to: addDays(previousMonday, 6), publishedOnly: true })
-  const created: ScheduleShift[] = []
+  const candidates: ScheduleShift[] = []
+  const conflicts: OverlapConflict[] = []
   for (const item of source) {
     const offset = Math.round((new Date(`${item.date}T12:00:00Z`).getTime() - new Date(`${previousMonday}T12:00:00Z`).getTime()) / 86400000)
     const candidate = makeShift({
@@ -287,8 +345,13 @@ async function copyPreviousWeek(current: NonNullable<Awaited<ReturnType<typeof c
       version: 0,
     }, current.userId)
     if (await findExactScheduleDuplicate(candidate)) continue
-    created.push(await upsertScheduleShift(candidate))
+    candidates.push(candidate)
+    conflicts.push(...(await listScheduleOverlaps(candidate)).map(toOverlapConflict))
   }
+  const confirmationError = requireOverlapApproval(String(current.role), body, conflicts)
+  if (confirmationError) return confirmationError
+  const created: ScheduleShift[] = []
+  for (const candidate of candidates) created.push(await upsertScheduleShift(candidate))
   if (created.length) await tryRecordPortalAdminChange({ actor: current, category: 'Dienstplan', action: 'Vorwoche kopiert', summary: String(created.length) + ' Dienste kopiert', after: { sourceWeek: previousMonday, targetWeek: targetMonday, count: created.length } })
   return json({ created, sourceWeek: previousMonday, targetWeek: targetMonday }, 201)
 }
@@ -296,14 +359,20 @@ async function copyPreviousWeek(current: NonNullable<Awaited<ReturnType<typeof c
 async function repeatShift(current: NonNullable<Awaited<ReturnType<typeof currentPortalActor>>>, body: Record<string, unknown>) {
   const source = await findScheduleShift(String(body.id || ''))
   if (!source) return json({ message: 'Der Ausgangsdienst wurde nicht gefunden.' }, 404)
-  const dates = Array.isArray(body.dates) ? body.dates.map(String).filter((date) => ISO_DATE.test(date)) : []
+  const dates = Array.isArray(body.dates) ? [...new Set(body.dates.map(String).filter((date) => ISO_DATE.test(date)))] : []
   const group = crypto.randomUUID()
-  const created: ScheduleShift[] = []
+  const candidates: ScheduleShift[] = []
+  const conflicts: OverlapConflict[] = []
   for (const date of dates) {
     const candidate = makeShift({ ...source, id: crypto.randomUUID(), date, status: 'draft', version: 0, repeatGroupId: group }, current.userId)
     if (await findExactScheduleDuplicate(candidate)) continue
-    created.push(await upsertScheduleShift(candidate))
+    candidates.push(candidate)
+    conflicts.push(...(await listScheduleOverlaps(candidate)).map(toOverlapConflict))
   }
+  const confirmationError = requireOverlapApproval(String(current.role), body, conflicts)
+  if (confirmationError) return confirmationError
+  const created: ScheduleShift[] = []
+  for (const candidate of candidates) created.push(await upsertScheduleShift(candidate))
   if (created.length) await tryRecordPortalAdminChange({ actor: current, category: 'Dienstplan', action: 'Dienst wiederholt', entityId: source.id, summary: String(created.length) + ' wiederholte Dienste', after: { employeeName: source.employeeName, dates, count: created.length } })
   return json({ created, repeatGroupId: group }, 201)
 }
@@ -410,7 +479,7 @@ export default async function scheduleV2Neon(request: Request, _context: Context
       return json({ deleted: true, id })
     }
     if (action === 'publish') return await publishWeek(current, String(body.week || body.date || ''))
-    if (action === 'copy-previous-week') return await copyPreviousWeek(current, String(body.week || ''))
+    if (action === 'copy-previous-week') return await copyPreviousWeek(current, String(body.week || ''), body)
     if (action === 'repeat') return await repeatShift(current, body)
     if (action === 'object-upsert') {
       const id = String(body.id || '').trim()
