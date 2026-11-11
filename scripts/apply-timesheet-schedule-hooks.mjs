@@ -30,8 +30,8 @@ portal = replaceOnce(
 )
 portal = replaceOnce(
   portal,
-  "      await deleteScheduleShift(id)\n      await writeScheduleAudit({ actorId: current.userId, actorType: 'portal', action: 'shift-deleted', shiftId: id })",
-  "      await deleteScheduleShift(id)\n      await removeScheduleShiftFromTimesheet(id, existing.date, current.userId, new Date())\n      await writeScheduleAudit({ actorId: current.userId, actorType: 'portal', action: 'shift-deleted', shiftId: id })",
+  "      await deleteScheduleShift(id)\n      await writeScheduleAudit({ actorId: current.userId, actorType: 'portal', action: 'shift-deleted', shiftId: id, details: { before: auditShiftSnapshot(existing) } })",
+  "      await deleteScheduleShift(id)\n      await removeScheduleShiftFromTimesheet(id, existing.date, current.userId, new Date())\n      await writeScheduleAudit({ actorId: current.userId, actorType: 'portal', action: 'shift-deleted', shiftId: id, details: { before: auditShiftSnapshot(existing) } })",
   'Portal Dienst löschen',
 )
 await writeFile(portalPath, portal)
