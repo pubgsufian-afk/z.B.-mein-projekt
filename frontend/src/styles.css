@@ -622,8 +622,8 @@ body { min-height: 100dvh; }
   .schedule-week-scroll:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
   .schedule-week-scroll .management-week-cards {
     display: grid;
-    width: 300%;
-    min-width: 300%;
+    width: 350%;
+    min-width: 350%;
     grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 3px;
     margin-top: 7px;
