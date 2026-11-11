@@ -164,7 +164,7 @@ test('Dienstplan entries render while editor directories are still loading', asy
   await navigate(page, 'Dienstplan')
   await expect(page.locator('.schedule-mobile-day-detail:visible .shift-item, .schedule-desktop-day-content:visible .shift-item').getByText('Adel Abdal', { exact: true }).first()).toBeVisible({ timeout: 1500 })
   releaseDirectories()
-  await expect(page.locator('.schedule-mobile-day-detail:visible .shift-item small, .schedule-desktop-day-content:visible .shift-item small').getByText('Abbott').first()).toBeVisible()
+  await expect(page.locator('.schedule-desktop-day-content:visible .shift-item').first()).toContainText('Abbott')
 })
 
 test('Einsatzorte show cached stable data while a fresh refresh is delayed', async ({ page }) => {
