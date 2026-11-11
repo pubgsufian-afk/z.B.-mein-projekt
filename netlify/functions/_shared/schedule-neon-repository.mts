@@ -471,3 +471,28 @@ export async function writeScheduleAudit(input: {
     [crypto.randomUUID(), input.actorId, input.actorType, input.action, input.shiftId || null, JSON.stringify(input.details || {})],
   )
 }
+
+
+// Record every affected shift in one database round-trip per batch. Keep the
+// existing single-event writer for individual actions and legacy call sites.
+export async function writeScheduleAuditBatch(items: Array<Parameters<typeof writeScheduleAudit>[0]>) {
+  if (!items.length) return
+  const database = getDatabase()
+  for (let i = 0; i < items.length; i += 100) {
+    const batch = items.slice(i, i + 100)
+    const values: unknown[] = []
+    const placeholders = batch.map((entry, index) => {
+      const offset = index * 6
+      values.push(
+        crypto.randomUUID(), entry.actorId, entry.actorType,
+        entry.action, entry.shiftId || null, JSON.stringify(entry.details || {}),
+      )
+      return `($${offset + 1}, now(), $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}::jsonb)`
+    })
+    await database.pool.query(
+      `INSERT INTO schedule_audit_log (id, occurred_at, actor_id, actor_type, action, shift_id, details)
+       VALUES ${placeholders.join(', ')}`,
+      values,
+    )
+  }
+}

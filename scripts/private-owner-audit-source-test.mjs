@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { auditChanges, describeAuditEvent } from '../frontend/src/private-audit-presentation.mjs'
 
 function file(path) { return readFileSync(path, 'utf8') }
 const service = file('netlify/functions/_shared/portal-private-audit-service.mts')
@@ -10,6 +11,7 @@ const proxy = file('netlify/functions/_shared/proxy.mts')
 const schedule = file('netlify/functions/schedule-v2-neon.mts')
 const reports = file('netlify/functions/daily-reports.mts')
 const registrations = file('netlify/functions/registrations.mts')
+const scheduleRepo = file('netlify/functions/_shared/schedule-neon-repository.mts')
 
 assert.match(service, /PORTAL_PRIVATE_AUDIT_OWNER_EMAIL/)
 assert.match(service, /actor\.role !== 'owner'/)
@@ -39,5 +41,27 @@ assert.match(proxy, /recordPortalAdminChange/)
 assert.match(schedule, /action: 'Dienst gelöscht'.*before:/)
 assert.match(reports, /Tagesbericht gelöscht/)
 assert.match(registrations, /Berechtigung geändert/)
+
+
+assert.match(schedule, /details: \{ before: existing \? auditShiftSnapshot\(existing\) : null, after: auditShiftSnapshot\(shift\) \}/)
+assert.match(schedule, /action: 'shift-deleted', shiftId: id, details: \{ before: auditShiftSnapshot\(existing\) \}/)
+assert.match(schedule, /writeScheduleAuditBatch\(created\.map/)
+assert.match(schedule, /action: 'shift-week-published'/)
+assert.match(scheduleRepo, /export async function writeScheduleAuditBatch/)
+assert.match(api, /event\.after\?\.employeeName \|\| event\.before\?\.employeeName/)
+assert.match(page, /Betroffener Dienst:/)
+assert.match(page, /Alle gespeicherten Vorher-\/Nachher-Werte/)
+
+const before = {
+  employeeUserId: 'test-user', employeeName: 'Aras Alyas',
+  date: '2026-11-11', start: '06:00', end: '14:00', workArea: 'ZuKo',
+  status: 'published',
+}
+const after = { ...before, end: '15:00', workArea: 'Brandwache' }
+const entry = { actorName: 'Aras Alyas', category: 'Dienstplan', action: 'shift-updated', targetName: 'Aras Alyas', before, after }
+assert.deepEqual(auditChanges(entry).map((change) => change.key).sort(), ['end', 'workArea'])
+assert.match(describeAuditEvent(entry).title, /Aras Alyas hat einen Dienst geändert für Aras Alyas/)
+const created = { actorName: 'Aras Alyas', category: 'Dienstplan', action: 'shift-copied', targetName: 'Aras Alyas', after }
+assert.match(describeAuditEvent(created).title, /aus der Vorwoche übernommen/)
 
 console.log('PASS: personal account ID gate, server authorization, audit sources and responsive owner UI')

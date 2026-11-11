@@ -61,7 +61,7 @@ await edit('netlify/functions/schedule-v2-neon.mts', (source) => {
   if (!source.includes("from './_shared/schedule-push.mts'")) {
     source = insertAfter(source, "import { currentPortalActor } from './_shared/portal-role.mts'\n", "import { notifyScheduleChanged, notifySchedulePublished } from './_shared/schedule-push.mts'\n", 'schedule-v2-neon.mts')
   }
-  const saveAnchor = "      details: { date: shift.date, employeeUserId: shift.employeeUserId, status: shift.status },\n    })\n"
+  const saveAnchor = "      details: { before: existing ? auditShiftSnapshot(existing) : null, after: auditShiftSnapshot(shift) },\n    })\n"
   if (!source.includes('const changedUserIds = [')) {
     source = insertAfter(source, saveAnchor, "    const materialFields = ['employeeUserId', 'date', 'start', 'end', 'pauseMinutes', 'objectId', 'location', 'workArea', 'note', 'status']\n    const materialChange = !existing || materialFields.some((field) => String(existing[field] ?? '') !== String(shift[field] ?? ''))\n    if (materialChange && shift.status === 'published') {\n      const changedUserIds = [\n        ...(existing?.status === 'published' && existing.employeeUserId !== shift.employeeUserId ? [existing.employeeUserId] : []),\n        shift.employeeUserId,\n      ]\n      await notifyScheduleChanged(changedUserIds)\n    } else if (materialChange && existing?.status === 'published' && existing.employeeUserId !== shift.employeeUserId) {\n      // A former employee loses access when a draft is reassigned.\n      await notifyScheduleChanged([existing.employeeUserId])\n    }\n", 'schedule-v2-neon.mts save')
   }
@@ -75,11 +75,11 @@ await edit('netlify/functions/schedule-v2-neon.mts', (source) => {
       'schedule-v2-neon.mts draft snapshot',
     )
   }
-  const publishAnchor = "    details: { week, version: result.version, published: result.published },\n  })\n"
+  const publishAnchor = "    details: { week, version: result.version, published: result.published, shiftIds: result.shiftIds },\n  })\n"
   if (!source.includes('const publishedShiftIds = new Set(')) {
     source = insertAfter(source, publishAnchor, "  const publishedShiftIds = new Set(result.shiftIds.filter((id) => pendingShiftIds.has(id)))\n  const publishedRows = (await listScheduleShifts({ from: week, to: addDays(week, 6), publishedOnly: true }))\n    .filter((shift) => publishedShiftIds.has(shift.id))\n  if (publishedRows.length) await notifySchedulePublished(publishedRows.map((shift) => shift.employeeUserId))\n", 'schedule-v2-neon.mts publish')
   }
-  const deleteAnchor = "      await writeScheduleAudit({ actorId: current.userId, actorType: 'portal', action: 'shift-deleted', shiftId: id })\n"
+  const deleteAnchor = "      await writeScheduleAudit({ actorId: current.userId, actorType: 'portal', action: 'shift-deleted', shiftId: id, details: { before: auditShiftSnapshot(existing) } })\n"
   if (!source.includes('existing.status === \'published\') await notifyScheduleChanged')) {
     source = insertAfter(source, deleteAnchor, "      if (existing.status === 'published') await notifyScheduleChanged([existing.employeeUserId])\n", 'schedule-v2-neon.mts delete')
   }

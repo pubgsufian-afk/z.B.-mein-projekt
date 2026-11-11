@@ -20,6 +20,7 @@ import {
   upsertScheduleShift,
   upsertScheduleVersion,
   writeScheduleAudit,
+  writeScheduleAuditBatch,
   type ScheduleEmployee,
   type ScheduleShift,
 } from './_shared/schedule-neon-repository.mts'
@@ -247,6 +248,22 @@ function toOverlapConflict(entry: ScheduleShift): OverlapConflict {
   }
 }
 
+// A snapshot of the actual persisted values, never the unverified request body.
+function auditShiftSnapshot(shift: ScheduleShift) {
+  return {
+    employeeUserId: shift.employeeUserId,
+    employeeName: shift.employeeName,
+    date: shift.date,
+    start: shift.start,
+    end: shift.end,
+    pauseMinutes: shift.pauseMinutes,
+    location: shift.location,
+    workArea: shift.workArea,
+    note: shift.note,
+    status: shift.status,
+  }
+}
+
 function requireOverlapApproval(role: string, body: Record<string, unknown>, conflicts: OverlapConflict[]) {
   if (!conflicts.length) return null
   const existingIds = conflicts.map((entry) => entry.shiftId).sort()
@@ -292,7 +309,7 @@ async function saveShift(current: NonNullable<Awaited<ReturnType<typeof currentP
       actorType: 'portal',
       action: existing ? 'shift-updated' : 'shift-created',
       shiftId: shift.id,
-      details: { date: shift.date, employeeUserId: shift.employeeUserId, status: shift.status },
+      details: { before: existing ? auditShiftSnapshot(existing) : null, after: auditShiftSnapshot(shift) },
     })
     if (conflicts.length) {
       await writeScheduleAudit({
@@ -303,7 +320,7 @@ async function saveShift(current: NonNullable<Awaited<ReturnType<typeof currentP
         details: { employeeUserId: shift.employeeUserId, date: shift.date, confirmedOverlapIds: conflicts.map((entry) => entry.shiftId) },
       })
     }
-    await tryRecordPortalAdminChange({ actor: current, category: 'Dienstplan', action: existing ? 'Dienst bearbeitet' : 'Dienst erstellt', entityId: shift.id, before: existing ? { date: existing.date, start: existing.start, end: existing.end, pauseMinutes: existing.pauseMinutes, location: existing.location, workArea: existing.workArea, employeeName: existing.employeeName } : undefined, after: { date: shift.date, start: shift.start, end: shift.end, pauseMinutes: shift.pauseMinutes, location: shift.location, workArea: shift.workArea, employeeName: shift.employeeName } })
+    await tryRecordPortalAdminChange({ actor: current, category: 'Dienstplan', action: existing ? 'Dienst bearbeitet' : 'Dienst erstellt', entityId: shift.id, targetName: shift.employeeName, before: existing ? auditShiftSnapshot(existing) : undefined, after: auditShiftSnapshot(shift) })
     return json({
       shift,
       warnings: conflicts.map((entry) => ({ code: 'OVERLAP', ...entry })),
@@ -318,14 +335,27 @@ async function saveShift(current: NonNullable<Awaited<ReturnType<typeof currentP
 
 async function publishWeek(current: NonNullable<Awaited<ReturnType<typeof currentPortalActor>>>, value: string) {
   const week = mondayOf(value)
+  const beforeShifts = await listScheduleShifts({ from: week, to: addDays(week, 6) })
   const result = await publishScheduleWeek(week, current.userId)
   if (!result.published) return json({ message: 'Für diese Woche ist kein Entwurf vorhanden.' }, 404)
   await writeScheduleAudit({
     actorId: current.userId,
     actorType: 'portal',
     action: 'week-published',
-    details: { week, version: result.version, published: result.published },
+    details: { week, version: result.version, published: result.published, shiftIds: result.shiftIds },
   })
+  // A week publication affects every shift; retain each affected person's
+  // status before and after rather than logging only a total count.
+  const publishedIds = new Set(result.shiftIds)
+  await writeScheduleAuditBatch(beforeShifts.filter((shift) => publishedIds.has(shift.id)).map((shift) => ({
+    actorId: current.userId, actorType: 'portal',
+    action: 'shift-week-published', shiftId: shift.id,
+    details: {
+      week, version: result.version,
+      before: auditShiftSnapshot(shift),
+      after: { ...auditShiftSnapshot(shift), status: 'published' },
+    },
+  })))
   return json({ week, version: result.version, published: result.published })
 }
 
@@ -352,6 +382,10 @@ async function copyPreviousWeek(current: NonNullable<Awaited<ReturnType<typeof c
   if (confirmationError) return confirmationError
   const created: ScheduleShift[] = []
   for (const candidate of candidates) created.push(await upsertScheduleShift(candidate))
+  await writeScheduleAuditBatch(created.map((shift) => ({
+    actorId: current.userId, actorType: 'portal', action: 'shift-copied',
+    shiftId: shift.id, details: { sourceWeek: previousMonday, targetWeek: targetMonday, after: auditShiftSnapshot(shift) },
+  })))
   if (created.length) await tryRecordPortalAdminChange({ actor: current, category: 'Dienstplan', action: 'Vorwoche kopiert', summary: String(created.length) + ' Dienste kopiert', after: { sourceWeek: previousMonday, targetWeek: targetMonday, count: created.length } })
   return json({ created, sourceWeek: previousMonday, targetWeek: targetMonday }, 201)
 }
@@ -373,6 +407,10 @@ async function repeatShift(current: NonNullable<Awaited<ReturnType<typeof curren
   if (confirmationError) return confirmationError
   const created: ScheduleShift[] = []
   for (const candidate of candidates) created.push(await upsertScheduleShift(candidate))
+  await writeScheduleAuditBatch(created.map((shift) => ({
+    actorId: current.userId, actorType: 'portal', action: 'shift-repeated',
+    shiftId: shift.id, details: { sourceShiftId: source.id, after: auditShiftSnapshot(shift) },
+  })))
   if (created.length) await tryRecordPortalAdminChange({ actor: current, category: 'Dienstplan', action: 'Dienst wiederholt', entityId: source.id, summary: String(created.length) + ' wiederholte Dienste', after: { employeeName: source.employeeName, dates, count: created.length } })
   return json({ created, repeatGroupId: group }, 201)
 }
@@ -474,8 +512,8 @@ export default async function scheduleV2Neon(request: Request, _context: Context
       const existing = await findScheduleShift(id)
       if (!existing) return json({ message: 'Dienst nicht gefunden.' }, 404)
       await deleteScheduleShift(id)
-      await writeScheduleAudit({ actorId: current.userId, actorType: 'portal', action: 'shift-deleted', shiftId: id })
-      await tryRecordPortalAdminChange({ actor: current, category: 'Dienstplan', action: 'Dienst gelöscht', entityId: id, before: { date: existing.date, start: existing.start, end: existing.end, pauseMinutes: existing.pauseMinutes, location: existing.location, workArea: existing.workArea, employeeName: existing.employeeName } })
+      await writeScheduleAudit({ actorId: current.userId, actorType: 'portal', action: 'shift-deleted', shiftId: id, details: { before: auditShiftSnapshot(existing) } })
+      await tryRecordPortalAdminChange({ actor: current, category: 'Dienstplan', action: 'Dienst gelöscht', entityId: id, targetName: existing.employeeName, before: auditShiftSnapshot(existing) })
       return json({ deleted: true, id })
     }
     if (action === 'publish') return await publishWeek(current, String(body.week || body.date || ''))

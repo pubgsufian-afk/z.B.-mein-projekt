@@ -18,6 +18,13 @@ function json(data: unknown, status = 200) {
 
 const OMIT = /password|passwort|token|secret|cookie|authorization|credential|private.?key|base64|pdf.?logo.?data|body|attachment|content/i
 
+function safeValue(value: unknown, depth: number): unknown {
+  if (typeof value === 'string') return value.slice(0, 240)
+  if (Array.isArray(value)) return depth > 2 ? '[Liste gekürzt]' : value.slice(0, 20).map((entry) => safeValue(entry, depth + 1))
+  if (value && typeof value === 'object') return safeObject(value, depth)
+  return value
+}
+
 function safeObject(value: unknown, depth = 0): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   if (depth > 2) return null
@@ -25,12 +32,7 @@ function safeObject(value: unknown, depth = 0): Record<string, unknown> | null {
     .filter(([key]) => !OMIT.test(key))
     .slice(0, 24)
     .map(([key, item]) => {
-      const v = typeof item === 'string'
-        ? item.slice(0, 240)
-        : Array.isArray(item)
-          ? item.slice(0, 20).map((entry) => typeof entry === 'string' ? entry.slice(0, 120) : entry)
-          : item && typeof item === 'object' ? safeObject(item, depth + 1) : item
-      return [key.slice(0, 60), v]
+      return [key.slice(0, 60), safeValue(item, depth + 1)]
     })
   return Object.fromEntries(entries)
 }
@@ -193,11 +195,12 @@ export default async function privateOwnerAudit(request: Request, _context: Cont
       return {
         ...event,
         actorName: names[event.actorId] || event.actorEmail || event.actorId || 'Unbekanntes Konto',
-        targetName: String(event.targetName || names[employeeId] || event.before?.fullName || event.after?.fullName || '').trim(),
+        targetName: String(event.targetName || names[employeeId] || event.after?.employeeName || event.before?.employeeName || event.before?.fullName || event.after?.fullName || '').trim(),
       }
     }).filter((event) => !q || [
       event.actorName, event.targetName, event.actorId, event.category,
       event.action, event.summary, event.entityId,
+      JSON.stringify(event.before || {}), JSON.stringify(event.after || {}),
     ].some((field) => String(field || '').toLocaleLowerCase('de').includes(q))).slice(0, 500)
 
     return json({ events: items, warnings: historic.warnings, limit: 500, accountId: current.userId, partial: Boolean(historic.warnings.length) })
