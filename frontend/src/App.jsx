@@ -584,6 +584,14 @@ function SchedulePage({ session }) {
   const sortedEmployeeEntries = useMemo(() => [...visibleEntries].sort((a, b) =>
     `${a.date || ''}-${a.start || ''}`.localeCompare(`${b.date || ''}-${b.start || ''}`)
   ), [visibleEntries])
+  const entriesByDate = useMemo(() => {
+    const grouped = new Map()
+    for (const entry of visibleEntries) {
+      if (!grouped.has(entry.date)) grouped.set(entry.date, [])
+      grouped.get(entry.date).push(entry)
+    }
+    return grouped
+  }, [visibleEntries])
 
   const unassignedByDate = useMemo(() => unassignedEmployeesByDate({
     days, employees, entries, daysOff,
@@ -593,7 +601,7 @@ function SchedulePage({ session }) {
     days, daysOff, weekPublished, visibleEntries, userId: session.userId,
   }), [management, days, daysOff, weekPublished, visibleEntries, session.userId])
   const scheduleDays = useMemo(() => days.map((date) => {
-    const shifts = visibleEntries.filter((entry) => entry.date === date)
+    const shifts = entriesByDate.get(date) || []
     const explicitDaysOff = daysOff.filter((off) => off.date === date)
     const automaticUnassigned = weekPublished || shifts.length > 0 ? (unassignedByDate[date] || []) : []
     return {
@@ -602,7 +610,7 @@ function SchedulePage({ session }) {
       free: dailyFreeEmployees({ shifts, explicitDaysOff, automaticUnassigned }),
       shiftCount: shifts.length,
     }
-  }), [days, visibleEntries, daysOff, unassignedByDate, weekPublished])
+  }), [days, entriesByDate, daysOff, unassignedByDate, weekPublished])
   const activeScheduleDay = scheduleDays.find((day) => day.date === selectedDay) || scheduleDays[0]
   const formNetMinutes = useMemo(() => plannedNetMinutes(form.date, form.start, form.end, Number(form.pauseMinutes || 0)), [form.date, form.end, form.pauseMinutes, form.start])
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }))
