@@ -123,7 +123,11 @@ test('saved worksite autofills schedule location and can be deleted safely', asy
   const state = await login(page)
 
   await navigate(page, 'Dienstplan')
-  await page.getByRole('button', { name: /Dienst am .* hinzufügen/ }).first().click()
+  if (await page.evaluate(() => window.innerWidth <= 680)) {
+    await page.locator('.schedule-mobile-day-detail-header').getByRole('button', { name: '+ Dienst' }).click()
+  } else {
+    await page.getByRole('button', { name: /Dienst am .* hinzufügen/ }).first().click()
+  }
   await expect(page.getByRole('heading', { name: 'Dienst erstellen', exact: true })).toBeVisible()
   await page.locator('.schedule-form select').nth(1).selectOption('site-nord')
   await expect(page.getByLabel('Bezeichnung des Einsatzortes')).toHaveValue('Zentrale')
