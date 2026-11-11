@@ -520,13 +520,15 @@ function ScheduleDayContents({ day, busy, edit, editDayOff, startNew }) {
             </button>
           : <span className="schedule-free-automatic" key={person.employeeUserId}>{person.employeeName}</span>)}
       </div>}
-      <button type="button" className="schedule-add-free" disabled={Boolean(busy)} onClick={() => startNew(day.date, 'off')}>+ Dienstfrei eintragen</button>
+      <button type="button" className="schedule-add-free" disabled={Boolean(busy)} onClick={() => startNew(day.date, 'off')}><span className="schedule-add-free-long">+ Dienstfrei eintragen</span><span className="schedule-add-free-short">+ Frei</span></button>
     </section>
     {day.groups.length ? day.groups.map((group) =>
       <section className="schedule-area-group" key={group.label}>
-        <div className="schedule-group-heading"><strong>{group.label}</strong><span>{group.shifts.length} {group.shifts.length === 1 ? 'Dienst' : 'Dienste'}</span></div>
-        {group.shifts.map((entry) => <button type="button" className="shift-item" key={entry.id} onClick={() => edit(entry)}>
-          <strong>{entry.start}–{entry.end}</strong><span>{entry.employeeName}</span>
+        <div className="schedule-group-heading"><strong title={group.label}><span className="schedule-area-full">{group.label}</span><span className="schedule-area-short">{group.label === 'Brandwache' ? 'Brand' : group.label === 'Baureinigung' ? 'Bau' : group.label === 'Staplerfahrer' ? 'Stapler' : group.label.slice(0, 6)}</span></strong><span>{group.shifts.length} {group.shifts.length === 1 ? 'Dienst' : 'Dienste'}</span></div>
+        {group.shifts.map((entry) => <button type="button" className="shift-item" key={entry.id} onClick={() => edit(entry)}
+          title={entry.employeeName + ' · ' + entry.start + '–' + entry.end + ' · ' + entry.workArea}>
+          <strong><span className="schedule-time-full">{entry.start}–{entry.end}</span><span className="schedule-time-short"><span>{entry.start}</span><span>–{entry.end}</span></span></strong>
+          <span title={entry.employeeName}>{entry.employeeName}</span>
           <small>{entry.location} · {entry.workArea}</small>
           <em>{entry.pauseMinutes || 0} Min. Pause · {entry.status === 'published' ? 'Freigegeben' : 'Entwurf'}</em>
         </button>)}
@@ -538,8 +540,6 @@ function ScheduleDayContents({ day, busy, edit, editDayOff, startNew }) {
 function SchedulePage({ session }) {
   const management = MANAGEMENT.has(session.role)
   const [week, setWeek] = useState(mondayOf())
-  const [selectedDay, setSelectedDay] = useState(week)
-  useEffect(() => { setSelectedDay(week) }, [week])
   const [showPlanActions, setShowPlanActions] = useState(false)
   const [entries, setEntries] = useState([])
   const [daysOff, setDaysOff] = useState([])
@@ -611,7 +611,6 @@ function SchedulePage({ session }) {
       shiftCount: shifts.length,
     }
   }), [days, entriesByDate, daysOff, unassignedByDate, weekPublished])
-  const activeScheduleDay = scheduleDays.find((day) => day.date === selectedDay) || scheduleDays[0]
   const formNetMinutes = useMemo(() => plannedNetMinutes(form.date, form.start, form.end, Number(form.pauseMinutes || 0)), [form.date, form.end, form.pauseMinutes, form.start])
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }))
 
@@ -637,7 +636,6 @@ function SchedulePage({ session }) {
   }
 
   function startNew(date, mode = 'shift') {
-    setSelectedDay(date)
     setEditingDayOff(null)
     setScheduleMode(mode)
     setForm({ ...emptyForm, date })
@@ -817,46 +815,24 @@ function SchedulePage({ session }) {
       </>}
     </section>
     {management ? <>
-      <p className="schedule-swipe-hint">Montag bis Freitag im Blick · für Samstag und Sonntag nach rechts wischen. Tag antippen für alle Dienste.</p>
-      <div className="schedule-week-scroll" role="region" aria-label="Wochendienstplan – horizontal scrollen" tabIndex={0}>
+      <div className="schedule-week-scroll" role="region" aria-label="Wochendienstplan Montag bis Sonntag – nach links und rechts wischen" tabIndex={0}>
         <div className="week-cards management-week-cards">{scheduleDays.map((day) =>
-          <section className={'day-card' + (activeScheduleDay?.date === day.date ? ' schedule-day-selected' : '')} key={day.date}>
+          <section className="day-card" key={day.date}>
             <header>
-              <button type="button" className="schedule-day-picker" aria-pressed={activeScheduleDay?.date === day.date}
-                onClick={() => setSelectedDay(day.date)} aria-label={formatDate(day.date, { weekday: 'long', day: '2-digit', month: '2-digit' }) + ' anzeigen'}>
+              <div className="schedule-day-picker">
                 <span className="schedule-weekday-long">{formatDate(day.date, { weekday: 'long' })}</span>
                 <span className="schedule-weekday-short">{formatDate(day.date, { weekday: 'short' }).replace('.', '')}</span>
                 <strong>{formatDate(day.date, { day: '2-digit', month: '2-digit' })}</strong>
-              </button>
+              </div>
               <button type="button" className="schedule-day-add" aria-label={'Dienst am ' + formatDate(day.date) + ' hinzufügen'}
                 onClick={() => startNew(day.date)}>+</button>
             </header>
-            <div className="schedule-day-compact-preview" aria-hidden="true">
-              {day.groups.map((group) => <span key={group.label} className="schedule-day-compact-area" title={group.label}>
-                <span>{group.label}</span><b>{group.shifts.length}</b>
-              </span>)}
-              <span className="schedule-day-compact-free">Frei {day.free.length}</span>
-            </div>
             <div className="schedule-desktop-day-content">
               <ScheduleDayContents day={day} busy={busy} edit={edit} editDayOff={editDayOff} startNew={startNew} />
             </div>
           </section>
         )}</div>
       </div>
-      {activeScheduleDay && <section className="schedule-mobile-day-detail" aria-label="Ausgewählter Tagesdienstplan">
-        <div className="schedule-mobile-day-detail-header">
-          <label className="schedule-mobile-day-picker">
-            <span>Tag auswählen</span>
-            <select aria-label="Tag auswählen" value={activeScheduleDay.date} onChange={(event) => setSelectedDay(event.target.value)}>
-              {scheduleDays.map((day) => <option key={day.date} value={day.date}>
-                {formatDate(day.date, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}
-              </option>)}
-            </select>
-          </label>
-          <button type="button" className="secondary-button compact" onClick={() => startNew(activeScheduleDay.date)}>+ Dienst</button>
-        </div>
-        <ScheduleDayContents day={activeScheduleDay} busy={busy} edit={edit} editDayOff={editDayOff} startNew={startNew} />
-      </section>}
     </> : sortedEmployeeEntries.length ? <div className="employee-shift-list">{sortedEmployeeEntries.map((entry) => <article className="employee-shift-card" key={entry.id}><header><div><span>{formatDate(entry.date, { weekday: 'long' })}</span><strong>{formatDate(entry.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong></div><strong className="employee-shift-time">{entry.start}–{entry.end}</strong></header><div className="employee-shift-details"><strong>{entry.location || 'Einsatzort nicht angegeben'}</strong><span>{entry.workArea || 'Arbeitsbereich nicht angegeben'}</span><small>{entry.pauseMinutes || 0} Min. Pause</small></div></article>)}</div> : <section className="panel employee-schedule-empty"><Empty>{weekPublished ? "Diese Woche hast du keinen Dienst. Deine freien Tage stehen unten." : "Für diese Woche ist noch kein freigegebener Dienst eingetragen."}</Empty></section>}
     {!management && employeeDaysOff.length > 0 && <section className="panel"><PageHeader title="Meine freien Tage" subtitle="Bestätigtes Dienstfrei und freie Tage aus freigegebenen Wochenplänen." /><div className="employee-shift-list">{employeeDaysOff.map((off) => <article className="employee-shift-card" key={off.employeeUserId + off.date}><header><div><span>{formatDate(off.date, { weekday: 'long' })}</span><strong>{formatDate(off.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong></div><strong className="employee-shift-time">Dienstfrei</strong></header><div className="employee-shift-details"><span>{off.source === 'automatic' ? 'Automatisch frei · keine Schicht im freigegebenen Wochenplan' : 'Bestätigt · keine Schicht geplant'}</span></div></article>)}</div></section>}
     {management && editingDayOff && <section className="panel editor-panel" ref={editorRef}>
