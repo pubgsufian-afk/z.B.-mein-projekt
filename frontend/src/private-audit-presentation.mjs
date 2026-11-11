@@ -15,6 +15,9 @@ const LABELS = {
   date: 'Datum',
   workDate: 'Arbeitstag',
   week: 'Kalenderwoche',
+  dates: 'Betroffene Tage',
+  published: 'Veröffentlichte Dienste',
+  employeeUserId: 'Mitarbeiter-Konto',
   start: 'Dienstbeginn',
   end: 'Dienstende',
   clockInAt: 'Arbeitsbeginn',
@@ -47,6 +50,12 @@ const TECHNICAL = /^(id|userId|actorId|actorEmail|actorRole|employeeUserId|objec
 const TEXT_ACTIONS = {
   'shift-created': 'hat einen Dienst angelegt',
   'shift-updated': 'hat einen Dienst geändert',
+  'shift-published': 'hat einen Dienst veröffentlicht',
+  'shift-week-published': 'hat einen Dienst im Wochenplan veröffentlicht',
+  'shift-copied': 'hat einen Dienst aus der Vorwoche übernommen',
+  'shift-repeated': 'hat einen Dienst auf weitere Tage übertragen',
+  'day-off-set': 'hat einen dienstfreien Tag eingetragen',
+  'shift-overlap-admin-approved': 'hat eine Dienstüberschneidung ausdrücklich genehmigt',
   'shift-deleted': 'hat einen Dienst gelöscht',
   'week-published': 'hat einen Wochenplan veröffentlicht',
   'Dienst gelöscht': 'hat einen Dienst gelöscht',
@@ -131,7 +140,7 @@ export function describeAuditEvent(event) {
 
   // The target's current name may be unavailable for a deleted/legacy account.
   // Explicitly say so instead of claiming an unrelated person was changed.
-  const affectedEmployee = category === 'Mitarbeiter' || Boolean(event?.targetName)
+  const affectedEmployee = category === 'Mitarbeiter'
   const employeePhrase = target ? ' von ' + target : ' eines Mitarbeiters'
   if (category === 'Mitarbeiter') {
     if (/Berechtigung|role|permission/i.test(action)) verb = 'hat die Berechtigung' + employeePhrase + ' geändert'
@@ -139,9 +148,7 @@ export function describeAuditEvent(event) {
     else if (/deaktiv/i.test(action)) verb = 'hat das Konto' + employeePhrase + ' deaktiviert'
     else if (/approve|freig/i.test(action)) verb = 'hat das Konto' + employeePhrase + ' freigegeben'
     else if (target) verb += ' für ' + target
-  } else if (target && !affectedEmployee) {
-    verb += ' für ' + target
-  } else if (target && /Dienst|Arbeitszeit|Stundenzettel/i.test(verb)) {
+  } else if (target && ['Dienstplan', 'Arbeitszeiten', 'Stundenzettel', 'Dokumente', 'Berichte'].includes(category)) {
     verb += ' für ' + target
   }
 
