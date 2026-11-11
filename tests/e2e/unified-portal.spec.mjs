@@ -795,7 +795,7 @@ test('8.85 MB employee PDF uses private chunked upload without oversized Netlify
 })
 
 
-test('Dienstplan: three larger day columns visible, swipe to weekend and desktop unchanged', async ({ page }) => {
+test('Dienstplan: wider mobile columns, weekend swipable and desktop unchanged', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await login(page, 'admin')
   await navigate(page, 'Dienstplan')
@@ -811,14 +811,17 @@ test('Dienstplan: three larger day columns visible, swipe to weekend and desktop
     columns: getComputedStyle(element.querySelector('.management-week-cards')).gridTemplateColumns.split(' ').length,
   }))
   expect(mobile.columns).toBe(7)
-  expect(mobile.scrollWidth).toBeGreaterThan(mobile.clientWidth * 2.25)
-  expect(mobile.scrollWidth).toBeLessThan(mobile.clientWidth * 2.35)
+  expect(mobile.scrollWidth).toBeGreaterThan(mobile.clientWidth * 2.5)
+  expect(mobile.scrollWidth).toBeLessThan(mobile.clientWidth * 2.6)
   const cards = page.locator('.management-week-cards .day-card')
   const region = await scroll.boundingBox()
+  const tuesday = await cards.nth(1).boundingBox()
   const wednesday = await cards.nth(2).boundingBox()
   const thursday = await cards.nth(3).boundingBox()
-  expect(wednesday.x + wednesday.width).toBeLessThanOrEqual(region.x + region.width + 3)
-  expect(thursday.x).toBeGreaterThanOrEqual(region.x + region.width - 10)
+  expect(tuesday.x + tuesday.width).toBeLessThanOrEqual(region.x + region.width + 3)
+  expect(wednesday.x).toBeLessThan(region.x + region.width - 5)
+  expect(wednesday.x + wednesday.width).toBeGreaterThan(region.x + region.width + 5)
+  expect(thursday.x).toBeGreaterThanOrEqual(region.x + region.width - 5)
   await expect(cards.first().locator('.schedule-free-section')).toBeVisible()
   await expect(cards.locator('.schedule-desktop-day-content:visible')).toHaveCount(7)
   await scroll.evaluate((el) => { el.scrollLeft = el.scrollWidth - el.clientWidth })
