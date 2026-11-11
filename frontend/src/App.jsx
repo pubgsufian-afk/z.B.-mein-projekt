@@ -5,6 +5,7 @@ import EmployeeDailyReports from './EmployeeDailyReports.jsx'
 import PrivateOwnerAudit from './PrivateOwnerAudit.jsx'
 import TimeOffPage from './TimeOffPage.jsx'
 import { schedulableEmployees } from './time-off-policy.mjs'
+import { employeePublishedDaysOff, unassignedEmployeesByDate } from './schedule-free-policy.mjs'
 import {
   AuthError,
   getUser,
@@ -553,31 +554,13 @@ function SchedulePage({ session }) {
     `${a.date || ''}-${a.start || ''}`.localeCompare(`${b.date || ''}-${b.start || ''}`)
   ), [visibleEntries])
 
-  // An unpublished/empty future week is never interpreted as Dienstfrei.
-  // Automatic free days are calculated from the published week; they are not
-  // saved as absence records and therefore do not block later shift edits.
-  const unassignedByDate = useMemo(() => {
-    if (!management || (!entries.length && !weekPublished)) return {}
-    const occupied = new Set([
-      ...entries.map((entry) => `${String(entry.employeeUserId)}|${entry.date}`),
-      ...daysOff.map((off) => `${String(off.employeeUserId)}|${off.date}`),
-    ])
-    const active = employees.filter((employee) =>
-      employee.status === 'active' && Boolean(employee.userId || employee.id))
-    return Object.fromEntries(days.map((date) => [date, active.filter((employee) =>
-      !occupied.has(`${String(employee.userId || employee.id)}|${date}`))]))
-  }, [management, entries, weekPublished, daysOff, employees, days])
-
-  const employeeDaysOff = useMemo(() => {
-    if (management) return []
-    const explicit = daysOff.filter((off) => String(off.employeeUserId) === String(session.userId))
-    if (!weekPublished) return explicit
-    const assigned = new Set(visibleEntries.map((entry) => entry.date))
-    const alreadyFree = new Set(explicit.map((off) => off.date))
-    const automatic = days.filter((date) => !assigned.has(date) && !alreadyFree.has(date))
-      .map((date) => ({ employeeUserId: session.userId, date, source: 'automatic' }))
-    return [...explicit, ...automatic].sort((a, b) => a.date.localeCompare(b.date))
-  }, [management, daysOff, session.userId, weekPublished, visibleEntries, days])
+  const unassignedByDate = useMemo(() => unassignedEmployeesByDate({
+    days, employees, entries, daysOff,
+    show: management && (entries.length > 0 || weekPublished),
+  }), [days, employees, entries, daysOff, management, weekPublished])
+  const employeeDaysOff = useMemo(() => management ? [] : employeePublishedDaysOff({
+    days, daysOff, weekPublished, visibleEntries, userId: session.userId,
+  }), [management, days, daysOff, weekPublished, visibleEntries, session.userId])
   const formNetMinutes = useMemo(() => plannedNetMinutes(form.date, form.start, form.end, Number(form.pauseMinutes || 0)), [form.date, form.end, form.pauseMinutes, form.start])
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }))
 
