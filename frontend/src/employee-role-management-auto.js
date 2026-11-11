@@ -202,7 +202,6 @@ function addKwameScheduleTransfer(wrapper, employee, employees, currentSession, 
   transfer.type = 'button'
   transfer.className = 'secondary-button compact'
   transfer.textContent = 'Dienstpläne zu Kwame Akakpo übertragen'
-  transfer.setAttribute('aria-label', 'Alle Dienste von Konto 12 zum registrierten Kwame Akakpo übertragen')
 
   transfer.addEventListener('click', async () => {
     transfer.disabled = true
