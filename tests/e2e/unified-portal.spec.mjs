@@ -790,3 +790,53 @@ test('8.85 MB employee PDF uses private chunked upload without oversized Netlify
   expect(directPosts).toBe(0)
   await expectNoHorizontalPageOverflow(page)
 })
+
+
+test('Dienstplan: mobile 7-day grid scrolls inside its region, desktop unchanged', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await login(page, 'admin')
+  await navigate(page, 'Dienstplan')
+  const scroll = page.locator('.schedule-week-scroll')
+  await expect(scroll).toBeVisible()
+  await expect(page.locator('.management-week-cards .day-card')).toHaveCount(7)
+  const mobile = await scroll.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    columns: getComputedStyle(element.querySelector('.management-week-cards')).gridTemplateColumns.split(' ').length,
+  }))
+  expect(mobile.columns).toBe(7)
+  expect(mobile.scrollWidth).toBeGreaterThan(mobile.clientWidth + 200)
+  await expectNoHorizontalPageOverflow(page)
+
+  await page.setViewportSize({ width: 1366, height: 900 })
+  const desktop = await scroll.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    columns: getComputedStyle(element.querySelector('.management-week-cards')).gridTemplateColumns.split(' ').length,
+  }))
+  expect(desktop.columns).toBe(7)
+  expect(desktop.scrollWidth).toBeLessThanOrEqual(desktop.clientWidth + 2)
+  await expectNoHorizontalPageOverflow(page)
+})
+
+test('Dienstplan: automatic free only in a published week, never the next unpublished week', async ({ page }) => {
+  await login(page, 'employee')
+  const monday = new Date()
+  const weekday = monday.getUTCDay() || 7
+  monday.setUTCDate(monday.getUTCDate() - weekday + 1)
+  const publishedWeek = monday.toISOString().slice(0, 10)
+  await page.route('**/api/schedule-v2?resource=week-status*', (route) => {
+    const week = new URL(route.request().url()).searchParams.get('week')
+    return route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ week, published: week === publishedWeek }),
+    })
+  })
+  await page.getByRole('button', { name: 'Dienstplan', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Mein Dienstplan', exact: true })).toBeVisible()
+  await expect(page.getByText('Automatisch frei · keine Schicht im freigegebenen Wochenplan')).toHaveCount(6)
+
+  await page.getByRole('button', { name: /Nächste/ }).click()
+  await expect(page.getByText('Automatisch frei · keine Schicht im freigegebenen Wochenplan')).toHaveCount(0)
+  await expect(page.getByText('Für diese Woche ist noch kein freigegebener Dienst eingetragen.')).toBeVisible()
+})
