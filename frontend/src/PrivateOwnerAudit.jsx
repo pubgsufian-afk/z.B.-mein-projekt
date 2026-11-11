@@ -50,6 +50,29 @@ function downloadCsv(events) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+function shiftContext(event) {
+  if (event.category !== 'Dienstplan') return ''
+  const data = event.after?.date ? event.after : event.before || event.after || {}
+  const parts = []
+  if (data.date) parts.push(auditValue('date', data.date))
+  if (data.start && data.end) parts.push(data.start + '–' + data.end + ' Uhr')
+  else if (data.start) parts.push('ab ' + data.start + ' Uhr')
+  else if (data.end) parts.push('bis ' + data.end + ' Uhr')
+  if (data.workArea) parts.push(data.workArea)
+  if (data.location) parts.push(data.location)
+  return parts.join(' · ')
+}
+
+function SavedSnapshot({ title, data }) {
+  if (!data || !Object.keys(data).length) return <p className="private-audit-muted">{title}: Nicht gespeichert.</p>
+  return <div className="private-audit-snapshot">
+    <strong>{title}</strong>
+    {Object.entries(data)
+      .filter(([key]) => !/password|passwort|token|secret|cookie|authorization|credential|content|body|attachment/i.test(key))
+      .map(([key, value]) => <div key={key}><span>{key.replace(/([a-z])([A-Z])/g, '$1 $2')}:</span> {auditValue(key, value)}</div>)}
+  </div>
+}
+
 function ChangeLine({ change }) {
   return <div className="private-audit-change-row">
     <span className="private-audit-change-label">{change.label}</span>
@@ -152,6 +175,7 @@ export default function PrivateOwnerAudit({ accountId }) {
               {events.map((event, index) => {
                 const presentation = describeAuditEvent(event)
                 const opened = expanded === index
+                const affectedShift = shiftContext(event)
                 return <article className="private-audit-item" key={event.source + '-' + event.id + '-' + index}>
                   <div className="private-audit-item-head">
                     <div><strong>{event.actorName || event.actorEmail || 'Unbekannter Admin'}</strong><span>{berlinDateTime(event.occurredAt)}</span></div>
@@ -163,12 +187,14 @@ export default function PrivateOwnerAudit({ accountId }) {
                     : event.category === 'Mitarbeiter'
                       ? <p className="private-audit-target">Der Mitarbeitername ist in diesem älteren Eintrag nicht mehr verfügbar.</p>
                       : null}
+                  {affectedShift && <p className="private-audit-target"><strong>Betroffener Dienst:</strong> {affectedShift}</p>}
                   {presentation.changes.length
                     ? <div className="private-audit-changes">
                         {(opened ? presentation.changes : presentation.changes.slice(0, 3)).map((change) => <ChangeLine key={change.key} change={change} />)}
                         {!opened && presentation.changes.length > 3 && <p className="private-audit-muted">{presentation.changes.length - 3} weitere Änderungen in den Details</p>}
                       </div>
-                    : <p className="private-audit-muted">Für diese Aktion wurden keine einzelnen alten und neuen Werte gespeichert.</p>}
+                    : <p className="private-audit-muted">Für diese Aktion enthält das gespeicherte Protokoll keine konkreten Änderungen. Nicht erfasste frühere Werte lassen sich nicht zuverlässig nachträglich ermitteln.</p>}
+                  {presentation.changes.length > 0 && !event.before && event.after && <p className="private-audit-muted">Es wurde nur der neue Zustand gespeichert; frühere Werte sind für diesen Eintrag nicht vorhanden.</p>}
                   <button type="button" className="private-audit-more" aria-expanded={opened} onClick={() => setExpanded(opened ? null : index)}>
                     {opened ? 'Details schließen' : 'Weitere Informationen'}
                   </button>
@@ -178,6 +204,11 @@ export default function PrivateOwnerAudit({ accountId }) {
                     <div><strong>Rolle des handelnden Kontos:</strong> {auditValue('role', event.actorRole) || '–'}</div>
                     {event.targetName && <div><strong>Betroffener Mitarbeiter:</strong> {event.targetName}</div>}
                     {event.summary && !event.summary.startsWith('POST /api/') && <div><strong>Begründung / Hinweis:</strong> {event.summary}</div>}
+                    <details className="private-audit-technical">
+                      <summary>Alle gespeicherten Vorher-/Nachher-Werte</summary>
+                      <SavedSnapshot title="Vorher" data={event.before} />
+                      <SavedSnapshot title="Nachher" data={event.after} />
+                    </details>
                     <details className="private-audit-technical">
                       <summary>Technische Angaben anzeigen</summary>
                       <div><strong>Admin-Konto-ID:</strong> {event.actorId}</div>
