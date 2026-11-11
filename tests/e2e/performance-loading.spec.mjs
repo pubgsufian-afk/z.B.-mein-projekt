@@ -129,7 +129,7 @@ test('Dienstplan entries remain fresh and isolated for each week', async ({ page
   await expect.poll(() => new Set(requestedWeeks.filter(Boolean)).size).toBeGreaterThanOrEqual(2)
   const secondWeek = requestedWeeks.at(-1)
   expect(secondWeek).not.toBe(firstWeek)
-  await expect(page.getByText('Adel Abdal').first()).toBeVisible()
+  await expect(page.locator('.schedule-mobile-day-detail:visible .shift-item, .schedule-desktop-day-content:visible .shift-item').getByText('Adel Abdal', { exact: true }).first()).toBeVisible()
 })
 
 test('Dienstplan entries render while editor directories are still loading', async ({ page }) => {
@@ -162,9 +162,9 @@ test('Dienstplan entries render while editor directories are still loading', asy
   })
 
   await navigate(page, 'Dienstplan')
-  await expect(page.getByText('Adel Abdal').first()).toBeVisible({ timeout: 1500 })
+  await expect(page.locator('.schedule-mobile-day-detail:visible .shift-item, .schedule-desktop-day-content:visible .shift-item').getByText('Adel Abdal', { exact: true }).first()).toBeVisible({ timeout: 1500 })
   releaseDirectories()
-  await expect(page.getByText('Abbott').first()).toBeVisible()
+  await expect(page.locator('.schedule-mobile-day-detail:visible .shift-item small, .schedule-desktop-day-content:visible .shift-item small').getByText('Abbott').first()).toBeVisible()
 })
 
 test('Einsatzorte show cached stable data while a fresh refresh is delayed', async ({ page }) => {
