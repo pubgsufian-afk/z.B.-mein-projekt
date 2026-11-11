@@ -811,8 +811,8 @@ test('Dienstplan: wider mobile columns, weekend swipable and desktop unchanged',
     columns: getComputedStyle(element.querySelector('.management-week-cards')).gridTemplateColumns.split(' ').length,
   }))
   expect(mobile.columns).toBe(7)
-  expect(mobile.scrollWidth).toBeGreaterThan(mobile.clientWidth * 2.5)
-  expect(mobile.scrollWidth).toBeLessThan(mobile.clientWidth * 2.6)
+  expect(mobile.scrollWidth).toBeGreaterThan(mobile.clientWidth * 2.95)
+  expect(mobile.scrollWidth).toBeLessThan(mobile.clientWidth * 3.05)
   const cards = page.locator('.management-week-cards .day-card')
   const region = await scroll.boundingBox()
   const tuesday = await cards.nth(1).boundingBox()
