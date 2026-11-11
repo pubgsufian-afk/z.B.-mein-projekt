@@ -19,7 +19,7 @@
     "test:e2e": "node scripts/prepare-unified-e2e.mjs && playwright test tests/e2e/unified-portal.spec.mjs tests/e2e/worksite-feature.spec.mjs tests/e2e/admin-time-editing.spec.mjs tests/e2e/employee-role-management.spec.mjs tests/e2e/performance-loading.spec.mjs tests/e2e/timesheet-monthly.spec.mjs tests/e2e/daily-report-management.spec.mjs",
     "verify:registration-guard": "node --experimental-strip-types scripts/registration-email-guard-test.mjs",
     "verify:private-owner-audit": "node scripts/private-owner-audit-source-test.mjs && node scripts/private-owner-audit-readable-test.mjs",
-    "verify:time-off": "node scripts/time-off-contract-test.mjs",
+    "verify:time-off": "node scripts/time-off-contract-test.mjs && node scripts/schedule-auto-free-policy-test.mjs",
     "verify:pr73-days-off": "node scripts/pr73-days-off-relay-test.mjs"
   },
   "dependencies": {
