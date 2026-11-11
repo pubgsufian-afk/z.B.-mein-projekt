@@ -20,6 +20,7 @@ import {
   upsertScheduleShift,
   upsertScheduleVersion,
   writeScheduleAudit,
+  writeScheduleAuditBatch,
   type ScheduleEmployee,
   type ScheduleShift,
 } from './_shared/schedule-neon-repository.mts'
@@ -346,18 +347,15 @@ async function publishWeek(current: NonNullable<Awaited<ReturnType<typeof curren
   // A week publication affects every shift; retain each affected person's
   // status before and after rather than logging only a total count.
   const publishedIds = new Set(result.shiftIds)
-  for (const shift of beforeShifts) {
-    if (!publishedIds.has(shift.id)) continue
-    await writeScheduleAudit({
-      actorId: current.userId, actorType: 'portal',
-      action: 'shift-week-published', shiftId: shift.id,
-      details: {
-        week, version: result.version,
-        before: auditShiftSnapshot(shift),
-        after: { ...auditShiftSnapshot(shift), status: 'published' },
-      },
-    })
-  }
+  await writeScheduleAuditBatch(beforeShifts.filter((shift) => publishedIds.has(shift.id)).map((shift) => ({
+    actorId: current.userId, actorType: 'portal',
+    action: 'shift-week-published', shiftId: shift.id,
+    details: {
+      week, version: result.version,
+      before: auditShiftSnapshot(shift),
+      after: { ...auditShiftSnapshot(shift), status: 'published' },
+    },
+  })))
   return json({ week, version: result.version, published: result.published })
 }
 
@@ -384,12 +382,10 @@ async function copyPreviousWeek(current: NonNullable<Awaited<ReturnType<typeof c
   if (confirmationError) return confirmationError
   const created: ScheduleShift[] = []
   for (const candidate of candidates) created.push(await upsertScheduleShift(candidate))
-  for (const shift of created) {
-    await writeScheduleAudit({
-      actorId: current.userId, actorType: 'portal', action: 'shift-copied',
-      shiftId: shift.id, details: { sourceWeek: previousMonday, targetWeek: targetMonday, after: auditShiftSnapshot(shift) },
-    })
-  }
+  await writeScheduleAuditBatch(created.map((shift) => ({
+    actorId: current.userId, actorType: 'portal', action: 'shift-copied',
+    shiftId: shift.id, details: { sourceWeek: previousMonday, targetWeek: targetMonday, after: auditShiftSnapshot(shift) },
+  })))
   if (created.length) await tryRecordPortalAdminChange({ actor: current, category: 'Dienstplan', action: 'Vorwoche kopiert', summary: String(created.length) + ' Dienste kopiert', after: { sourceWeek: previousMonday, targetWeek: targetMonday, count: created.length } })
   return json({ created, sourceWeek: previousMonday, targetWeek: targetMonday }, 201)
 }
@@ -411,12 +407,10 @@ async function repeatShift(current: NonNullable<Awaited<ReturnType<typeof curren
   if (confirmationError) return confirmationError
   const created: ScheduleShift[] = []
   for (const candidate of candidates) created.push(await upsertScheduleShift(candidate))
-  for (const shift of created) {
-    await writeScheduleAudit({
-      actorId: current.userId, actorType: 'portal', action: 'shift-repeated',
-      shiftId: shift.id, details: { sourceShiftId: source.id, after: auditShiftSnapshot(shift) },
-    })
-  }
+  await writeScheduleAuditBatch(created.map((shift) => ({
+    actorId: current.userId, actorType: 'portal', action: 'shift-repeated',
+    shiftId: shift.id, details: { sourceShiftId: source.id, after: auditShiftSnapshot(shift) },
+  })))
   if (created.length) await tryRecordPortalAdminChange({ actor: current, category: 'Dienstplan', action: 'Dienst wiederholt', entityId: source.id, summary: String(created.length) + ' wiederholte Dienste', after: { employeeName: source.employeeName, dates, count: created.length } })
   return json({ created, repeatGroupId: group }, 201)
 }
