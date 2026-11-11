@@ -358,8 +358,17 @@ test('mobile schedule opens a simple editor from a day card', async ({ page }, t
   await navigate(page, 'Dienstplan')
   const week = page.locator('.management-week-cards')
   await expect(week.locator('.day-card')).toHaveCount(7)
-  await expect.poll(() => week.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
-  await week.getByRole('button', { name: /Dienst am .* hinzufügen/ }).last().click()
+  const mobile = await page.evaluate(() => window.innerWidth <= 680)
+  if (mobile) {
+    await expect(page.locator('.schedule-week-scroll')).toBeHidden()
+    const picker = page.getByLabel('Tag auswählen')
+    await expect(picker.locator('option')).toHaveCount(7)
+    await picker.selectOption({ index: 6 })
+    await page.locator('.schedule-mobile-day-detail-header').getByRole('button', { name: '+ Dienst' }).click()
+  } else {
+    await expect.poll(() => week.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+    await week.getByRole('button', { name: /Dienst am .* hinzufügen/ }).last().click()
+  }
   await expect(page.getByRole('heading', { name: 'Dienst erstellen' })).toBeVisible()
   await expect(page.getByText('Schnellwahl Zeit', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '07:00–17:00', exact: true })).toBeVisible()
@@ -379,12 +388,17 @@ test('admin can mark Dienstfrei and hide the employee for that date', async ({ p
   await login(page, 'admin')
   await navigate(page, 'Dienstplan')
   const finalDay = page.locator('.management-week-cards .day-card').last()
-  await finalDay.getByRole('button', { name: /Dienst am .* hinzufügen/ }).click()
+  const mobile = await page.evaluate(() => window.innerWidth <= 680)
+  if (mobile) await page.getByLabel('Tag auswählen').selectOption({ index: 6 })
+  const openDayEditor = () => mobile
+    ? page.locator('.schedule-mobile-day-detail-header').getByRole('button', { name: '+ Dienst' }).click()
+    : finalDay.getByRole('button', { name: /Dienst am .* hinzufügen/ }).click()
+  await openDayEditor()
   await page.getByRole('button', { name: 'Dienstfrei', exact: true }).click()
   await page.getByLabel('Mitarbeiter').selectOption('employee-anna')
   await page.getByRole('button', { name: 'Dienstfrei eintragen', exact: true }).click()
   await expect(page.locator('.schedule-mobile-day-detail:visible .schedule-day-off-item, .schedule-desktop-day-content:visible .schedule-day-off-item').getByText('Anna Beispiel · Dienstfrei')).toBeVisible()
-  await finalDay.getByRole('button', { name: /Dienst am .* hinzufügen/ }).click()
+  await openDayEditor()
   await expect(page.getByLabel('Mitarbeiter').locator('option[value="employee-anna"]')).toHaveCount(0)
   await expect(page.getByLabel('Mitarbeiter').locator('option[value="employee-bernd"]')).toHaveCount(1)
 })
@@ -792,33 +806,29 @@ test('8.85 MB employee PDF uses private chunked upload without oversized Netlify
 })
 
 
-test('Dienstplan: mobile 7-day grid scrolls inside its region, desktop unchanged', async ({ page }) => {
+test('Dienstplan: mobile mini-week hidden, all seven days selectable and desktop unchanged', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await login(page, 'admin')
   await navigate(page, 'Dienstplan')
   const scroll = page.locator('.schedule-week-scroll')
-  await expect(scroll).toBeVisible()
+  await expect(scroll).toBeHidden()
+  await expect(page.locator('.schedule-swipe-hint')).toBeHidden()
+  const detail = page.locator('.schedule-mobile-day-detail')
+  await expect(detail).toBeVisible()
   await expect(page.locator('.management-week-cards .day-card')).toHaveCount(7)
-  const mobile = await scroll.evaluate((element) => ({
-    clientWidth: element.clientWidth,
-    scrollWidth: element.scrollWidth,
-    columns: getComputedStyle(element.querySelector('.management-week-cards')).gridTemplateColumns.split(' ').length,
-  }))
-  expect(mobile.columns).toBe(7)
-  expect(mobile.scrollWidth).toBeGreaterThan(mobile.clientWidth * 1.3)
-  expect(mobile.scrollWidth).toBeLessThan(mobile.clientWidth * 1.55)
-  const firstFive = page.locator('.management-week-cards .day-card')
-  const region = await scroll.boundingBox()
-  const friday = await firstFive.nth(4).boundingBox()
-  const saturday = await firstFive.nth(5).boundingBox()
-  expect(friday.x + friday.width).toBeLessThanOrEqual(region.x + region.width + 3)
-  expect(saturday.x).toBeGreaterThanOrEqual(region.x + region.width - 3)
-  await expect(page.locator('.schedule-mobile-day-detail')).toBeVisible()
-  await firstFive.nth(5).getByRole('button', { name: /anzeigen/ }).click()
-  await expect(page.locator('.schedule-mobile-day-detail-header')).toContainText('Samstag')
+  const picker = page.getByLabel('Tag auswählen')
+  await expect(picker).toBeVisible()
+  await expect(picker.locator('option')).toHaveCount(7)
+  await picker.selectOption({ index: 5 })
+  await expect(picker.locator('option:checked')).toContainText('Samstag')
+  await picker.selectOption({ index: 6 })
+  await expect(picker.locator('option:checked')).toContainText('Sonntag')
+  await expect(detail.locator('.schedule-free-section')).toBeVisible()
   await expectNoHorizontalPageOverflow(page)
 
   await page.setViewportSize({ width: 1366, height: 900 })
+  await expect(scroll).toBeVisible()
+  await expect(detail).toBeHidden()
   const desktop = await scroll.evaluate((element) => ({
     clientWidth: element.clientWidth,
     scrollWidth: element.scrollWidth,
