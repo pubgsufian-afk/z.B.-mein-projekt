@@ -39,7 +39,7 @@ if (!schedule.includes('classifyAssistantDuplicate(candidate, dateShifts, active
 
 assert.match(schedule, /ensureSharedLegacyScheduleMigrated/)
 assert.match(schedule, /classifyAssistantDuplicate\(candidate, dateShifts, activeEmployees\)/)
-assert.match(schedule, /TIME_DUPLICATE/)
+assert.match(schedule, /SHIFT_OVERLAP/)
 
 await writeFile(schedulePath, schedule)
 console.log('Schedule assistant full-control portal patch applied')
