@@ -845,7 +845,14 @@ function SchedulePage({ session }) {
       </div>
       {activeScheduleDay && <section className="schedule-mobile-day-detail" aria-label="Ausgewählter Tagesdienstplan">
         <div className="schedule-mobile-day-detail-header">
-          <strong>{formatDate(activeScheduleDay.date, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}</strong>
+          <label className="schedule-mobile-day-picker">
+            <span>Tag auswählen</span>
+            <select aria-label="Tag auswählen" value={activeScheduleDay.date} onChange={(event) => setSelectedDay(event.target.value)}>
+              {scheduleDays.map((day) => <option key={day.date} value={day.date}>
+                {formatDate(day.date, { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}
+              </option>)}
+            </select>
+          </label>
           <button type="button" className="secondary-button compact" onClick={() => startNew(activeScheduleDay.date)}>+ Dienst</button>
         </div>
         <ScheduleDayContents day={activeScheduleDay} busy={busy} edit={edit} editDayOff={editDayOff} startNew={startNew} />
