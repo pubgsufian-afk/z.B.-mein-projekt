@@ -185,7 +185,60 @@ function addProfileEditor(wrapper, card, employee, id, refresh) {
   wrapper.append(block)
 }
 
-function addEditor(card, employee, currentSession, refresh) {
+
+function addKwameScheduleTransfer(wrapper, employee, employees, currentSession, sourceUserId, refresh) {
+  if (currentSession.role !== 'owner' || String(employee.fullName || '').trim() !== '12') return
+  const targets = employees.filter((other) => {
+    const id = String(other.userId || other.id || '')
+    return id && id !== sourceUserId &&
+      String(other.fullName || '').trim().toLocaleLowerCase('de') === 'kwame akakpo' &&
+      other.status !== 'inactive'
+  })
+  if (targets.length !== 1) return
+
+  const target = targets[0]
+  const targetUserId = String(target.userId || target.id || '')
+  const transfer = document.createElement('button')
+  transfer.type = 'button'
+  transfer.className = 'secondary-button compact'
+  transfer.textContent = 'Dienstpläne zu Kwame Akakpo übertragen'
+
+  transfer.addEventListener('click', async () => {
+    transfer.disabled = true
+    try {
+      const common = { sourceUserId, targetUserId }
+      const preview = await api('/api/registrations', {
+        method: 'PATCH',
+        body: JSON.stringify({ ...common, action: 'preview-kwame-schedule-transfer' }),
+      })
+      if (!preview.shiftCount) {
+        toast('Beim Konto „12“ wurden keine zu übertragenden Dienstpläne gefunden.')
+        return
+      }
+      const range = preview.firstDate && preview.lastDate
+        ? ` (${preview.firstDate} bis ${preview.lastDate})`
+        : ''
+      const approved = Number(preview.publishedCount || 0)
+      const question = `${preview.shiftCount} Dienste${range} vom Konto „12“ zu „Kwame Akakpo“ übertragen?\n\nDavon ${approved} freigegebene Dienste. Alle Zeiten und Freigaben bleiben erhalten. Kwames eigenes Konto bleibt bestehen, das alte Konto wird nicht gelöscht.\n\nDiese Änderung betrifft echte Dienstpläne. Jetzt übertragen?`
+      if (!window.confirm(question)) return
+
+      const completed = await api('/api/registrations', {
+        method: 'PATCH',
+        body: JSON.stringify({ ...common, action: 'confirm-kwame-schedule-transfer' }),
+      })
+      toast(`${completed.moved || 0} Dienstpläne wurden Kwame Akakpo zugeordnet.`)
+      await refresh()
+    } catch (error) {
+      toast(error.message || 'Dienstplanübertragung fehlgeschlagen. Es wurden keine Dienstpläne verändert.', true)
+    } finally {
+      transfer.disabled = false
+    }
+  })
+
+  wrapper.append(transfer)
+}
+
+function addEditor(card, employee, currentSession, refresh, employees) {
   const role = String(employee.role || 'employee')
   const id = String(employee.userId || employee.id || '')
   if (!id) return
@@ -289,6 +342,7 @@ function addEditor(card, employee, currentSession, refresh) {
 
   actions.append(select, save, deactivate)
   wrapper.append(actions)
+  addKwameScheduleTransfer(wrapper, employee, employees, currentSession, id, refresh)
   card.append(wrapper)
 }
 
@@ -314,7 +368,7 @@ async function refresh() {
     clearInjected()
     cards.forEach((card, index) => {
       const employee = employeeFor(card, employees, index)
-      if (employee) addEditor(card, employee, currentSession, refresh)
+      if (employee) addEditor(card, employee, currentSession, refresh, employees)
     })
   } catch (error) {
     console.error('Habun Mitarbeiterrollen', error)
