@@ -48,3 +48,9 @@
 .private-audit-technical summary{cursor:pointer;font-weight:600;margin-bottom:9px}
 .private-audit-technical>div{padding:3px 0}
 @media(max-width:620px){.private-audit-sentence{font-size:16px}.private-audit-change-row{grid-template-columns:1fr;gap:6px;padding:11px}.private-audit-change-values{font-size:14px;gap:7px}}
+
+/* Readable complete snapshots on narrow phone screens without horizontal overflow. */
+.private-audit-snapshot{display:grid;gap:5px;padding:10px 0;min-width:0}
+.private-audit-snapshot>strong{display:block;font-size:13px;margin-bottom:4px}
+.private-audit-snapshot>div{overflow-wrap:anywhere;word-break:break-word;padding:5px 0;border-bottom:1px solid rgba(127,137,157,.16)}
+.private-audit-snapshot>div>span{font-weight:600}
