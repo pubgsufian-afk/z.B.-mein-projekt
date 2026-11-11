@@ -573,3 +573,26 @@ body { min-height: 100dvh; }
   }
   .app-shell .times-list .time-values strong { overflow-wrap: anywhere; }
 }
+
+
+/* Dienstplan: Desktop unverändert, mobile Wochenübersicht mit sieben Spalten und Wischgeste. */
+.schedule-swipe-hint { display: none; }
+.schedule-week-scroll { min-width: 0; max-width: 100%; }
+.schedule-unassigned { min-width: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2); }
+.schedule-unassigned summary { cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 750; line-height: 1.4; }
+.schedule-unassigned[open] > div { display: grid; gap: 4px; max-height: 210px; overflow-y: auto; margin-top: 8px; }
+.schedule-unassigned span { overflow-wrap: anywhere; font-size: 12px; line-height: 1.4; }
+@media (max-width: 680px) {
+  .schedule-swipe-hint { display: block; margin: 12px 0 4px; color: var(--muted); font-size: 12px; }
+  .schedule-week-scroll { width: 100%; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: thin; padding-bottom: 8px; }
+  .schedule-week-scroll:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .schedule-week-scroll .management-week-cards {
+    width: max-content;
+    min-width: 100%;
+    grid-template-columns: repeat(7, minmax(155px, 1fr));
+    margin-top: 8px;
+  }
+  .schedule-week-scroll .management-week-cards .day-card { min-height: 210px; }
+  .schedule-week-scroll .management-week-cards .day-card > header button { width: 34px; height: 34px; }
+  .schedule-week-scroll .management-week-cards .shift-item strong { font-size: 14px; }
+}

@@ -352,6 +352,17 @@ export async function upsertScheduleVersion(version: { week: string; version: nu
   )
 }
 
+// Return only whether this exact calendar week has ever been published.
+// No colleague data is exposed to the employee-facing schedule.
+export async function hasPublishedScheduleWeek(weekStart: string): Promise<boolean> {
+  const database = getDatabase()
+  const result = await database.pool.query(
+    'SELECT 1 FROM schedule_versions WHERE week_start = $1::date LIMIT 1',
+    [weekStart],
+  )
+  return result.rows.length > 0
+}
+
 export async function listScheduleVersions() {
   const database = getDatabase()
   const result = await database.pool.query(
