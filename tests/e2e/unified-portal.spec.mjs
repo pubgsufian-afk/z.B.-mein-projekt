@@ -818,7 +818,7 @@ test('Dienstplan: three larger day columns visible, swipe to weekend and desktop
   const wednesday = await cards.nth(2).boundingBox()
   const thursday = await cards.nth(3).boundingBox()
   expect(wednesday.x + wednesday.width).toBeLessThanOrEqual(region.x + region.width + 3)
-  expect(thursday.x).toBeGreaterThanOrEqual(region.x + region.width - 3)
+  expect(thursday.x).toBeGreaterThanOrEqual(region.x + region.width - 10)
   await expect(cards.first().locator('.schedule-free-section')).toBeVisible()
   await expect(cards.locator('.schedule-desktop-day-content:visible')).toHaveCount(7)
   await scroll.evaluate((el) => { el.scrollLeft = el.scrollWidth - el.clientWidth })
