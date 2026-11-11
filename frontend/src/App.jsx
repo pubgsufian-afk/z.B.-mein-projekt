@@ -524,10 +524,10 @@ function ScheduleDayContents({ day, busy, edit, editDayOff, startNew }) {
     </section>
     {day.groups.length ? day.groups.map((group) =>
       <section className="schedule-area-group" key={group.label}>
-        <div className="schedule-group-heading"><strong title={group.label}>{group.label}</strong><span>{group.shifts.length} {group.shifts.length === 1 ? 'Dienst' : 'Dienste'}</span></div>
+        <div className="schedule-group-heading"><strong title={group.label}><span className="schedule-area-full">{group.label}</span><span className="schedule-area-short">{group.label === 'Brandwache' ? 'Brand' : group.label === 'Baureinigung' ? 'Bau' : group.label === 'Staplerfahrer' ? 'Stapler' : group.label.slice(0, 6)}</span></strong><span>{group.shifts.length} {group.shifts.length === 1 ? 'Dienst' : 'Dienste'}</span></div>
         {group.shifts.map((entry) => <button type="button" className="shift-item" key={entry.id} onClick={() => edit(entry)}
           title={entry.employeeName + ' · ' + entry.start + '–' + entry.end + ' · ' + entry.workArea}>
-          <strong><span className="schedule-time-full">{entry.start}–{entry.end}</span><span className="schedule-time-short">{entry.start.slice(0, 2)}–{entry.end.slice(0, 2)}</span></strong>
+          <strong><span className="schedule-time-full">{entry.start}–{entry.end}</span><span className="schedule-time-short"><span>{entry.start}</span><span>–{entry.end}</span></span></strong>
           <span title={entry.employeeName}>{entry.employeeName}</span>
           <small>{entry.location} · {entry.workArea}</small>
           <em>{entry.pauseMinutes || 0} Min. Pause · {entry.status === 'published' ? 'Freigegeben' : 'Entwurf'}</em>
