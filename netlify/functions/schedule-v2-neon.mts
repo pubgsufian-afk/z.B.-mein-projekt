@@ -9,6 +9,7 @@ import {
   findExactScheduleDuplicate,
   findScheduleShift,
   hasScheduleMigration,
+  hasPublishedScheduleWeek,
   listActiveScheduleEmployees,
   listScheduleOverlaps,
   listScheduleShifts,
@@ -358,6 +359,14 @@ export default async function scheduleV2Neon(request: Request, _context: Context
   if (request.method === 'GET') {
     const resource = url.searchParams.get('resource') || 'entries'
     if (resource === 'entries') return json({ entries: await getEntries(current, url) })
+    if (resource === 'week-status') {
+      const week = String(url.searchParams.get('week') || '')
+      if (!ISO_DATE.test(week) || Number.isNaN(Date.parse(`${week}T12:00:00Z`))) {
+        return json({ message: 'Ungültige Kalenderwoche.' }, 400)
+      }
+      const monday = mondayOf(week)
+      return json({ week: monday, published: await hasPublishedScheduleWeek(monday) })
+    }
     if (!SCHEDULING.has(String(current.role))) return json({ message: 'Keine Berechtigung.' }, 403)
     if (resource === 'objects') {
       const objects = await readBlobMany<WorkSite>('objects/')
