@@ -292,8 +292,17 @@ async function saveShift(current: NonNullable<Awaited<ReturnType<typeof currentP
       actorType: 'portal',
       action: existing ? 'shift-updated' : 'shift-created',
       shiftId: shift.id,
-      details: { date: shift.date, employeeUserId: shift.employeeUserId, status: shift.status, overlapOverride: conflicts.length > 0, confirmedOverlapIds: conflicts.map((entry) => entry.shiftId) },
+      details: { date: shift.date, employeeUserId: shift.employeeUserId, status: shift.status },
     })
+    if (conflicts.length) {
+      await writeScheduleAudit({
+        actorId: current.userId,
+        actorType: 'portal',
+        action: 'shift-overlap-admin-approved',
+        shiftId: shift.id,
+        details: { employeeUserId: shift.employeeUserId, date: shift.date, confirmedOverlapIds: conflicts.map((entry) => entry.shiftId) },
+      })
+    }
     await tryRecordPortalAdminChange({ actor: current, category: 'Dienstplan', action: existing ? 'Dienst bearbeitet' : 'Dienst erstellt', entityId: shift.id, before: existing ? { date: existing.date, start: existing.start, end: existing.end, pauseMinutes: existing.pauseMinutes, location: existing.location, workArea: existing.workArea, employeeName: existing.employeeName } : undefined, after: { date: shift.date, start: shift.start, end: shift.end, pauseMinutes: shift.pauseMinutes, location: shift.location, workArea: shift.workArea, employeeName: shift.employeeName } })
     return json({
       shift,
