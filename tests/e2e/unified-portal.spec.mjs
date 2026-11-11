@@ -821,6 +821,20 @@ test('Dienstplan: mobile 7-day grid scrolls inside its region, desktop unchanged
 
 test('Dienstplan: automatic free only in a published week, never the next unpublished week', async ({ page }) => {
   await login(page, 'employee')
+  // An entry in the original fixture belongs to the current week only.
+  // The real API filters by requested week; mirror that when navigating forward.
+  await page.route('**/api/schedule-v2**', (route) => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('resource') === 'entries') {
+      const weekFrom = url.searchParams.get('from') || ''
+      const today = new Date().toISOString().slice(0, 10)
+      if (weekFrom > today) return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ entries: [] }),
+      })
+    }
+    return route.fallback()
+  })
   const monday = new Date()
   const weekday = monday.getUTCDay() || 7
   monday.setUTCDate(monday.getUTCDate() - weekday + 1)
