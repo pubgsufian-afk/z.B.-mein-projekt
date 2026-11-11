@@ -7,7 +7,6 @@ import { requirePortalRole } from "./_shared/portal-role.mts";
 import { tryRecordPortalAdminChange } from './_shared/portal-private-audit-service.mts';
 import { deactivateScheduleEmployee } from './_shared/schedule-employee-management.mts';
 import { upsertScheduleEmployee, type ScheduleEmployee } from "./_shared/schedule-neon-repository.mts";
-import { transferScheduleIdentity } from './_shared/schedule-identity-transfer.mts';
 import { findRegistrationEmailConflict, normalizeRegistrationEmail, readPortalRegistrationIdentities } from './_shared/registration-email-guard.mts';
 
 type RateEntry = { count: number; resetAt: number };
@@ -294,82 +293,6 @@ async function manageActiveEmployee(
   return json({ ok: true, employee, role: requestedRole });
 }
 
-
-/**
- * One-time transfer for the duplicate shown in the employee directory:
- * placeholder "12" -> confirmed Kwame Akakpo registration.
- * Only the portal owner may preview/confirm; neither account is deleted.
- */
-async function manageKwameScheduleTransfer(request: Request, access: Awaited<ReturnType<typeof requirePortalRole>>, body: Record<string, unknown>) {
-  if (!access.current || access.current.role !== 'owner') {
-    return json({ message: 'Nur der Hauptadmin darf Dienstpläne zwischen Konten übertragen.' }, 403);
-  }
-  try { verifyRequestOrigin(request); } catch { return json({ message: 'Ungültige Anfragequelle.' }, 403); }
-  const sourceUserId = String(body.sourceUserId || '').trim();
-  const targetUserId = String(body.targetUserId || '').trim();
-  const preview = body.action === 'preview-kwame-schedule-transfer';
-  if (!sourceUserId || !targetUserId || sourceUserId === targetUserId) {
-    return json({ message: 'Zwei unterschiedliche Mitarbeiterkonten müssen angegeben werden.' }, 400);
-  }
-
-  // Confirm both account IDs against the real employee directory, not a
-  // client-controlled name. The target must have an approved login.
-  const directoryRequest = new Request(request.url, { method: 'GET', headers: request.headers });
-  const directoryResponse = await proxyToProductionBackend(directoryRequest, '/api/registrations');
-  if (!directoryResponse.ok) return json({ message: 'Mitarbeiterkonten können derzeit nicht sicher geprüft werden.' }, 503);
-  const directoryData = await directoryResponse.json().catch(() => null) as { employees?: Record<string, unknown>[] } | null;
-  const people = Array.isArray(directoryData?.employees) ? directoryData.employees : [];
-  const findById = (id: string) => people.find((employee) => String(employee.userId || employee.id || '').trim() === id);
-  const source = findById(sourceUserId);
-  const target = findById(targetUserId);
-  if (!source || !target || source.status === 'inactive' || target.status === 'inactive' ||
-      normalizedText(source.fullName || source.name) !== '12' ||
-      normalizedText(target.fullName || target.name) !== 'kwame akakpo') {
-    return json({ message: 'Die ausgewählten Konten passen nicht zu „12“ und „Kwame Akakpo“. Es wurden keine Schichten verändert.' }, 409);
-  }
-  const store = getStore({ name: 'portal-access', consistency: 'strong' });
-  const [targetAccess, sourceAccess] = await Promise.all([
-    store.get(`access/${targetUserId}`, { type: 'json' }) as Promise<AccessRecord | null>,
-    store.get(`access/${sourceUserId}`, { type: 'json' }) as Promise<AccessRecord | null>,
-  ]);
-  if (targetAccess?.status !== 'active' ||
-      normalizedText(targetAccess.fullName) !== 'kwame akakpo' ||
-      sourceAccess?.role === 'owner' || sourceAccess?.role === 'admin') {
-    return json({ message: 'Das richtige aktive Login von Kwame konnte nicht bestätigt werden. Es wurden keine Schichten verändert.' }, 409);
-  }
-
-  try {
-    const result = await transferScheduleIdentity({
-      sourceUserId,
-      targetUserId,
-      targetName: String(targetAccess.fullName).trim(),
-      actorId: access.current.userId,
-      preview,
-    });
-    if (result.conflicts.length) {
-      return json({
-        message: 'Kwame hat bereits zeitgleiche Dienste. Bitte Überschneidungen zuerst prüfen; es wurde nichts übertragen.',
-        ...result, preview,
-      }, 409);
-    }
-    if (!preview && result.moved) {
-      await tryRecordPortalAdminChange({
-        actor: access.current,
-        category: 'Mitarbeiter',
-        action: 'Dienstpläne von Platzhalterkonto auf echtes Konto übertragen',
-        entityId: targetUserId,
-        targetName: String(targetAccess.fullName),
-        before: { sourceUserId, shiftCount: result.shiftCount },
-        after: { targetUserId, moved: result.moved, publishedCount: result.publishedCount },
-      });
-    }
-    return json({ ok: true, preview, ...result, sourceName: '12', targetName: String(targetAccess.fullName).trim() });
-  } catch (error) {
-    console.error('Employee schedule account transfer failed', error);
-    return json({ message: 'Die sichere Dienstplanübertragung ist fehlgeschlagen. Es wurden keine Teiländerungen gespeichert.' }, 503);
-  }
-}
-
 export default async (request: Request, context: Context) => {
   const access = await requirePortalRole(['owner', 'admin', 'manager']);
   if (access.response) return access.response;
@@ -408,10 +331,6 @@ export default async (request: Request, context: Context) => {
           message: 'Registrierungsdaten konnten nicht sicher geprüft werden. Freigabe vorübergehend gesperrt.',
         }, 503);
       }
-    }
-
-    if (payload?.action === 'preview-kwame-schedule-transfer' || payload?.action === 'confirm-kwame-schedule-transfer') {
-      return manageKwameScheduleTransfer(request, access, payload);
     }
 
     if (payload?.action === 'update-role' || payload?.action === 'deactivate-account' || payload?.action === 'update-profile') {
