@@ -32,7 +32,7 @@ assert.match(patch, /\/api\/attendance-flex\?resource=eligibility/)
 assert.match(patch, /resource=state/)
 assert.match(patch, /Boolean\(state\.flexEligible\)/)
 assert.match(patch, /state\.flexSession/)
-assert.match(patch, /needsLocation = !useFlexEndpoint/)
+assert.match(patch, /!useFlexEndpoint && action === 'clock-in'/)
 assert.doesNotMatch(patch, /ATTENDANCE_FLEX_ACCOUNT_EMAILS/)
 
 console.log('private flex clock flow: ok')
