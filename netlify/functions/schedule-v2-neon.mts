@@ -226,9 +226,11 @@ async function getEntries(current: NonNullable<Awaited<ReturnType<typeof current
   const from = url.searchParams.get('from') || undefined
   const to = url.searchParams.get('to') || undefined
   if (!SCHEDULING.has(String(current.role))) {
-    return listScheduleShifts({ from, to, employeeUserId: current.userId, publishedOnly: true })
+    return (await listScheduleShifts({ from, to, employeeUserId: current.userId, publishedOnly: true }))
+      .filter((shift) => !String(shift.id).startsWith('attendance-flex:'))
   }
-  return listScheduleShifts({ from, to })
+  return (await listScheduleShifts({ from, to }))
+    .filter((shift) => !String(shift.id).startsWith('attendance-flex:'))
 }
 
 type OverlapConflict = {
