@@ -829,7 +829,7 @@ test('Dienstplan: readable columns and weekend reachable at every viewport', asy
   await page.screenshot({ path: scheduleScreenshot(`${testInfo.project.name}-standard`), fullPage: true })
   await scroll.evaluate((el) => { el.scrollLeft = el.scrollWidth - el.clientWidth })
   await cards.last().getByRole('button', { name: /Dienst am .* hinzufügen/ }).click()
-  await expect(page.getByRole('heading', { name: 'Dienst erstellen' })).toBeVisible()
+  await expect(page.locator('.schedule-form')).toBeVisible()
   await expectNoHorizontalPageOverflow(page)
 })
 
