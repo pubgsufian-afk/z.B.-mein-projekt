@@ -7,9 +7,12 @@ import {
   normalCheckoutDeadline,
 } from '../netlify/functions/_shared/attendance-automation-policy.mts'
 
-assert.equal(isFlexClockAccount('Special@Example.Test', 'special@example.test'), true)
-assert.equal(isFlexClockAccount('other@example.test', 'special@example.test'), false)
-assert.equal(isFlexClockAccount('', 'special@example.test'), false)
+assert.equal(isFlexClockAccount('Special@Example.Test', 'special@example.test, second@example.test'), true)
+assert.equal(isFlexClockAccount('second@example.test', 'special@example.test, second@example.test'), true)
+assert.equal(isFlexClockAccount('other@example.test', 'special@example.test, second@example.test'), false)
+assert.equal(isFlexClockAccount('', 'special@example.test, second@example.test'), false)
+assert.equal(isFlexClockAccount('special@example.test', 'special@example.test'), false)
+assert.equal(isFlexClockAccount('special@example.test', 'special@example.test, special@example.test'), false)
 
 const sites = [
   { id: 'site-a', name: 'Objekt A', latitude: 52.375, longitude: 9.732, radiusMeters: 100 },
