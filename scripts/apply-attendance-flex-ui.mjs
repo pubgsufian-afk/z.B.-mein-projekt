@@ -28,18 +28,25 @@ if (!block.includes('/api/attendance-flex?resource=state')) {
 }
 
 const flexEndpointBlock = `      const useFlexEndpoint = Boolean(state.flexEligible) && (action === 'clock-in' || state.flexSession)
-      const needsLocation = !useFlexEndpoint && (action === 'clock-in' || action === 'clock-out')
-      const location = needsLocation ? await getLocation() : null
+      let location = null
+      if (!useFlexEndpoint && action === 'clock-in') {
+        location = await requestCurrentDeviceLocation()
+      } else if (!useFlexEndpoint && action === 'clock-out') {
+        try { location = await requestCurrentDeviceLocation() } catch { location = null }
+      }
       await apiJson(useFlexEndpoint ? '/api/attendance-flex' : '/api/attendance', {`
 
 if (!block.includes('Boolean(state.flexEligible)')) {
-  const marker = `      const needsLocation = action === 'clock-in' || action === 'clock-out'
-      const location = needsLocation ? await getLocation() : null
+  const marker = `      let location = null
+      if (action === 'clock-in') {
+        location = await requestCurrentDeviceLocation()
+      } else if (action === 'clock-out') {
+        try { location = await requestCurrentDeviceLocation() } catch { location = null }
+      }
       await apiJson('/api/attendance', {`
   assert.ok(block.includes(marker), 'Attendance-Schreibrequest wurde nicht gefunden.')
   block = block.replace(marker, flexEndpointBlock)
 }
-
 source = source.slice(0, start) + block + source.slice(end)
 await writeFile(path, source)
 console.log('Two-account remote attendance UI applied')
