@@ -118,7 +118,7 @@ function requireActor(actor: Record<string, unknown>) {
   return { userId, email, role }
 }
 
-export function createAttendanceService({ repository, now = () => new Date(), randomUUID = crypto.randomUUID.bind(crypto) }) {
+export function createAttendanceService({ repository, now = () => new Date(), randomUUID = crypto.randomUUID.bind(crypto), allowRemoteClockIn = false }) {
   if (!repository) throw new TypeError('Attendance repository is required.')
   return {
     async getState(actor: Record<string, unknown>) {
@@ -168,7 +168,7 @@ export function createAttendanceService({ repository, now = () => new Date(), ra
             radiusMeters: 0, accuracyMeters: 0, accuracyToleranceMeters: 0, allowedDistanceMeters: 0,
           }
 
-      if (requiresInsideWorksite && classification.status !== 'inside') {
+      if (requiresInsideWorksite && classification.status !== 'inside' && !allowRemoteClockIn) {
         if (!configured) {
           throw new AttendanceServiceError(
             'Für diesen Einsatzort sind noch keine gültigen Standort-Koordinaten gespeichert. Bitte den Einsatzort in der Administration öffnen und den aktuellen Standort übernehmen.',

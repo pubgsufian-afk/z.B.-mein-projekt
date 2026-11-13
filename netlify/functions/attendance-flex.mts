@@ -7,16 +7,14 @@ import {
   AttendanceServiceError,
   createAttendanceService,
   normalizeClockRequest,
-} from './_shared/daily-attendance-service.mts'
+} from './_shared/attendance-service.mts'
 import { createAttendanceRepository } from './_shared/neon-attendance.mts'
 import { databaseConnectionString } from './_shared/database-connection.mts'
 import {
-  findAllowedWorksite,
   flexCheckoutDeadline,
   isFlexClockAccount,
 } from './_shared/attendance-automation-policy.mts'
 import {
-  berlinDateTimeParts,
   createFlexAutoShift,
   deleteFlexAutoShift,
   findScheduleTiming,
@@ -45,9 +43,24 @@ function json(data: unknown, status = 200) {
   })
 }
 
-function configuredFlexEmail() {
-  const runtime = typeof Netlify !== 'undefined' ? Netlify.env.get('ATTENDANCE_FLEX_ACCOUNT_EMAIL') || '' : ''
-  return runtime || process.env.ATTENDANCE_FLEX_ACCOUNT_EMAIL || ''
+function configuredFlexEmails() {
+  const runtime = typeof Netlify !== 'undefined' ? Netlify.env.get('ATTENDANCE_FLEX_ACCOUNT_EMAILS') || '' : ''
+  return runtime || process.env.ATTENDANCE_FLEX_ACCOUNT_EMAILS || ''
+}
+
+const REMOTE_WORKSITE: Worksite = {
+  id: 'habun-flex-remote-v1',
+  name: 'Standortunabhängige Zeiterfassung',
+  latitude: null,
+  longitude: null,
+  radiusMeters: 0,
+}
+
+function activeFlexScheduleId(events: Array<Record<string, unknown>>, phase: string) {
+  if (!['working', 'paused'].includes(phase)) return null
+  const latestStart = [...events].reverse().find((event) => event.action === 'clock-in')
+  const scheduleId = String(latestStart?.scheduleId || '')
+  return scheduleId.startsWith('attendance-flex:') ? scheduleId : null
 }
 
 export function flexStateForEligibility<T extends Record<string, any>>(state: T, eligible: boolean) {
@@ -68,13 +81,6 @@ async function actorFullName(current: NonNullable<Awaited<ReturnType<typeof curr
   return name
 }
 
-async function loadWorksites(): Promise<Worksite[]> {
-  const store = getStore({ name: 'portal-schedule-v2', consistency: 'strong' })
-  const listed = await store.list({ prefix: 'objects/' })
-  const rows = await Promise.all(listed.blobs.map((blob) => store.get(blob.key, { type: 'json' }) as Promise<Worksite | null>))
-  return rows.filter((row): row is Worksite => Boolean(row?.id && row?.name))
-}
-
 async function ensureAttendanceObject(site: Worksite) {
   const database = getDatabase()
   await database.pool.query(
@@ -92,21 +98,10 @@ async function ensureAttendanceObject(site: Worksite) {
   )
 }
 
-async function hasPublishedShiftForDate(userId: string, date: string) {
-  const database = getDatabase()
-  const result = await database.pool.query(
-    `SELECT id FROM schedule_shifts
-      WHERE employee_user_id = $1 AND shift_date = $2::date AND status = 'published'
-      LIMIT 1`,
-    [userId, date],
-  )
-  return Boolean(result.rows[0])
-}
-
 async function attendanceService() {
   const connectionString = databaseConnectionString()
   if (!connectionString) throw new AttendanceServiceError('Die Zeiterfassungsdatenbank ist noch nicht verbunden.', 503, 'DATABASE_NOT_CONFIGURED')
-  return createAttendanceService({ repository: await createAttendanceRepository(connectionString) })
+  return createAttendanceService({ repository: await createAttendanceRepository(connectionString), allowRemoteClockIn: true })
 }
 
 export default async function attendanceFlex(request: Request, _context: Context) {
@@ -115,12 +110,26 @@ export default async function attendanceFlex(request: Request, _context: Context
     const current = await currentPortalActor()
     if (!current) return json({ message: 'Nicht angemeldet.' }, 401)
     if (current.role === 'pending') return json({ message: 'Das Konto ist noch nicht freigeschaltet.' }, 403)
-    const eligible = isFlexClockAccount(current.email, configuredFlexEmail())
+    const eligible = isFlexClockAccount(current.email, configuredFlexEmails())
 
     if (request.method === 'GET') {
       const resource = new URL(request.url).searchParams.get('resource') || 'eligibility'
-      if (resource !== 'eligibility') return json({ message: 'Unbekannter Bereich.' }, 400)
-      return json({ eligible })
+      if (resource === 'eligibility') return json({ eligible })
+      if (resource !== 'state') return json({ message: 'Unbekannter Bereich.' }, 400)
+      if (!eligible) return json({ message: 'Keine Berechtigung.' }, 403)
+      const service = await attendanceService()
+      const state = await service.getState({ userId: current.userId, email: current.email, role: current.role })
+      const openFlex = activeFlexScheduleId(state.events, state.phase)
+      // A completed session must not prevent the next independent check-in.
+      return json({
+        phase: state.phase === 'completed' ? 'idle' : state.phase,
+        rawPhase: state.phase,
+        clockInAt: state.clockInAt,
+        clockOutAt: state.clockOutAt,
+        schedule: null,
+        clocking: { allowed: true, code: 'FLEX_ACCOUNT' },
+        flexSession: Boolean(openFlex),
+      })
     }
 
     try { verifyRequestOrigin(request) } catch { return json({ message: 'Ungültige Anfragequelle.' }, 403) }
@@ -128,26 +137,15 @@ export default async function attendanceFlex(request: Request, _context: Context
     const body = await request.json().catch(() => null) as Record<string, unknown> | null
     if (!body) return json({ message: 'Ungültige Anfrage.' }, 400)
     const action = String(body.action || '')
-    if (!['clock-in', 'clock-out'].includes(action)) return json({ message: 'Diese Flex-Aktion ist nicht erlaubt.' }, 400)
+    if (!['clock-in', 'break-start', 'break-end', 'clock-out'].includes(action)) return json({ message: 'Diese Flex-Aktion ist nicht erlaubt.' }, 400)
 
     const serverNow = new Date()
     const normalized = normalizeClockRequest({ ...body, clientOccurredAt: serverNow.toISOString(), action })
     const service = await attendanceService()
 
     if (action === 'clock-in') {
-      const today = berlinDateTimeParts(serverNow).date
-      if (await hasPublishedShiftForDate(current.userId, today)) {
-        return json({ message: 'Für heute ist bereits ein Dienst veröffentlicht. Bitte die normale Stempeluhr verwenden.', code: 'PUBLISHED_SHIFT_EXISTS' }, 409)
-      }
-      if (!normalized.location) {
-        return json({ message: 'Der Geräte-Standort konnte nicht ermittelt werden.', code: 'DEVICE_LOCATION_REQUIRED' }, 422)
-      }
-      const worksites = await loadWorksites()
-      const site = findAllowedWorksite(worksites, normalized.location) as Worksite | null
-      if (!site) return json({ message: 'Du befindest dich außerhalb eines gespeicherten Einsatzortes.', code: 'OUTSIDE_WORKSITE' }, 403)
-      if (site.latitude == null || site.longitude == null) return json({ message: 'Für diesen Einsatzort sind keine gültigen Koordinaten gespeichert.', code: 'WORKSITE_NOT_CONFIGURED' }, 422)
-
-      await ensureAttendanceObject(site)
+      // This is a real recorded shift, not a change to another employee's schedule.
+      await ensureAttendanceObject(REMOTE_WORKSITE)
       const scheduleId = `attendance-flex:${current.userId}:${normalized.clientEventId}`
       const fullName = await actorFullName(current)
       const deadline = flexCheckoutDeadline(serverNow)
@@ -157,42 +155,44 @@ export default async function attendanceFlex(request: Request, _context: Context
         fullName,
         checkInAt: serverNow,
         deadlineAt: deadline,
-        worksite: { id: site.id, name: site.name },
+        worksite: { id: REMOTE_WORKSITE.id, name: REMOTE_WORKSITE.name },
         sourceRef: normalized.clientEventId,
       })
       try {
         await service.record({ userId: current.userId, email: current.email, role: current.role }, {
-          action: 'clock-in',
+          action,
           clientEventId: normalized.clientEventId,
           clientOccurredAt: serverNow.toISOString(),
           scheduleId,
-          objectId: site.id,
+          objectId: REMOTE_WORKSITE.id,
           offlineCaptured: false,
-          location: normalized.location,
+          location: null,
         })
       } catch (error) {
         if (created.created) await deleteFlexAutoShift(scheduleId, current.userId, normalized.clientEventId).catch(() => {})
         throw error
       }
-      return json({ saved: true, action: 'clock-in', scheduleId }, 201)
+      return json({ saved: true, action, scheduleId }, 201)
     }
 
-    const scheduleId = String(body.scheduleId || '').trim()
+    // Only an open flex session belonging to the signed-in user can be continued.
+    const state = await service.getState({ userId: current.userId, email: current.email, role: current.role })
+    const scheduleId = activeFlexScheduleId(state.events, state.phase)
     const timing = scheduleId ? await findScheduleTiming(scheduleId) : null
-    if (!timing || timing.source !== 'attendance-flex' || timing.employeeUserId !== current.userId || !timing.objectId) {
-      return json({ message: 'Der automatisch erzeugte Dienst wurde nicht gefunden.', code: 'FLEX_SHIFT_NOT_FOUND' }, 404)
+    if (!timing || timing.source !== 'attendance-flex' || timing.employeeUserId !== current.userId || timing.objectId !== REMOTE_WORKSITE.id) {
+      return json({ message: 'Keine passende laufende Sonderbuchung gefunden.', code: 'FLEX_SHIFT_NOT_FOUND' }, 404)
     }
     await service.record({ userId: current.userId, email: current.email, role: current.role }, {
-      action: 'clock-out',
+      action,
       clientEventId: normalized.clientEventId,
       clientOccurredAt: serverNow.toISOString(),
       scheduleId: timing.id,
       objectId: timing.objectId,
       offlineCaptured: false,
-      location: normalized.location,
+      location: null,
     })
-    await finishFlexAutoShift(timing.id, current.userId, serverNow)
-    return json({ saved: true, action: 'clock-out', scheduleId: timing.id }, 201)
+    if (action === 'clock-out') await finishFlexAutoShift(timing.id, current.userId, serverNow)
+    return json({ saved: true, action, scheduleId: timing.id }, 201)
   } catch (error) {
     if (error instanceof AttendanceServiceError) return json({ message: error.message, code: error.code }, error.status)
     if (error instanceof TypeError || error instanceof RangeError) return json({ message: error.message, code: 'INVALID_INPUT' }, 400)

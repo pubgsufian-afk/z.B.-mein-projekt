@@ -85,6 +85,9 @@ function scheduleRow(shift: ShiftLike): Omit<EntryLike, 'id'> & { scheduleShiftI
 
 export function createTimesheetScheduleSync(deps: Dependencies) {
   async function syncPublishedScheduleShift(shift: ShiftLike, actorId: string, now = new Date()) {
+    // Attendance sessions are recorded events, not independently planned timesheet hours.
+    // Keep existing linked rows untouched while preventing a provisional 12-hour duplicate.
+    if (String(shift.id).startsWith('attendance-flex:')) return { action: 'ignore' as const, reason: 'attendance-generated' }
     const targetMonth = monthKeyForDate(shift.date)
     const targetOpen = isTimesheetScheduleSyncOpen(targetMonth, now)
     const existing = await deps.findTimesheetEntryByScheduleShiftId(shift.id)

@@ -69,7 +69,7 @@ if (await patch('netlify/functions/_shared/attendance-service.mts', [
           'OUTSIDE_WORKSITE',
         )
       }`,
-    already: `      if (requiresInsideWorksite && classification.status !== 'inside') {`,
+    already: `      if (requiresInsideWorksite && classification.status !== 'inside' && !allowRemoteClockIn) {`,
   },
 ])) changed.push('attendance-service.mts')
 

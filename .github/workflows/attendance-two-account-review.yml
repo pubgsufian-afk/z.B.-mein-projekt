@@ -1,0 +1,30 @@
+name: Two-account remote attendance safety
+
+on:
+  pull_request:
+    paths:
+      - 'netlify/functions/attendance-flex.mts'
+      - 'netlify/functions/_shared/attendance-service.mts'
+      - 'netlify/functions/_shared/attendance-automation-policy.mts'
+      - 'scripts/apply-attendance-flex-ui.mjs'
+      - 'scripts/attendance-flex-clock-test.mjs'
+      - 'scripts/attendance-two-account-policy-test.mjs'
+      - '.github/workflows/attendance-two-account-review.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  two-account-attendance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: node --experimental-strip-types scripts/attendance-two-account-policy-test.mjs
+      - run: node --experimental-strip-types scripts/attendance-flex-clock-test.mjs
+      - run: npm run build

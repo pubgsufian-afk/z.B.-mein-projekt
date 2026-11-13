@@ -465,7 +465,7 @@ export default async function scheduleV2Neon(request: Request, _context: Context
   const url = new URL(request.url)
   if (request.method === 'GET') {
     const resource = url.searchParams.get('resource') || 'entries'
-    if (resource === 'entries') return json({ entries: await getEntries(current, url) })
+    if (resource === 'entries') return json({ entries: (await getEntries(current, url)).filter((shift) => !String(shift.id).startsWith('attendance-flex:')) })
     if (resource === 'week-status') {
       const week = String(url.searchParams.get('week') || '')
       if (!ISO_DATE.test(week) || Number.isNaN(Date.parse(`${week}T12:00:00Z`))) {
