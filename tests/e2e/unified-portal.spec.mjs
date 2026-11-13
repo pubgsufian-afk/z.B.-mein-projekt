@@ -1,4 +1,8 @@
 import { test, expect } from '@playwright/test'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+const scheduleScreenshot = (name) => join(process.env.HABUN_QA_DIR || tmpdir(), `habun-schedule-${name}.png`)
 
 const users = {
   admin: {
@@ -358,9 +362,7 @@ test('mobile schedule opens a simple editor from a day card', async ({ page }, t
   await navigate(page, 'Dienstplan')
   const week = page.locator('.management-week-cards')
   await expect(week.locator('.day-card')).toHaveCount(7)
-  const mobile = await page.evaluate(() => window.innerWidth <= 680)
-  if (mobile) await expect(page.locator('.schedule-week-scroll')).toBeVisible()
-  else await expect.poll(() => week.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1)
+  await expect(page.locator('.schedule-week-scroll')).toBeVisible()
   await week.getByRole('button', { name: /Dienst am .* hinzufügen/ }).last().click()
   await expect(page.getByRole('heading', { name: 'Dienst erstellen' })).toBeVisible()
   await expect(page.getByText('Schnellwahl Zeit', { exact: true })).toBeVisible()
@@ -795,8 +797,7 @@ test('8.85 MB employee PDF uses private chunked upload without oversized Netlify
 })
 
 
-test('Dienstplan: wider mobile columns, weekend swipable and desktop unchanged', async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 812 })
+test('Dienstplan: readable columns and weekend reachable at every viewport', async ({ page }, testInfo) => {
   await login(page, 'admin')
   await navigate(page, 'Dienstplan')
   const scroll = page.locator('.schedule-week-scroll')
@@ -805,36 +806,76 @@ test('Dienstplan: wider mobile columns, weekend swipable and desktop unchanged',
   await expect(page.getByLabel('Tag auswählen')).toHaveCount(0)
   await expect(page.locator('.schedule-mobile-day-detail')).toHaveCount(0)
   await expect(page.locator('.schedule-day-compact-preview')).toHaveCount(0)
-  const mobile = await scroll.evaluate((element) => ({
-    clientWidth: element.clientWidth,
-    scrollWidth: element.scrollWidth,
+  const layout = await scroll.evaluate((element) => ({
+    dayWidth: element.querySelector('.day-card').getBoundingClientRect().width,
     columns: getComputedStyle(element.querySelector('.management-week-cards')).gridTemplateColumns.split(' ').length,
   }))
-  expect(mobile.columns).toBe(7)
-  expect(mobile.scrollWidth).toBeGreaterThan(mobile.clientWidth * 3.45)
-  expect(mobile.scrollWidth).toBeLessThan(mobile.clientWidth * 3.55)
+  expect(layout.columns).toBe(7)
+  expect(layout.dayWidth).toBeGreaterThanOrEqual(209)
   const cards = page.locator('.management-week-cards .day-card')
-  const region = await scroll.boundingBox()
-  const tuesday = await cards.nth(1).boundingBox()
-  const wednesday = await cards.nth(2).boundingBox()
-  expect(tuesday.x + tuesday.width).toBeLessThanOrEqual(region.x + region.width + 5)
-  expect(wednesday.x).toBeGreaterThanOrEqual(region.x + region.width - 5)
   await expect(cards.first().locator('.schedule-free-section')).toBeVisible()
   await expect(cards.locator('.schedule-desktop-day-content:visible')).toHaveCount(7)
+  await expect(page.getByLabel('Dienstplan-Größe')).toHaveValue('1')
+  const shift = page.locator('.management-week-cards .shift-item').first()
+  await page.locator('.day-card').filter({ has: page.locator('.shift-item') }).first().scrollIntoViewIfNeeded()
+  await expect(shift.locator('.schedule-time-full')).toBeVisible()
+  await expect(shift.locator('small')).toBeVisible()
+  for (const text of [shift.locator('.schedule-time-full'), shift.locator(':scope > span[title]')]) {
+    await expect.poll(() => text.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16)
+  }
+  const pushClose = page.locator('[data-habun-push-card] [data-close]')
+  if (await pushClose.isVisible()) await pushClose.click()
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await page.screenshot({ path: scheduleScreenshot(`${testInfo.project.name}-standard`), fullPage: true })
   await scroll.evaluate((el) => { el.scrollLeft = el.scrollWidth - el.clientWidth })
-  await expect(cards.last().getByRole('button', { name: /Dienst am .* hinzufügen/ })).toBeVisible()
-  await expectNoHorizontalPageOverflow(page)
-
-  await page.setViewportSize({ width: 1366, height: 900 })
-  const desktop = await scroll.evaluate((element) => ({
-    clientWidth: element.clientWidth,
-    scrollWidth: element.scrollWidth,
-    columns: getComputedStyle(element.querySelector('.management-week-cards')).gridTemplateColumns.split(' ').length,
-  }))
-  expect(desktop.columns).toBe(7)
-  expect(desktop.scrollWidth).toBeLessThanOrEqual(desktop.clientWidth + 2)
+  await cards.last().getByRole('button', { name: /Dienst am .* hinzufügen/ }).click()
+  await expect(page.locator('.schedule-form')).toBeVisible()
   await expectNoHorizontalPageOverflow(page)
 })
+
+for (const role of ['admin', 'employee']) {
+  test(`Dienstplan: ${role} can enlarge, retain and reset the display`, async ({ page }, testInfo) => {
+    const errors = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    await login(page, role)
+    async function openSchedule() {
+      if (role === 'employee') {
+        await page.getByRole('button', { name: 'Dienstplan', exact: true }).click()
+        await expect(page.getByRole('heading', { name: 'Mein Dienstplan', exact: true })).toBeVisible()
+      } else await navigate(page, 'Dienstplan')
+    }
+    await openSchedule()
+    const size = page.getByLabel('Dienstplan-Größe')
+    await expect(size).toHaveValue('1')
+    const name = page.locator(role === 'admin' ? '.management-week-cards .shift-item > span[title]' : '.employee-shift-time').first()
+    await name.scrollIntoViewIfNeeded()
+    const standard = await name.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))
+    await size.selectOption('1.5')
+    await expect.poll(() => name.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeCloseTo(standard * 1.5, 1)
+    if (role === 'admin') {
+      await expect.poll(() => page.locator('.shift-item .schedule-time-full').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeCloseTo(24, 1)
+      expect(await page.locator('.day-card').first().evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThanOrEqual(314)
+      await page.locator('.day-card').filter({ has: page.locator('.shift-item') }).first().scrollIntoViewIfNeeded()
+    }
+    const pushClose = page.locator('[data-habun-push-card] [data-close]')
+    if (await pushClose.isVisible()) await pushClose.click()
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await expectNoHorizontalPageOverflow(page)
+    await page.screenshot({ path: scheduleScreenshot(`${testInfo.project.name}-${role}-large`), fullPage: true })
+    await page.reload()
+    const homeTitle = { employee: 'Stempeluhr', admin: 'Übersicht' }[role]
+    await expect(page.getByRole('heading', { name: homeTitle, exact: true })).toBeVisible()
+    await openSchedule()
+    await expect(size).toHaveValue('1.5')
+    await page.getByRole('button', { name: 'Standardgröße' }).click()
+    await expect(size).toHaveValue('1')
+    await size.selectOption('0.85')
+    await expectNoHorizontalPageOverflow(page)
+    await size.selectOption('1.25')
+    await expectNoHorizontalPageOverflow(page)
+    expect(errors).toEqual([])
+  })
+}
 
 test('Dienstplan: automatic free only in a published week, never the next unpublished week', async ({ page }) => {
   await login(page, 'employee')

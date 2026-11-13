@@ -575,159 +575,77 @@ body { min-height: 100dvh; }
 }
 
 
-/* HABUN Dienstplan: Bereichsgruppen und eine einzige gemeinsame Frei-Liste.
-   Nur auf dem Handy fünf Tagesvorschauen nebeneinander, Wochenende durch Wischen. */
-.schedule-swipe-hint, .schedule-weekday-short, .schedule-day-compact-preview, .schedule-mobile-day-detail { display: none; }
-.schedule-week-scroll { min-width: 0; max-width: 100%; }
-.schedule-time-short, .schedule-area-short, .schedule-add-free-short { display: none; }
-.management-week-cards .day-card > header .schedule-day-picker {
+/* Readable schedule at every viewport. Only the week scrolls horizontally. */
+.schedule-view { min-width: 0; --schedule-day-width: 210px; }
+.schedule-display-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 12px 0; }
+.schedule-display-controls label { width: min(100%, 240px); }
+.schedule-display-controls select { min-height: 44px; font-size: 16px; }
+.schedule-display-controls button { min-height: 44px; }
+.schedule-scroll-hint { margin: 16px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.schedule-swipe-hint, .schedule-weekday-short, .schedule-day-compact-preview,
+.schedule-mobile-day-detail, .schedule-time-short, .schedule-area-short, .schedule-add-free-short { display: none; }
+.schedule-view .schedule-weekday-short, .schedule-view .schedule-time-short,
+.schedule-view .schedule-area-short, .schedule-view .schedule-add-free-short { display: none; }
+.schedule-week-scroll {
+  min-width: 0; width: 100%; max-width: 100%; overflow-x: auto;
+  overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch;
+  scrollbar-width: auto; padding-bottom: 12px;
+}
+.schedule-week-scroll:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.schedule-week-scroll .management-week-cards {
+  display: grid; width: 100%; min-width: 0;
+  grid-template-columns: repeat(7, minmax(calc(var(--schedule-day-width) * var(--schedule-scale)), 1fr));
+  align-items: start; gap: 10px; margin-top: 12px; padding-bottom: 0;
+}
+.schedule-view .management-week-cards .day-card { min-width: 0; min-height: 0; border-radius: 12px; }
+.schedule-view .management-week-cards .day-card > header { min-height: 76px; padding: 12px; gap: 10px; }
+.schedule-view .management-week-cards .day-card > header .schedule-day-picker {
   display: grid; flex: 1 1 auto; min-width: 0; width: auto; height: auto;
-  padding: 0; border: 0; border-radius: 0; background: transparent;
-  text-align: left; color: var(--text); font-size: 13px;
+  padding: 0; gap: 4px; border: 0; background: transparent; text-align: left; color: var(--text);
 }
-.management-week-cards .day-card > header .schedule-day-picker:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-.management-week-cards .day-card > header .schedule-day-add { flex: 0 0 auto; width: 34px; height: 34px; }
-.schedule-day-content { display: grid; gap: 8px; padding: 8px; }
+.schedule-view .schedule-weekday-long { font-size: calc(14px * var(--schedule-scale)); }
+.schedule-view .schedule-day-picker strong { font-size: calc(18px * var(--schedule-scale)); }
+.schedule-view .management-week-cards .day-card > header .schedule-day-add {
+  flex: 0 0 auto; min-width: 44px; width: 44px; min-height: 44px; height: 44px; padding: 0; font-size: 24px;
+}
+.schedule-view .management-week-cards .day-card > .schedule-desktop-day-content { display: block; padding: 0; }
+.schedule-day-content { display: grid; gap: 12px; padding: 10px; }
 .schedule-area-group, .schedule-free-section {
-  min-width: 0; display: grid; gap: 6px; padding: 7px; border: 1px solid var(--border); border-radius: 10px;
+  min-width: 0; display: grid; gap: 8px; padding: 8px;
+  border: 1px solid var(--border); border-radius: 10px;
 }
-.schedule-area-group { border-color: rgba(216, 169, 54, .28); }
-.schedule-group-heading { display: flex; justify-content: space-between; gap: 5px; align-items: baseline; border-bottom: 1px solid var(--border); padding: 1px 0 6px; }
-.schedule-group-heading strong { color: var(--gold-bright); font-size: 12px; overflow-wrap: anywhere; }
-.schedule-group-heading span { font-size: 10px; color: var(--muted); }
-.schedule-free-heading strong { color: #dce3e6; }
+.schedule-area-group { border-color: rgba(216,169,54,.35); }
+.schedule-group-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 5px; align-items: baseline; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.schedule-group-heading strong { min-width: 0; color: var(--gold-bright); font-size: calc(14px * var(--schedule-scale)); line-height: 1.4; overflow-wrap: anywhere; }
+.schedule-group-heading span { color: var(--muted); font-size: calc(12px * var(--schedule-scale)); }
+.schedule-group-heading .schedule-area-full { color: inherit; font-size: inherit; }
+.schedule-free-heading strong { color: var(--text); }
 .schedule-free-section { background: var(--surface-2); }
-.schedule-free-list { display: grid; gap: 5px; max-height: 220px; overflow-y: auto; }
-.schedule-free-automatic { color: var(--text); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
-.schedule-add-free { border: 1px solid var(--border); border-radius: 8px; min-height: 28px; color: var(--muted); background: var(--surface); font-size: 11px; }
-.schedule-free-section .schedule-day-off-item { padding: 6px; text-align: left; }
-.schedule-free-section .schedule-day-off-item strong { font-size: 12px; }
-.schedule-free-section .schedule-day-off-item small { font-size: 10px; }
-.management-week-cards .schedule-area-group .shift-item { padding: 7px; overflow-wrap: anywhere; }
-
+.schedule-free-list { display: grid; gap: 8px; max-height: none; overflow: visible; }
+.schedule-free-automatic { color: var(--text); font-size: calc(14px * var(--schedule-scale)); line-height: 1.5; overflow-wrap: anywhere; }
+.schedule-view .schedule-add-free { width: 100%; min-height: 44px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--surface); font-size: calc(13px * var(--schedule-scale)); white-space: normal; }
+.schedule-view .schedule-free-section .schedule-day-off-item { min-height: 44px; padding: 8px; text-align: left; overflow-wrap: anywhere; }
+.schedule-view .schedule-free-section .schedule-day-off-item strong { font-size: calc(14px * var(--schedule-scale)); line-height: 1.4; }
+.schedule-view .schedule-free-section .schedule-day-off-item small { font-size: calc(12px * var(--schedule-scale)); }
+.schedule-view .management-week-cards .shift-item { min-width: 0; min-height: 44px; padding: 10px; gap: 7px; overflow-wrap: anywhere; white-space: normal; }
+.schedule-view .management-week-cards .shift-item strong { font-size: calc(16px * var(--schedule-scale)); line-height: 1.4; }
+.schedule-view .management-week-cards .shift-item .schedule-time-full { display: block; font-size: inherit; line-height: inherit; }
+.schedule-view .management-week-cards .shift-item > span { font-size: calc(16px * var(--schedule-scale)); line-height: 1.4; }
+.schedule-view .management-week-cards .shift-item small { display: block; font-size: calc(13px * var(--schedule-scale)); line-height: 1.5; }
+.schedule-view .management-week-cards .shift-item em { display: block; font-size: calc(12px * var(--schedule-scale)); line-height: 1.4; }
+.schedule-view .management-week-cards .day-empty { min-height: 48px; font-size: calc(14px * var(--schedule-scale)); }
+.schedule-view .employee-shift-card > header { flex-wrap: wrap; gap: 12px; }
+.schedule-view .employee-shift-card > header > div { min-width: 0; }
+.schedule-view .employee-shift-card > header span { font-size: calc(14px * var(--schedule-scale)); overflow-wrap: anywhere; }
+.schedule-view .employee-shift-card > header strong { font-size: calc(16px * var(--schedule-scale)); overflow-wrap: anywhere; }
+.schedule-view .employee-shift-card .employee-shift-time { font-size: calc(18px * var(--schedule-scale)); white-space: normal; overflow-wrap: anywhere; }
+.schedule-view .employee-shift-details strong { font-size: calc(16px * var(--schedule-scale)); overflow-wrap: anywhere; }
+.schedule-view .employee-shift-details span { font-size: calc(14px * var(--schedule-scale)); overflow-wrap: anywhere; }
+.schedule-view .employee-shift-details small { font-size: calc(13px * var(--schedule-scale)); overflow-wrap: anywhere; }
+@media (max-width: 1100px) { .schedule-view { --schedule-day-width: 220px; } }
 @media (max-width: 680px) {
-  /* Horizontaler echter Dienstplan: ungefähr 4 breitere Werktage sichtbar, Wochenende durch Wischen.
-     Kein Datumsfeld und keine zweite Tagesansicht; Laptop bleibt unberührt. */
-  .schedule-week-scroll {
-    display: block !important;
-    min-width: 0;
-    width: 100%;
-    max-width: 100%;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-    padding-bottom: 9px;
-  }
-  .schedule-week-scroll:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-  .schedule-week-scroll .management-week-cards {
-    display: grid;
-    width: 350%;
-    min-width: 350%;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 3px;
-    margin-top: 7px;
-    padding-bottom: 0;
-  }
-  .schedule-week-scroll .management-week-cards .day-card {
-    min-width: 0;
-    min-height: 0;
-    border-radius: 8px;
-    overflow: hidden;
-  }
-  .schedule-week-scroll .management-week-cards .day-card > header {
-    min-height: 68px;
-    padding: 5px 2px 4px;
-    flex-direction: column;
-    justify-content: flex-start;
-    gap: 4px;
-  }
-  .schedule-week-scroll .management-week-cards .schedule-day-picker {
-    display: grid;
-    justify-items: center;
-    text-align: center;
-    width: 100%;
-    gap: 2px;
-    font-size: 11px;
-    line-height: 1.1;
-  }
-  .schedule-week-scroll .schedule-weekday-long { display: none; }
-  .schedule-week-scroll .schedule-weekday-short { display: block; font-size: 14px; font-weight: 800; }
-  .schedule-week-scroll .management-week-cards .schedule-day-picker strong {
-    margin: 0;
-    font-size: 13px;
-  }
-  .schedule-week-scroll .management-week-cards .day-card > header .schedule-day-add {
-    min-width: 28px;
-    width: 28px;
-    min-height: 28px;
-    height: 28px;
-    padding: 0;
-    font-size: 17px;
-  }
-  .schedule-week-scroll .schedule-desktop-day-content { display: block; }
-  .schedule-week-scroll .schedule-day-content {
-    display: grid;
-    padding: 2px;
-    gap: 4px;
-    align-content: start;
-  }
-  .schedule-week-scroll .schedule-free-section,
-  .schedule-week-scroll .schedule-area-group {
-    display: grid;
-    min-width: 0;
-    gap: 3px;
-    padding: 3px 2px;
-    border-radius: 5px;
-  }
-  .schedule-week-scroll .schedule-free-section { background: var(--surface-2); }
-  .schedule-week-scroll .schedule-group-heading { display: block; min-width: 0; padding: 0 0 2px; }
-  .schedule-week-scroll .schedule-group-heading > strong {
-    display: block;
-    min-width: 0;
-    color: var(--gold-bright);
-    font-size: 12px;
-    line-height: 1.15;
-    overflow-wrap: anywhere;
-  }
-  .schedule-week-scroll .schedule-free-heading > strong { color: var(--text); }
-  .schedule-week-scroll .schedule-group-heading > span { display: none; }
-  .schedule-week-scroll .schedule-area-full { display: none; }
-  .schedule-week-scroll .schedule-area-short { display: inline; }
-  .schedule-week-scroll .shift-item {
-    display: grid;
-    width: 100%;
-    min-width: 0;
-    padding: 4px 2px;
-    gap: 2px;
-    border-radius: 5px;
-    text-align: left;
-    overflow-wrap: anywhere;
-  }
-  .schedule-week-scroll .management-week-cards .shift-item strong {
-    font-size: 14px;
-    line-height: 1.08;
-    white-space: normal;
-  }
-  .schedule-week-scroll .shift-item > span {
-    font-size: 13px;
-    line-height: 1.1;
-    font-weight: 700;
-    overflow-wrap: anywhere;
-  }
-  .schedule-week-scroll .shift-item small,
-  .schedule-week-scroll .shift-item em { display: none; }
-  .schedule-week-scroll .schedule-time-full { display: none; }
-  .schedule-week-scroll .schedule-time-short { display: grid; gap: 1px; }
-  .schedule-week-scroll .schedule-time-short > span { display: block; font-size: 13px; line-height: 1.12; }
-  .schedule-week-scroll .schedule-free-list { gap: 2px; max-height: 108px; overflow-y: auto; }
-  .schedule-week-scroll .schedule-free-automatic { font-size: 12px; line-height: 1.15; overflow-wrap: anywhere; }
-  .schedule-week-scroll .schedule-day-off-item { min-width: 0; padding: 3px 2px; }
-  .schedule-week-scroll .schedule-day-off-item strong { font-size: 12px; line-height: 1.1; overflow-wrap: anywhere; }
-  .schedule-week-scroll .schedule-day-off-item small { display: none; }
-  .schedule-week-scroll .schedule-add-free { min-width: 0; min-height: 30px; padding: 2px; font-size: 11px; }
-  .schedule-week-scroll .schedule-add-free-long { display: none; }
-  .schedule-week-scroll .schedule-add-free-short { display: inline; }
-  .schedule-week-scroll .management-week-cards .day-empty { min-height: 28px; font-size: 9px; }
-  .schedule-mobile-day-detail, .schedule-mobile-day-picker, .schedule-swipe-hint { display: none !important; }
+  .schedule-view { --schedule-day-width: 230px; }
+  .schedule-display-controls { align-items: stretch; }
+  .schedule-display-controls label { flex: 1 1 160px; }
+  .schedule-display-controls button { align-self: end; }
 }
