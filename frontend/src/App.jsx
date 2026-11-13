@@ -1,3 +1,4 @@
+import { getScheduleDisplayScale, saveScheduleDisplayScale } from './schedule-display-preferences.mjs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { plannedNetMinutes } from './timesheet-utils.js'
 import { EmployeeTimesheetPage, EmployeeMailboxPage } from './EmployeeSelfService.jsx'
@@ -539,6 +540,11 @@ function ScheduleDayContents({ day, busy, edit, editDayOff, startNew }) {
 
 function SchedulePage({ session }) {
   const management = MANAGEMENT.has(session.role)
+  const [displayScale, setDisplayScale] = useState(getScheduleDisplayScale)
+  function changeDisplayScale(value) {
+    setDisplayScale(value)
+    saveScheduleDisplayScale(value)
+  }
   const [week, setWeek] = useState(mondayOf())
   const [showPlanActions, setShowPlanActions] = useState(false)
   const [entries, setEntries] = useState([])
@@ -785,7 +791,7 @@ function SchedulePage({ session }) {
     finally { setBusy('') }
   }
 
-  return <>
+  return <div className="schedule-view" style={{ '--schedule-scale': displayScale }}>
     <Notice notice={notice} onClose={() => setNotice(null)} />
     {!management && <section className="panel employee-schedule-intro"><PageHeader title="Mein Dienstplan" subtitle="Hier siehst du deine freigegebenen Dienste und freien Tage." /></section>}
     <section className={management ? 'panel schedule-toolbar schedule-toolbar-management' : 'panel schedule-toolbar'}>
@@ -796,6 +802,15 @@ function SchedulePage({ session }) {
           <button className="secondary-button" onClick={() => setWeek(mondayOf())}>Aktuelle Woche</button>
           <button className="secondary-button" onClick={() => setWeek(mondayOf(addDays(week, 7)))}>Nächste ›</button>
         </div>
+      </div>
+      <div className="schedule-display-controls">
+        <label>Darstellung<select aria-label="Dienstplan-Größe" value={displayScale} onChange={(event) => changeDisplayScale(Number(event.target.value))}>
+          <option value={0.85}>Kompakt (85 %)</option>
+          <option value={1}>Standard (100 %)</option>
+          <option value={1.25}>Groß (125 %)</option>
+          <option value={1.5}>Sehr groß (150 %)</option>
+        </select></label>
+        <button type="button" className="secondary-button" disabled={displayScale === 1} onClick={() => changeDisplayScale(1)}>Standardgröße</button>
       </div>
       {management && <>
         <button
@@ -815,7 +830,8 @@ function SchedulePage({ session }) {
       </>}
     </section>
     {management ? <>
-      <div className="schedule-week-scroll" role="region" aria-label="Wochendienstplan Montag bis Sonntag – nach links und rechts wischen" tabIndex={0}>
+      <p className="schedule-scroll-hint" id="schedule-scroll-help">Montag bis Sonntag: im Plan seitlich scrollen oder wischen, um alle Tage zu sehen.</p>
+      <div className="schedule-week-scroll" role="region" aria-label="Wochendienstplan Montag bis Sonntag" aria-describedby="schedule-scroll-help" tabIndex={0}>
         <div className="week-cards management-week-cards">{scheduleDays.map((day) =>
           <section className="day-card" key={day.date}>
             <header>
@@ -894,7 +910,7 @@ function SchedulePage({ session }) {
         <div className="form-actions"><button className="primary-button" disabled={Boolean(busy)}>{busy === 'save' ? 'Wird gespeichert …' : scheduleMode === 'off' ? 'Dienstfrei eintragen' : 'Als Entwurf speichern'}</button>{form.id && scheduleMode === 'shift' && <button type="button" className="danger-outline" disabled={Boolean(busy)} onClick={remove}>Dienst löschen</button>}<button type="button" className="secondary-button" onClick={() => { setForm({ ...emptyForm }); setEditing(false) }}>Abbrechen</button></div>
       </form>
     </section>}
-  </>
+  </div>
 }
 
 function buildSessions(entries, fallbackName) {
