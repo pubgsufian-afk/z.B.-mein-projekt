@@ -20,10 +20,14 @@ function asDate(value: string | Date) {
   return date
 }
 
-export function isFlexClockAccount(email: string, configuredEmail: string) {
+export function isFlexClockAccount(email: string, configuredEmails: string) {
   const current = String(email || '').trim().toLowerCase()
-  const configured = String(configuredEmail || '').trim().toLowerCase()
-  return Boolean(current && configured && current === configured)
+  const allowed = String(configuredEmails || '')
+    .split(/[,;\n]/)
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean)
+  // Fail closed: the exception must be configured for exactly two distinct accounts.
+  return Boolean(current && allowed.length === 2 && new Set(allowed).size === 2 && allowed.includes(current))
 }
 
 export function findAllowedWorksite(worksites: Worksite[], location: DeviceLocation) {
