@@ -83,4 +83,9 @@ const [scheduleApi, timesheetSync] = await Promise.all([
 assert.match(scheduleApi, /!String\(shift\.id\)\.startsWith\('attendance-flex:'\)/)
 assert.match(timesheetSync, /String\(shift\.id\)\.startsWith\('attendance-flex:'\)/)
 
+const freeDayMigration = await readFile('netlify/database/migrations/20261114000000_allow_attendance_flex_on_day_off/migration.sql', 'utf8')
+assert.match(freeDayMigration, /IF NEW\.source = 'attendance-flex' THEN/)
+assert.match(freeDayMigration, /source <> 'attendance-flex'/)
+assert.match(freeDayMigration, /HABUN_DAY_OFF_CONFLICT/)
+
 console.log('Two-account remote attendance: negative access + full clock flow OK')
