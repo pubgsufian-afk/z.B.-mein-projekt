@@ -75,4 +75,12 @@ assert.match(serviceCode, /!allowRemoteClockIn/)
 assert.match(policyCode, /allowed\.length === 2 && new Set\(allowed\)\.size === 2/)
 assert.match(uiPatch, /useFlexEndpoint \? '\/api\/attendance-flex' : '\/api\/attendance'/)
 assert.match(uiPatch, /!useFlexEndpoint && action === 'clock-in'/)
+
+const [scheduleApi, timesheetSync] = await Promise.all([
+  readFile('netlify/functions/schedule-v2-neon.mts', 'utf8'),
+  readFile('netlify/functions/_shared/timesheet-schedule-sync.mts', 'utf8'),
+])
+assert.match(scheduleApi, /!String\(shift\.id\)\.startsWith\('attendance-flex:'\)/)
+assert.match(timesheetSync, /String\(shift\.id\)\.startsWith\('attendance-flex:'\)/)
+
 console.log('Two-account remote attendance: negative access + full clock flow OK')
