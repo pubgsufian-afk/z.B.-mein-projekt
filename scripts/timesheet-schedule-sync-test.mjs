@@ -61,4 +61,26 @@ assert.equal(provisionalEntry.netMinutes, 480)
 assert.equal(provisionalEntry.workArea, 'Bauhelfer')
 assert.equal(provisionalEntry.location, 'Test Einsatzort')
 
+
+const flexShift = {
+  id: 'attendance-flex:u1:event-23',
+  employeeUserId: 'u1',
+  employeeName: 'A',
+  date: '2026-08-15',
+  start: '09:00',
+  end: '21:00',
+  pauseMinutes: 0,
+  location: 'Standortunabhängige Zeiterfassung',
+  workArea: 'Zeiterfassung',
+  status: 'published',
+}
+const beforeAudit = audits.length
+const flexResult = await service.syncPublishedScheduleShift(flexShift, 'tester', new Date('2026-08-11T21:30:00Z'))
+assert.equal(flexResult.action, 'ignore', 'flex booking must not materialize 12 planned hours')
+assert.equal(saved.has(flexShift.id), false, 'no provisional timesheet row for flex entry')
+assert.equal(audits.length, beforeAudit, 'flex must not create a scheduled-hours audit entry')
+shifts.push(flexShift)
+await service.syncPublishedScheduleRange('2026-08-01', '2026-08-31', 'tester', new Date('2026-08-11T21:30:00Z'))
+assert.equal(saved.has(flexShift.id), false, 'range resync must also skip flex entries')
+
 console.log('timesheet schedule sync tests passed')
