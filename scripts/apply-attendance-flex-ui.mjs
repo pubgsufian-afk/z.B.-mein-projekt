@@ -9,31 +9,37 @@ assert.ok(start >= 0 && end > start, 'AttendancePage wurde nicht gefunden.')
 let block = source.slice(start, end)
 
 const eligibilityBlock = `      let visibleState = data
-      if (data.phase === 'blocked' && !data.schedule) {
-        try {
-          const flex = await apiJson('/api/attendance-flex?resource=eligibility')
-          if (flex.eligible) visibleState = { ...data, phase: 'idle', clocking: { allowed: true, code: 'FLEX_ACCOUNT' } }
-        } catch {}
+      try {
+        const flex = await apiJson('/api/attendance-flex?resource=eligibility')
+        if (flex.eligible) {
+          // Server resolves eligibility and active flex session from signed-in identity.
+          const remoteState = await apiJson('/api/attendance-flex?resource=state')
+          visibleState = { ...remoteState, flexEligible: true }
+        }
+      } catch {
+        // A failed exemption check must never unlock normal employees.
       }
       setState(visibleState)`
 
-if (!block.includes("/api/attendance-flex?resource=eligibility")) {
+if (!block.includes('/api/attendance-flex?resource=state')) {
   const marker = '      setState(data)'
   assert.ok(block.includes(marker), 'Attendance-State-Zuweisung wurde nicht gefunden.')
   block = block.replace(marker, eligibilityBlock)
 }
 
-const flexEndpointBlock = `      const useFlexEndpoint =
-        (action === 'clock-in' && state.clocking?.code === 'FLEX_ACCOUNT')
-        || (action === 'clock-out' && String(state.schedule?.id || '').startsWith('attendance-flex:'))
+const flexEndpointBlock = `      const useFlexEndpoint = Boolean(state.flexEligible) && (action === 'clock-in' || state.flexSession)
+      const needsLocation = !useFlexEndpoint && (action === 'clock-in' || action === 'clock-out')
+      const location = needsLocation ? await getLocation() : null
       await apiJson(useFlexEndpoint ? '/api/attendance-flex' : '/api/attendance', {`
 
-if (!block.includes("startsWith('attendance-flex:')")) {
-  const marker = "      await apiJson('/api/attendance', {"
+if (!block.includes('Boolean(state.flexEligible)')) {
+  const marker = `      const needsLocation = action === 'clock-in' || action === 'clock-out'
+      const location = needsLocation ? await getLocation() : null
+      await apiJson('/api/attendance', {`
   assert.ok(block.includes(marker), 'Attendance-Schreibrequest wurde nicht gefunden.')
   block = block.replace(marker, flexEndpointBlock)
 }
 
 source = source.slice(0, start) + block + source.slice(end)
 await writeFile(path, source)
-console.log('Private flex attendance UI applied')
+console.log('Two-account remote attendance UI applied')
