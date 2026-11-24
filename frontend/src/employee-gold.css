@@ -108,3 +108,16 @@
   .employee-kiosk-shell .employee-attendance-hero .digital-clock-wrap { min-height: 165px; }
   .employee-kiosk-shell .employee-attendance-hero .attendance-shift { padding: 22px; }
 }
+
+/* Keep the existing notification prompt in normal document flow for employees.
+   Its own buttons remain usable without covering attendance controls. */
+body:has(.employee-kiosk-shell) > .habun-push-card {
+  position: static; inset: auto; transform: none;
+  width: min(calc(100% - 32px), 760px);
+  margin: 0 auto max(16px, env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+body:has(.employee-kiosk-shell):has(> .habun-push-card) #root,
+body:has(> .habun-push-card) .employee-kiosk-shell {
+  min-height: 0;
+}
