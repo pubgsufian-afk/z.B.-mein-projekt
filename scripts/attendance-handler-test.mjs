@@ -67,3 +67,12 @@ assert.equal(markers.requiresInsideWorksite, true)
 assert.equal(markers.clockOutAllowedAfterShiftEnd, true)
 
 console.log('Attendance handler tests passed · final completed-state display + stale worksite rebinding + after-hours clock-out covered')
+
+// Rebinding must never silently select between duplicate site names.
+assert.equal(resolveScheduleWorksiteObjectId({ objectId: 'old', location: 'Abbott Laboratories GmbH' }, [...sites, { id: 'duplicate', name: 'Abbott Laboratories GmbH' }]), null)
+const earlyShift = { id: 'early', employeeUserId: 'user-1', date: '2026-11-23', start: '06:00', end: '14:30', objectId: 'site-new', status: 'published' }
+for (const hour of ['04:40', '05:00', '06:00', '07:00', '08:00']) {
+  const at = '2026-11-23T' + hour + ':00Z'
+  assert.equal(clockingWindowForSchedule(earlyShift, at).allowed, true)
+  assert.equal(selectPlannedSchedule([earlyShift], 'user-1', '2026-11-23', null, at)?.id, 'early')
+}

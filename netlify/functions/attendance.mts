@@ -397,7 +397,11 @@ export default async function attendance(request: Request, _context: Context) {
     const recorded = await service.record(actor, safeBody)
     return response(actor.role === 'employee' ? { saved: true, action: normalized.action } : recorded, 201)
   } catch (error) {
-    if (error instanceof AttendanceServiceError) return response({ message: error.message, code: error.code }, error.status)
+    if (error instanceof AttendanceServiceError) {
+      // Record failure reason only, never employee identity or device coordinates.
+      console.warn('Attendance rejected', { code: error.code, status: error.status })
+      return response({ message: error.message, code: error.code }, error.status)
+    }
     if (error instanceof TypeError || error instanceof RangeError) return response({ message: error.message, code: 'INVALID_INPUT' }, 400)
     console.error('Habun Attendance V2', error)
     return response({ message: 'Die Zeiterfassung konnte nicht verarbeitet werden.' }, 500)
