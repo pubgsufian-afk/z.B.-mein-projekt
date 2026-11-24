@@ -83,10 +83,10 @@ if (await patch('netlify/functions/attendance.mts', [
       async findObject(objectId: string) {
         const { resolveAttendanceWorksite } = await import('./_shared/attendance-worksite-policy.mts')
         return resolveAttendanceWorksite(objectId, {
-          async readRegistered(id) {
+          async readRegistered(objectId) {
             const { getStore } = await import('@netlify/blobs')
             const scheduleStore = getStore({ name: 'portal-schedule-v2', consistency: 'strong' })
-            return await scheduleStore.get('objects/' + id, { type: 'json' }) as Record<string, unknown> | null
+            return await scheduleStore.get('objects/' + objectId, { type: 'json' }) as Record<string, unknown> | null
           },
           readDatabase: baseRepository.findObject,
           ensureDatabaseRow: baseRepository.ensureWorksiteRow,
