@@ -7,6 +7,7 @@ import './styles.css'
 import './mobile-navigation.css'
 import './logo-visibility.css'
 import './push-notifications.css'
+import './employee-gold.css'
 
 function isIOSWebKit() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
