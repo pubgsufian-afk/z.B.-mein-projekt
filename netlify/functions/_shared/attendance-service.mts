@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { coordinate, validWorksiteCoordinates } from './attendance-worksite-policy.mts'
 import { classifyLocation, distanceMetersBetween, validateAttendanceTransition } from './attendance-domain.mts'
 
 const MANAGEMENT_ROLES = new Set(['owner', 'admin', 'manager'])
@@ -21,8 +22,7 @@ function normalizedText(value: unknown) {
 }
 
 function validCoordinate(value: unknown, minimum: number, maximum: number) {
-  const number = Number(value)
-  return Number.isFinite(number) && number >= minimum && number <= maximum ? number : null
+  return coordinate(value, minimum, maximum)
 }
 
 export function eventDateInBerlin(value: string | Date) {
@@ -47,8 +47,8 @@ export function normalizeClockRequest(body: Record<string, unknown>) {
     const raw = body.location as Record<string, unknown>
     const latitude = validCoordinate(raw.latitude, -90, 90)
     const longitude = validCoordinate(raw.longitude, -180, 180)
-    const accuracyMeters = Number(raw.accuracyMeters)
-    if (latitude !== null && longitude !== null && Number.isFinite(accuracyMeters) && accuracyMeters >= 0) location = { latitude, longitude, accuracyMeters }
+    const accuracyMeters = coordinate(raw.accuracyMeters, 0, Number.MAX_SAFE_INTEGER)
+    if (latitude !== null && longitude !== null && accuracyMeters !== null) location = { latitude, longitude, accuracyMeters }
   }
 
   return {
@@ -156,7 +156,7 @@ export function createAttendanceService({ repository, now = () => new Date(), ra
       const locationAction = payload.action === 'clock-in' || payload.action === 'clock-out'
       const requiresInsideWorksite = payload.action === 'clock-in'
       const object = locationAction && payload.objectId ? await repository.findObject(payload.objectId) : null
-      const configured = Boolean(object && Number.isFinite(Number(object.latitude)) && Number.isFinite(Number(object.longitude)))
+      const configured = validWorksiteCoordinates(object)
       const available = locationAction && Boolean(payload.location)
       const distanceMeters = configured && payload.location
         ? distanceMetersBetween(payload.location.latitude, payload.location.longitude, object.latitude, object.longitude)

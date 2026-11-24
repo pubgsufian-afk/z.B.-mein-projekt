@@ -118,6 +118,15 @@ export async function createAttendanceRepository(connectionString: string) {
     return mapAttendanceObjectRow(rows[0] || null)
   }
 
+  async function ensureWorksiteRow(site: { id: string; latitude: number; longitude: number; accuracyMeters: number; radiusMeters: number }) {
+    // Do not overwrite a concurrently saved administrator configuration.
+    await sql.query(
+      `INSERT INTO attendance_objects (id, latitude, longitude, accuracy_meters, radius_meters, updated_at)
+       VALUES ($1,$2,$3,$4,$5,now()) ON CONFLICT (id) DO NOTHING`,
+      [site.id, site.latitude, site.longitude, site.accuracyMeters, site.radiusMeters],
+    )
+  }
+
   async function commitClockEvent(record: Record<string, any>) {
     const responseData = { event: record.event, location: record.location, replayed: false }
     const auditId = `attendance-audit:${crypto.randomUUID()}`
@@ -280,5 +289,5 @@ export async function createAttendanceRepository(connectionString: string) {
     return rows.map(mapAttendanceEventRow)
   }
 
-  return { findIdempotency, listEvents, findObject, commitClockEvent, listHistory, listLive }
+  return { findIdempotency, listEvents, findObject, ensureWorksiteRow, commitClockEvent, listHistory, listLive }
 }

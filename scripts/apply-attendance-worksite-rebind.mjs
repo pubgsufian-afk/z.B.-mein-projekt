@@ -16,8 +16,9 @@ if (!source.includes('export function resolveScheduleWorksiteObjectId(')) {
   if (originalId && worksites.some((site) => String(site.id || '') === originalId)) return originalId
   const normalizedLocation = String(schedule.location || '').trim().toLocaleLowerCase('de-DE')
   if (!normalizedLocation) return originalId || null
-  const current = worksites.find((site) => String(site.name || '').trim().toLocaleLowerCase('de-DE') === normalizedLocation)
-  return String(current?.id || originalId || '').trim() || null
+  const matches = worksites.filter((site) => String(site.name || '').trim().toLocaleLowerCase('de-DE') === normalizedLocation)
+  if (matches.length > 1) return null // Never guess between multiple registered worksites.
+  return String(matches[0]?.id || originalId || '').trim() || null
 }
 
 `

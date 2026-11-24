@@ -81,25 +81,16 @@ if (await patch('netlify/functions/attendance.mts', [
     const repository = {
       ...baseRepository,
       async findObject(objectId: string) {
-        const fromDatabase = await baseRepository.findObject(objectId)
-        const databaseConfigured = Boolean(
-          fromDatabase && Number.isFinite(Number(fromDatabase.latitude)) && Number.isFinite(Number(fromDatabase.longitude)),
-        )
-        if (databaseConfigured) return fromDatabase
-
-        const { getStore } = await import('@netlify/blobs')
-        const scheduleStore = getStore({ name: 'portal-schedule-v2', consistency: 'strong' })
-        const stored = await scheduleStore.get('objects/' + objectId, { type: 'json' }) as Record<string, unknown> | null
-        if (!stored) return fromDatabase
-        const latitude = stored.latitude === '' || stored.latitude == null ? null : Number(stored.latitude)
-        const longitude = stored.longitude === '' || stored.longitude == null ? null : Number(stored.longitude)
-        return {
-          id: String(stored.id || objectId),
-          latitude: Number.isFinite(latitude) ? latitude : null,
-          longitude: Number.isFinite(longitude) ? longitude : null,
-          accuracyMeters: stored.accuracyMeters == null ? null : Number(stored.accuracyMeters),
-          radiusMeters: Number.isFinite(Number(stored.radiusMeters)) ? Number(stored.radiusMeters) : 500,
-        }
+        const { resolveAttendanceWorksite } = await import('./_shared/attendance-worksite-policy.mts')
+        return resolveAttendanceWorksite(objectId, {
+          async readRegistered(objectId) {
+            const { getStore } = await import('@netlify/blobs')
+            const scheduleStore = getStore({ name: 'portal-schedule-v2', consistency: 'strong' })
+            return await scheduleStore.get('objects/' + objectId, { type: 'json' }) as Record<string, unknown> | null
+          },
+          readDatabase: baseRepository.findObject,
+          ensureDatabaseRow: baseRepository.ensureWorksiteRow,
+        })
       },
     }
     const service = createAttendanceService({ repository })`,

@@ -61,7 +61,7 @@ async function syncAttendanceObject(site: WorksiteAdminInput, actorId: string) {
   if (!url) return false
   const { neon } = await import('@neondatabase/serverless')
   const sql = neon(url)
-  await sql(
+  await sql.query(
     `INSERT INTO attendance_objects (id, latitude, longitude, accuracy_meters, radius_meters, updated_at, updated_by)
      VALUES ($1,$2,$3,$4,$5,now(),$6)
      ON CONFLICT (id) DO UPDATE SET latitude = EXCLUDED.latitude, longitude = EXCLUDED.longitude,
