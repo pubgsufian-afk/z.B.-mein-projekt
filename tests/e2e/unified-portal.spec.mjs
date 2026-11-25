@@ -452,6 +452,18 @@ test('employee sees only clock and own published schedule', async ({ page }, tes
   const employeeNav = page.locator('.employee-kiosk-nav')
   await expect(employeeNav.locator('button')).toHaveCount(6)
   await expect(employeeNav.locator('button.active')).toHaveText('Stempeluhr')
+  // All employee icons use explicit-color SVG images instead of CSS masks.
+  const iconStyles = await employeeNav.locator('button').evaluateAll(buttons => buttons.map(button => {
+    const style = getComputedStyle(button, '::before')
+    return { image: style.backgroundImage, mask: style.maskImage || style.webkitMaskImage }
+  }))
+  expect(iconStyles).toHaveLength(6)
+  for (const icon of iconStyles) {
+    expect(icon.image).toContain('data:image/svg+xml')
+    expect(icon.mask).toBe('none')
+  }
+  expect(decodeURIComponent(iconStyles[0].image)).toContain('#ffdc8b')
+  expect(decodeURIComponent(iconStyles[1].image)).toContain('#e0e0e4')
   const columns = await employeeNav.evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length)
   expect(columns).toBe((await page.evaluate(() => innerWidth)) <= 680 ? 3 : 6)
   const clockHeight = await page.locator('.employee-attendance-hero .digital-clock-wrap').evaluate(el => el.getBoundingClientRect().height)
