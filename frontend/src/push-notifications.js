@@ -110,7 +110,7 @@ function mountPermissionCard({ onEnable, repair = false }) {
     const title = repair ? 'Benachrichtigungen erneut verbinden' : 'Benachrichtigungen aktivieren'
     const text = repair
       ? 'Die Verbindung dieses Geräts muss erneuert werden. Tippe einmal auf „Erneut verbinden“.'
-      : 'Damit du neue Dienstpläne, Änderungen und Erinnerungen vor Dienstbeginn erhältst, aktiviere Benachrichtigungen einmal auf diesem Gerät.'
+      : 'Damit du persönliche Mitteilungen sowie Erinnerungen zu Dienstbeginn und Dienstende erhältst, aktiviere Benachrichtigungen einmal auf diesem Gerät.'
     const buttonText = repair ? 'Erneut verbinden' : 'Aktivieren'
     card.innerHTML = `<div><strong>${title}</strong><span>${text}</span></div><div class="habun-push-card-actions"><button type="button" class="habun-push-enable">${buttonText}</button><button type="button" data-close>Später</button></div>`
     card.querySelector('.habun-push-enable')?.addEventListener('click', async (event) => {
@@ -206,4 +206,16 @@ export async function installPushNotifications() {
   }
 
   await setupForCurrentSession()
+}
+
+export async function disconnectPushDevice(){
+  let token=''
+  try{token=JSON.parse(localStorage.getItem(TOKEN_KEY)||'null')?.token||''}catch{}
+  try{
+    if(token)await jsonFetch('/api/push',{method:'POST',body:JSON.stringify({action:'unsubscribe',deviceToken:token}),signal:AbortSignal.timeout(2500)})
+  }catch{}
+  finally{
+    try{localStorage.removeItem(TOKEN_KEY)}catch{}
+    try{const reg=await navigator.serviceWorker?.getRegistration('/');reg?.active?.postMessage({type:'SET_PUSH_DEVICE_TOKEN',token:''})}catch{}
+  }
 }

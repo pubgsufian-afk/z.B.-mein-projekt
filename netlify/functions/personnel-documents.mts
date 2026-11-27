@@ -194,7 +194,8 @@ export default async function personnel(request: Request, context: Context) {
       if(recipient?.status!=='active'||recipient.role==='pending')return json({message:'Empfängerkonto ist nicht aktiv.'},409)
       const result=await db.pool.query("UPDATE personnel_documents SET published_at=now(),published_by=$2 WHERE id=$1 AND published_at IS NULL AND (kind='warning' OR (paper_delivered_on IS NOT NULL AND paper_copy_sha256 IS NOT NULL)) RETURNING id",[body.id,actor.userId])
       if(!result.rows.length)return json({message:'Dokument bereits versendet.'},409)
-      if(isProduction(context))try{await sendPushToUsers({userIds:[row.employee_user_id],title:'HABUN Mitarbeiterportal',body:'Ein neues Dokument ist in deinem persönlichen Postfach verfügbar.',url:'/?view=mailbox'})}catch{console.error('Personnel document push failed')}
+      if(isProduction(context))try{await sendPushToUsers({userIds:[row.employee_user_id],eventKey:'personnel-published:'+body.id,title:'HABUN Mitarbeiterportal',body:'Ein neues Dokument ist in deinem persönlichen Postfach verfügbar.',url:'/?view=mailbox'})}catch{console.error('Personnel document push failed')}
+      else await notifyPortalUsers([row.employee_user_id],{eventKey:'personnel-published:'+body.id,title:'HABUN Mitarbeiterportal',body:'Ein neues Dokument ist in deinem persönlichen Postfach verfügbar.',url:'/?view=mailbox'})
       return json({ok:true})
     }
     return json({message:'Unbekannte Aktion.'},400)
