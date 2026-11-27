@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel, makePersonnelText, makeReceiptText, dateValid, WARNING_REASONS, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS, normalizePersonnelAddress, validTerminationAddress, recipientNameValid, addressMatchesOtherAccount, defaultSignerFunction } from '../netlify/functions/_shared/personnel-document-policy.mjs'
+import { canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel, makePersonnelText, makeReceiptText, dateValid, WARNING_REASONS, TERMINATION_NOTICE_PARAGRAPHS, normalizePersonnelAddress, validTerminationAddress, recipientNameValid, addressMatchesOtherAccount, defaultSignerFunction } from '../netlify/functions/_shared/personnel-document-policy.mjs'
 const employee={userId:'e1',role:'employee'}, other={userId:'e2',role:'employee'}, admin={userId:'a1',role:'admin'}
 const row={employee_user_id:'e1',kind:'warning',published_at:null}
 assert.equal(canManagePersonnel('manager'),false)
@@ -34,10 +34,12 @@ assert.throws(()=>makePersonnelText({kind:'warning',reason:'late',incidentDate:'
 
 for(const reason of ['ordinary','probation','extraordinary']){
  const result=makePersonnelText({kind:'termination',reason,endDate:'2026-12-31',legalReviewed:true},'Testperson')
- assert.doesNotMatch(result.paragraphs.join(' '),/Arbeitsuchendmeldung|Agentur für Arbeit|§ 38 SGB III/)
+ assert.match(result.paragraphs.join(' '),/Agentur für Arbeit/)
+ assert.match(result.paragraphs.join(' '),/drei Monaten|drei Monate/)
+ assert.match(result.paragraphs.join(' '),/drei Tagen/)
+ assert.deepEqual(makePersonnelText({kind:'termination',reason,endDate:'2026-12-31',legalReviewed:true,includeEmploymentNotice:false},'Testperson'),result)
  assert.match(result.paragraphs.join(' '),reason==='extraordinary'?/außerordentlich und fristlos/:/31\. Dezember 2026/)
 }
-assert.match(TERMINATION_NOTICE_TITLE,/Merkblatt/)
 assert.match(TERMINATION_NOTICE_PARAGRAPHS.join(' '),/drei Monate/)
 assert.match(TERMINATION_NOTICE_PARAGRAPHS.join(' '),/drei Tagen/)
 assert.match(TERMINATION_NOTICE_PARAGRAPHS.join(' '),/§ 38/)
