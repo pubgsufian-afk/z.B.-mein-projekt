@@ -97,6 +97,13 @@ assert.equal((await call('acknowledge',{id,accepted:true,signature:sig})).status
 const receipt=await call('receipt&id='+id);assert.equal(receipt.status,200);assert.ok((await PDFDocument.load(await receipt.arrayBuffer())).getPageCount()>0)
 select('a');const tid=randomUUID(), termination={id:tid,kind:'termination',employeeUserId:'e1',reason:'ordinary',endDate:'2026-12-31',address:'Teststraße 1, 12345 Teststadt',signerFunction:'Inhaber',authorized:true,legalReviewed:true}
 assert.equal((await call('create',{...termination,legalReviewed:false})).status,400)
+assert.equal((await call('preview',{...termination,address:'Kksks'})).status,400)
+for(const reason of ['ordinary','probation','extraordinary']){
+ const response=await call('preview',{...termination,reason,address:'Teststraße 1\n12345 Teststadt',endDate:reason==='extraordinary'?'':termination.endDate})
+ assert.equal(response.status,200)
+ assert.equal((await PDFDocument.load(await response.arrayBuffer())).getPageCount(),1)
+}
+assert.equal(state.rows.size,1)
 // Compare actual PDF drawing streams, not metadata: a different internal ID
 // must not affect the visible termination PDF. Warning references remain visible.
 async function drawingStreams(response){
