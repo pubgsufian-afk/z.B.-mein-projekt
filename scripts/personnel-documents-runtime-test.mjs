@@ -75,12 +75,8 @@ select('a');assert.equal((await call('create',warning,'deploy-preview',true)).st
 assert.equal((await call('create',{...warning,employeeUserId:'inactive'})).status,409)
 assert.equal((await call('create',{...warning,signature:''})).status,400)
 const preview=await call('preview',warning);assert.equal(preview.status,200);assert.ok((await PDFDocument.load(await preview.arrayBuffer())).getPageCount()>0);assert.equal(state.rows.size,0)
-// A general printable notice is admin-only and never creates a personnel record.
-select('e1');assert.equal((await call('termination-notice')).status,403)
-select('manager');assert.equal((await call('termination-notice')).status,403)
-select('a');const notice=await call('termination-notice');assert.equal(notice.status,200)
-assert.match(notice.headers.get('content-disposition'),/Merkblatt-zur-Kuendigung\.pdf/)
-assert.equal((await PDFDocument.load(await notice.arrayBuffer())).getPageCount(),1)
+// Removed standalone notice route must not expose a PDF.
+select('a');assert.notEqual((await call('termination-notice')).status,200)
 assert.equal(state.rows.size,0);assert.equal(state.push.length,0)
 const created=await call('create',warning);assert.equal(created.status,201,await created.clone().text())
 assert.equal(state.rows.get(id).creator_name,'Verwaltung Test')
