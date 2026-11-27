@@ -13,7 +13,7 @@ import { readCompanySettings } from './_shared/company-settings.mts'
 import { readPdfLogoBytes } from './_shared/pdf-branding.mts'
 import { sendPushToUsers } from './_shared/push-core.mts'
 import { notifyPortalAdmins, notifyPortalUsers } from './_shared/portal-notification-service.mts'
-import { ACK_TEXT, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS, makePersonnelText, dateValid, canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel } from './_shared/personnel-document-policy.mjs'
+import { ACK_TEXT, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS, makePersonnelText, makeReceiptText, dateValid, normalizePersonnelAddress, validTerminationAddress, canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel } from './_shared/personnel-document-policy.mjs'
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 const SIGNER_FUNCTIONS = new Set(['Inhaber', 'Geschäftsführer', 'Personalverantwortlicher', 'Einsatzleiter', 'Bevollmächtigter'])
@@ -41,7 +41,7 @@ function pdfResponse(bytes: Uint8Array, filename: string) {
   return new Response(Buffer.from(bytes), {headers:{...headers,'Content-Type':'application/pdf','Content-Disposition':'attachment; filename="'+filename+'"','Content-Security-Policy':'sandbox'}})
 }
 const dateLabel = (d: Date) => new Intl.DateTimeFormat('de-DE',{dateStyle:'long',timeZone:'Europe/Berlin'}).format(d)
-async function renderPdf(input: { title: string; paragraphs: string[]; employeeName: string; address?: string; signerName: string; signerFunction: string; issued: Date; signatureBytes?: Buffer; reference: string; receipt?: boolean; notice?: boolean }) {
+async function renderPdf(input: { title: string; paragraphs: string[]; employeeName: string; address?: string; signerName: string; signerFunction: string; issued: Date; signatureBytes?: Buffer; reference: string; receipt?: boolean; notice?: boolean; showReference?: boolean }) {
   const settings = await readCompanySettings()
   const pdf = await PDFDocument.create()
   pdf.registerFontkit(fontkit)
@@ -73,7 +73,7 @@ async function renderPdf(input: { title: string; paragraphs: string[]; employeeN
     page.drawText(text,{x:margin,y,size,font:f,color:rgb(.1,.1,.1)})
     y-=size+5
   }
-  function paragraph(text:string,size=11,strong=false) {
+  function paragraph(text:string,size=11,strong=false,after=10) {
     const f=strong?bold:font
     checkText(text,strong)
     for(const block of text.split('\n')){
@@ -92,13 +92,13 @@ async function renderPdf(input: { title: string; paragraphs: string[]; employeeN
       }
       if(current)line(current,size,strong)
     }
-    y-=10
+    y-=after
   }
   pageHeader()
-  if(!input.notice)paragraph(input.employeeName,12,true)
-  if(input.address)paragraph(input.address,10)
+  if(!input.notice)paragraph(input.employeeName,12,true,input.address?0:10)
+  if(input.address)paragraph(input.address,11)
   paragraph('Hannover, '+dateLabel(input.issued),10)
-  paragraph(input.title,18,true)
+  paragraph(input.title,16,true)
   for(const p of input.paragraphs)paragraph(p)
   if(input.notice){pdf.setTitle(input.title);return Buffer.from(await pdf.save())}
   if(y<150){page=pdf.addPage([595.28,841.89]);y=page.getHeight()-60}
@@ -112,7 +112,7 @@ async function renderPdf(input: { title: string; paragraphs: string[]; employeeN
   }
   paragraph(input.signerName,11,true)
   paragraph(input.signerFunction,10)
-  paragraph('Dokumentreferenz: '+input.reference,9)
+  if(input.showReference!==false)paragraph('Dokumentreferenz: '+input.reference,9)
   pdf.setTitle(input.title)
   return Buffer.from(await pdf.save())
 }
@@ -142,7 +142,7 @@ export default async function personnel(request: Request, context: Context) {
       if(!canReadPersonnel(actor,row))return json({message:'Dokument nicht gefunden.'},404)
       if(action==='receipt'){
         if(!row.receipt_at||!row.receipt_signature)return json({message:'Keine Empfangsbestätigung vorhanden.'},404)
-        const bytes=await renderPdf({title:'Empfangsbestätigung',paragraphs:[ACK_TEXT,'Dokument: '+row.title,'Dokument-ID: '+row.id,'SHA-256: '+row.receipt_document_sha256,'Bestätigung: '+new Date(row.receipt_at).toISOString()],employeeName:row.employee_name,signerName:row.employee_name,signerFunction:'Empfänger/in',issued:new Date(row.receipt_at),signatureBytes:signature(row.receipt_signature),reference:row.id,receipt:true})
+        const bytes=await renderPdf({title:'Empfangsbestätigung',paragraphs:makeReceiptText({title:row.title,createdAt:row.created_at,receiptAt:row.receipt_at}),employeeName:row.employee_name,signerName:row.employee_name,signerFunction:'Empfänger/in',issued:new Date(row.receipt_at),signatureBytes:signature(row.receipt_signature),reference:row.id,receipt:true,showReference:false})
         return pdfResponse(bytes,'Empfangsbestaetigung.pdf')
       }
       if(action!=='download')return json({message:'Unbekannte Aktion.'},400)
@@ -178,10 +178,10 @@ export default async function personnel(request: Request, context: Context) {
       if(!creatorName||!employeeName)return json({message:'Der Name des Admins oder Mitarbeiters fehlt im Kontoprofil.'},409)
       const content=makePersonnelText(body,employeeName)
       const signatureBytes=body.kind==='warning'&&action==='create'?signature(body.signature):undefined
-      const address=typeof body.address==='string'?body.address.trim().slice(0,400):''
-      if(body.kind==='termination'&&!address)return json({message:'Bitte die geprüfte Empfängeranschrift eintragen.'},400)
+      const address=normalizePersonnelAddress(body.address)
+      if(body.kind==='termination'&&!validTerminationAddress(address))return json({message:'Bitte vollständige Empfängeranschrift mit Straße und Hausnummer sowie Postleitzahl und Ort eintragen; bei Auslandsanschriften zusätzlich das Land.'},400)
       const issued=new Date()
-      const bytes=await renderPdf({...content,employeeName,address,signerName:creatorName,signerFunction:body.signerFunction,issued,signatureBytes,reference:body.id})
+      const bytes=await renderPdf({...content,employeeName,address,signerName:creatorName,signerFunction:body.signerFunction,issued,signatureBytes,reference:body.id,showReference:body.kind!=='termination'})
       if(action==='preview')return pdfResponse(bytes,'Vorschau.pdf')
       const result=await db.pool.query('INSERT INTO personnel_documents(id,employee_user_id,employee_name,creator_user_id,creator_name,creator_function,kind,title,reason,pdf_base64,pdf_sha256) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(id) DO NOTHING RETURNING id',[body.id,recipientId,employeeName,actor.userId,creatorName,body.signerFunction,body.kind,content.title,content.reason,bytes.toString('base64'),sha(bytes)])
       return result.rows.length?json({id:body.id},201):json({message:'Dieses Dokument wurde bereits gespeichert. Bitte Archiv aktualisieren.'},409)

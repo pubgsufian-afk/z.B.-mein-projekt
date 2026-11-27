@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { WARNING_REASONS, TERMINATION_TYPES, ACK_TEXT, makePersonnelText } from '../../netlify/functions/_shared/personnel-document-policy.mjs'
+import { WARNING_REASONS, TERMINATION_TYPES, ACK_TEXT, makePersonnelText, normalizePersonnelAddress, validTerminationAddress } from '../../netlify/functions/_shared/personnel-document-policy.mjs'
 import './personnel-documents.css'
 const api='/api/personnel-documents'
 const funcs=['Inhaber','Geschäftsführer','Personalverantwortlicher','Einsatzleiter','Bevollmächtigter']
 const today=()=>{const parts=Object.fromEntries(new Intl.DateTimeFormat('de-DE',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(p=>[p.type,p.value]));return parts.year+'-'+parts.month+'-'+parts.day}
 const employeeName=e=>String(e?.fullName||e?.name||'').trim()
+const employeeAddress=e=>{const a=e?.postalAddress||e?.address;try{return normalizePersonnelAddress(typeof a==='string'?a:'')}catch{return ''}}
 const fresh=(role,kind='warning',employeeUserId='')=>({id:crypto.randomUUID(),kind,employeeUserId,reason:'',incidentDate:today(),incidentTime:'',location:'',facts:'',duty:'',expected:'',address:'',endDate:'',terminationText:'',signerFunction:role==='owner'?'Inhaber':'Bevollmächtigter',authorized:false,legalReviewed:false})
 async function request(action='list',body){
   const res=await fetch(api+'?action='+action,{credentials:'same-origin',cache:'no-store',...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})})
@@ -41,7 +42,7 @@ export default function PersonnelDocuments({session,embedded=false}){
   async function run(fn){if(busy)return;setBusy(true);setMessage('');setOk('');try{await fn()}catch(e){setMessage(e.message)}finally{setBusy(false)}}
   useEffect(()=>()=>{if(pdfLink)URL.revokeObjectURL(pdfLink.url)},[pdfLink])
   useEffect(()=>{setPdfLink(null)},[form])
-  const change=(key,value)=>{setForm(f=>({...f,[key]:value}));setSign('')}
+  const change=(key,value)=>{setForm(f=>({...f,[key]:value,...(f.kind==='termination'&&key!=='legalReviewed'?{legalReviewed:false}:{})}));setSign('')}
   const field=(key,label,type='text',required=true,maxLength=180)=><label>{label}<input type={type} required={required} maxLength={maxLength} value={form[key]} onChange={e=>change(key,e.target.value)}/></label>
   const area=(key,label,required=true,maxLength=1800)=><label>{label}<textarea required={required} maxLength={maxLength} rows={3} value={form[key]} onChange={e=>change(key,e.target.value)}/></label>
   const pdf=async(id,receipt=false)=>{const response=await fetch(api+'?action='+(receipt?'receipt':'download')+'&id='+encodeURIComponent(id),{credentials:'same-origin',cache:'no-store'});if(!response.ok)throw Error('PDF konnte nicht geladen werden.');savePdf(await response.blob(),receipt?'Empfangsbestaetigung.pdf':'Personalunterlage.pdf');await reload()}
@@ -55,7 +56,7 @@ export default function PersonnelDocuments({session,embedded=false}){
     if(!form.incidentDate)missing.push('Datum des Vorfalls auswählen')
     if(form.facts.trim().length<12)missing.push('Vorfall kurz und konkret beschreiben (mindestens 12 Zeichen)')
   }else{
-    if(!form.address.trim())missing.push('Empfängeranschrift ergänzen')
+    if(!validTerminationAddress(form.address))missing.push('Vollständige Empfängeranschrift ergänzen (Straße, Hausnummer, PLZ, Ort)')
     if(form.reason!=='extraordinary'&&!form.endDate)missing.push('Beendigungsdatum auswählen')
     if(!form.legalReviewed)missing.push('Rechtliche Voraussetzungen bestätigen')
   }
@@ -93,31 +94,30 @@ export default function PersonnelDocuments({session,embedded=false}){
   return <div className="personnel-view">
     {admin&&<section className="panel"><div className="page-heading"><div><h2>Personalunterlagen erstellen</h2><p>Abmahnungen und Kündigungen – ausschließlich für Administratoren.</p></div></div>
       <div className="personnel-mode" role="group" aria-label="Dokumentart">
-        <button type="button" className={form.kind==='warning'?'primary-button':'secondary-button'} aria-pressed={form.kind==='warning'} onClick={()=>{if(form.kind!=='warning'){setForm(fresh(session.role,'warning',form.employeeUserId));setSign('')}}}>Abmahnung</button>
-        <button type="button" className={form.kind==='termination'?'primary-button':'secondary-button'} aria-pressed={form.kind==='termination'} onClick={()=>{if(form.kind!=='termination'){setForm(fresh(session.role,'termination',form.employeeUserId));setSign('')}}}>Kündigung</button>
+        <button type="button" className={form.kind==='warning'?'primary-button':'secondary-button'} aria-pressed={form.kind==='warning'} onClick={()=>{if(form.kind!=='warning'){setForm({...fresh(session.role,'warning',form.employeeUserId),address:form.address});setSign('')}}}>Abmahnung</button>
+        <button type="button" className={form.kind==='termination'?'primary-button':'secondary-button'} aria-pressed={form.kind==='termination'} onClick={()=>{if(form.kind!=='termination'){setForm({...fresh(session.role,'termination',form.employeeUserId),address:form.address||employeeAddress(recipient)});setSign('')}}}>Kündigung</button>
       </div>
       <form className="personnel-form" onSubmit={e=>e.preventDefault()} data-testid="personnel-quick-form">
         <label>Mitarbeiter<select aria-label="Mitarbeiter" data-testid="personnel-employee" required value={form.employeeUserId} onChange={e=>{
           const uid=e.target.value,employee=employees.find(x=>String(x.userId||x.id)===uid)
-          const address=employee?.postalAddress||employee?.address
-          const postal=typeof address==='string'?address.trim():''
-          setForm(f=>({...f,employeeUserId:uid,address:postal}));setSign('')
+          setForm(f=>({...f,employeeUserId:uid,address:employeeAddress(employee),legalReviewed:false}));setSign('')
         }}><option value="">Mitarbeiter auswählen</option>{employees.map(e=><option key={e.userId||e.id} value={e.userId||e.id}>{employeeName(e)||'Mitarbeiter'}{employees.filter(x=>employeeName(x)===employeeName(e)).length>1?' · Konto …'+String(e.userId||e.id).slice(-8):''}</option>)}</select></label>
-        <label>{form.kind==='warning'?'Abmahnungsgrund':'Kündigungsart'}<select aria-label={form.kind==='warning'?'Abmahnungsgrund':'Kündigungsart'} required value={form.reason} onChange={e=>{setForm(f=>({...f,reason:e.target.value,expected:''}));setSign('')}}><option value="">Bitte auswählen</option>{Object.entries(form.kind==='warning'?WARNING_REASONS:TERMINATION_TYPES).map(([k,v])=><option key={k} value={k}>{Array.isArray(v)?v[0]:v}</option>)}</select></label>
+        <label>{form.kind==='warning'?'Abmahnungsgrund':'Kündigungsart'}<select aria-label={form.kind==='warning'?'Abmahnungsgrund':'Kündigungsart'} required value={form.reason} onChange={e=>{setForm(f=>({...f,reason:e.target.value,expected:'',...(f.kind==='termination'?{endDate:'',terminationText:'',legalReviewed:false}:{})}));setSign('')}}><option value="">Bitte auswählen</option>{Object.entries(form.kind==='warning'?WARNING_REASONS:TERMINATION_TYPES).map(([k,v])=><option key={k} value={k}>{Array.isArray(v)?v[0]:v}</option>)}</select></label>
         {form.kind==='warning'?<>
           {field('incidentDate','Datum des Vorfalls (heute voreingestellt)','date')}
           <label>Was ist passiert?<textarea aria-label="Was ist passiert?" required maxLength={1800} rows={3} value={form.facts} onChange={e=>change('facts',e.target.value)} placeholder="Kurz beschreiben: Uhrzeit, Einsatzort, konkreter Vorfall. Keine Vermutungen."/></label>
           <small>Beispiel: Dienstbeginn 06:00 Uhr, am Objekt X erst um 06:25 Uhr erschienen.</small>
         </>:<>
           {form.reason!=='extraordinary'&&field('endDate','Beendigungsdatum','date')}
-          {area('address','Empfängeranschrift (prüfen)',true,400)}
-          <label className="personnel-check"><input type="checkbox" checked={form.legalReviewed} onChange={e=>change('legalReviewed',e.target.checked)} required/>Kündigungsfrist, Kündigungsschutz und erforderliche Beteiligungen sind geprüft.</label>
+          <label>Empfängeranschrift (prüfen)<textarea aria-label="Empfängeranschrift (prüfen)" required maxLength={400} rows={3} value={form.address} onChange={e=>change('address',e.target.value)} onBlur={()=>{try{const normalized=normalizePersonnelAddress(form.address);if(normalized!==form.address)change('address',normalized)}catch{}}} placeholder={'Musterstraße 12\n30159 Hannover'}/></label>
+          <small>Straße und Hausnummer sowie PLZ und Ort in getrennten Zeilen. Bei fehlender Anschrift bitte manuell ergänzen. Keine Daten werden automatisch erfunden.</small>
+          <label className="personnel-check"><input type="checkbox" checked={form.legalReviewed} onChange={e=>change('legalReviewed',e.target.checked)} required/><span>{form.reason==='extraordinary'?'Wichtiger Grund, Erklärungsfrist und Kündigungsschutz sowie erforderliche Beteiligungen sind geprüft.':form.reason==='probation'?'Vereinbarte Probezeit, maßgebliche Kündigungsfrist, Kündigungsschutz und erforderliche Beteiligungen sind geprüft.':'Kündigungsfrist, Kündigungsschutz und erforderliche Beteiligungen sind geprüft.'}</span></label>
           <p>Die Kündigung wird als druckfertiges PDF erstellt. Das Papieroriginal muss eigenhändig unterschrieben und zugestellt werden (§ 623 BGB).</p>
           <div className="personnel-auto"><strong>Separates Mitarbeitermerkblatt</strong><span>Bitte informieren Sie den Mitarbeiter rechtzeitig über die Arbeitsuchendmeldung (§ 2 Abs. 2 Nr. 3 SGB III). Das Merkblatt kann unabhängig von der Kündigung ausgedruckt und übergeben werden. Es wird nicht automatisch gespeichert oder versendet.</span><button type="button" className="secondary-button" disabled={busy} onClick={downloadNotice}>Merkblatt herunterladen / drucken</button></div>
         </>}
         <div className="personnel-auto"><strong>Automatisch ausgefüllt</strong><span>Firmenlogo · Firmendaten · Name: {session.fullName||'aus angemeldetem Konto'} · {form.signerFunction}</span></div>
         <details className="personnel-extra"><summary>Weitere Angaben (optional)</summary>
-          {form.kind==='warning'?<>{field('incidentTime','Uhrzeit','time',false)}{field('location','Einsatzort / Objekt','text',false)}{area('duty','Verletzte Pflicht / bekannte Dienstanweisung',false,650)}{area('expected','Künftig erwartetes Verhalten (sonst automatisch)',false,450)}{area('address','Empfängeranschrift (optional)',false,400)}</>:area('terminationText','Rechtlich geprüfter Zusatztext (optional)',false,900)}
+          {form.kind==='warning'?<>{field('incidentTime','Uhrzeit','time',false)}{field('location','Einsatzort / Objekt','text',false)}{area('duty','Verletzte Pflicht / bekannte Dienstanweisung',false,650)}{area('expected','Künftig erwartetes Verhalten (sonst automatisch)',false,450)}{area('address','Empfängeranschrift (optional)',false,400)}</>:area('terminationText',form.reason==='extraordinary'?'Rechtlich geprüfte Begründung / Zusatztext (optional)':'Rechtlich geprüfter Zusatztext (optional)',false,900)}
           <label>Funktion der unterzeichnenden Person<select value={form.signerFunction} onChange={e=>change('signerFunction',e.target.value)}>{funcs.map(x=><option key={x}>{x}</option>)}</select></label>
         </details>
         {draft&&<details className="personnel-extra" open><summary>Fertiger Text – bitte prüfen</summary><div className="personnel-draft"><strong>{draft.title}</strong>{draft.paragraphs.map((p,i)=><p key={i}>{p}</p>)}</div></details>}
