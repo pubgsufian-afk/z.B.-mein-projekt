@@ -23,6 +23,14 @@ export const TERMINATION_TYPES = {
   ordinary: 'Ordentliche Kündigung',
   probation: 'Ordentliche Kündigung während der Probezeit',
   extraordinary: 'Außerordentliche fristlose Kündigung',
+  confirmation: 'Kündigungsbestätigung',
+}
+export const TERMINATION_GROUNDS = {
+  none: 'Keine Begründung im Schreiben',
+  operational: 'Betriebsbedingte Gründe',
+  personal: 'Personenbedingte Gründe',
+  conduct: 'Verhaltensbedingte Gründe',
+  other: 'Sonstiger rechtlich geprüfter Grund',
 }
 export const TERMINATION_NOTICE_TITLE = 'Merkblatt zur Beendigung des Arbeitsverhältnisses'
 export const TERMINATION_NOTICE_PARAGRAPHS = [
@@ -70,6 +78,15 @@ export function validTerminationAddress(value) {
   } catch { return false }
 }
 const de = (v) => v.split('-').reverse().join('.')
+const longDate = v => new Intl.DateTimeFormat('de-DE',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(v+'T12:00:00Z'))
+export function terminationSalutation(input,name) {
+  const mode=input.salutation||'neutral'
+  if(!['neutral','herr','frau'].includes(mode))throw new TypeError('Ungültige Anrede.')
+  if(mode==='neutral')return 'Guten Tag '+name+','
+  const surname=val(input.surname,120)
+  if(!surname||/[\r\n]/.test(surname))throw new TypeError('Bitte den Nachnamen für die persönliche Anrede prüfen und eintragen.')
+  return (mode==='herr'?'Sehr geehrter Herr ':'Sehr geehrte Frau ')+surname+','
+}
 export function canManagePersonnel(role) { return role === 'owner' || role === 'admin' }
 export function canReadPersonnel(actor, row) {
   return Boolean(actor?.userId && row && (canManagePersonnel(actor.role) || (row.employee_user_id === actor.userId && row.published_at)))
@@ -103,27 +120,38 @@ export function makePersonnelText(input, employeeName) {
   }
   if (input.kind !== 'termination' || !Object.hasOwn(TERMINATION_TYPES, input.reason)) throw new TypeError('Ungültige Dokumentart.')
   const extraordinary = input.reason === 'extraordinary'
+  const confirmation = input.reason === 'confirmation'
   const endDate = val(input.endDate, 10)
   if (!extraordinary && !dateValid(endDate)) throw new TypeError('Bitte das geprüfte Beendigungsdatum angeben.')
-  if (input.legalReviewed !== true) throw new TypeError('Kündigungsvoraussetzungen und Frist müssen geprüft sein.')
-  const extra = val(input.terminationText, 900)
-  return { title: TERMINATION_TYPES[input.reason], reason: TERMINATION_TYPES[input.reason], paragraphs: [
-    'Guten Tag ' + name + ',',
-    ...(extraordinary ? [
-      'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis aus wichtigem Grund außerordentlich und fristlos mit Wirkung ab Zugang dieses Schreibens.',
-      ...(extra ? [extra] : []),
-      'Bitte stimmen Sie die unverzügliche Rückgabe der Ihnen überlassenen Arbeitsmittel, Dienstkleidung, Schlüssel und betrieblichen Unterlagen mit unserer Verwaltung ab.',
-    ] : input.reason === 'probation' ? [
-      'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis während der vereinbarten Probezeit ordentlich unter Einhaltung der maßgeblichen Kündigungsfrist zum ' + de(endDate) + ', hilfsweise zum nächstzulässigen Termin.',
-      ...(extra ? [extra] : []),
-      'Bitte vereinbaren Sie mit unserer Verwaltung die ordnungsgemäße Übergabe Ihrer betrieblichen Arbeitsmittel und Schlüssel bis zur Beendigung des Arbeitsverhältnisses.',
-      'Wir wünschen Ihnen für Ihren weiteren beruflichen Weg alles Gute.',
-    ] : [
-      'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis ordentlich und fristgerecht zum ' + de(endDate) + ', hilfsweise zum nächstzulässigen Termin.',
-      ...(extra ? [extra] : []),
-      'Bitte stimmen Sie die Übergabe Ihrer laufenden Aufgaben sowie die Rückgabe der Ihnen überlassenen Arbeitsmittel, Dienstkleidung, Schlüssel und betrieblichen Unterlagen mit unserer Verwaltung ab.',
-    ]),
-    'Die abschließende Abwicklung des Arbeitsverhältnisses erfolgt nach den maßgeblichen arbeitsvertraglichen, tariflichen und gesetzlichen Bestimmungen.',
+  if (input.legalReviewed !== true) throw new TypeError('Die Angaben und rechtlichen Voraussetzungen müssen geprüft sein.')
+  const greeting=terminationSalutation(input,name)
+  if(confirmation){
+    const resignationDate=val(input.resignationDate,10)
+    if(!dateValid(resignationDate)||resignationDate>endDate)throw new TypeError('Bitte das Datum der Eigenkündigung und das Beendigungsdatum prüfen.')
+    if(input.employeeResignationConfirmed!==true)throw new TypeError('Bitte bestätigen, dass die Eigenkündigung des Mitarbeiters tatsächlich vorliegt.')
+    return {title:'Kündigungsbestätigung',reason:TERMINATION_TYPES.confirmation,paragraphs:[
+      greeting,
+      'hiermit bestätigen wir den Eingang Ihrer Kündigung vom '+de(resignationDate)+', mit der Sie das Arbeitsverhältnis zum '+longDate(endDate)+' beenden.',
+      'Wir nehmen Ihre Kündigung zur Kenntnis und bestätigen, dass das Arbeitsverhältnis mit Ablauf des '+longDate(endDate)+' endet.',
+      'Wir danken Ihnen für die Zusammenarbeit und wünschen Ihnen für Ihre berufliche und persönliche Zukunft alles Gute.',
+      'Mit freundlichen Grüßen',
+    ]}
+  }
+  const ground=input.terminationGround||'none'
+  if(!Object.hasOwn(TERMINATION_GROUNDS,ground))throw new TypeError('Ungültiger Kündigungsgrund.')
+  const extra=val(input.terminationText,900)
+  if(ground==='other'&&!extra)throw new TypeError('Bitte den sonstigen Kündigungsgrund konkret angeben.')
+  const groundText={operational:' aus betriebsbedingten Gründen',personal:' aus personenbedingten Gründen',conduct:' aus verhaltensbedingten Gründen'}[ground]||''
+  const first=extraordinary
+    ? 'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis aus wichtigem Grund außerordentlich und fristlos mit Wirkung ab Zugang dieses Schreibens.'
+    : input.reason==='probation'
+      ? 'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis während der vereinbarten Probezeit fristgerecht zum '+longDate(endDate)+', hilfsweise zum nächstzulässigen Termin'+groundText+'.'
+      : 'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis ordentlich und fristgerecht zum '+longDate(endDate)+', hilfsweise zum nächstzulässigen Termin'+groundText+'.'
+  return {title:input.reason==='probation'?'Kündigung des Arbeitsverhältnisses in der Probezeit':TERMINATION_TYPES[input.reason],reason:TERMINATION_TYPES[input.reason],paragraphs:[
+    greeting,first,
+    ...(extraordinary&&groundText?['Kündigungsgrund: '+TERMINATION_GROUNDS[ground]+'.']:[]),
+    ...(extra?[extra]:[]),
+    ...(input.includeEmploymentNotice===true?TERMINATION_NOTICE_PARAGRAPHS.slice(0,3):[]),
     'Mit freundlichen Grüßen',
-  ] }
+  ]}
 }
