@@ -1,3 +1,4 @@
+import { withDeploymentContext } from './_shared/portal-notification-storage.mts'
 import type { Config, Context } from '@netlify/functions'
 import { getDatabase } from '@netlify/database'
 import { getStore } from '@netlify/blobs'
@@ -242,6 +243,7 @@ async function withdraw(actor: Actor, body: RequestBody) {
 }
 
 export default async function timeOff(request: Request, _context: Context) {
+  return withDeploymentContext(_context, async()=>{
   const actor = await currentPortalActor()
   if (!actor) return json({ message: 'Bitte anmelden.' }, 401)
   if (actor.role === 'pending') return json({ message: 'Das Konto ist noch nicht freigeschaltet.' }, 403)
@@ -272,6 +274,7 @@ export default async function timeOff(request: Request, _context: Context) {
     console.error('Habun time off write', error)
     return json({ message: 'Die Anfrage konnte nicht verarbeitet werden. Bitte später erneut versuchen.' }, 500)
   }
+  })
 }
 
 export const config: Config = { path: '/api/time-off' }

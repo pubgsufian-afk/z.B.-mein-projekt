@@ -1,3 +1,4 @@
+import { withDeploymentContext } from './_shared/portal-notification-storage.mts'
 import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { getDatabase } from '@netlify/database'
@@ -117,6 +118,7 @@ async function audit(documentId: string, actorId: string, action: 'upload' | 'do
 }
 
 export default async function employeeDocuments(request: Request, context: Context) {
+  return withDeploymentContext(context, async()=>{
   const access = await requirePortalRole(['owner', 'admin', 'manager', 'employee'])
   if (access.response || !access.current) return access.response
   const actor = access.current
@@ -274,6 +276,7 @@ export default async function employeeDocuments(request: Request, context: Conte
     })
     return json({ message: 'Das Mitarbeiterpostfach ist momentan nicht verfügbar.' }, 500)
   }
+  })
 }
 
 export const config: Config = { path: '/api/employee-documents' }

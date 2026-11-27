@@ -1,7 +1,13 @@
 import { getDatabase } from '@netlify/database'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import type { Context } from '@netlify/functions'
 import { notificationUrl } from './portal-notification-policy.mjs'
+const runtimeContext = new AsyncLocalStorage<string>()
+export function withDeploymentContext<T>(context: Pick<Context,'deploy'> | undefined, fn:()=>T):T {
+  return runtimeContext.run(String(context?.deploy?.context || ''),fn)
+}
 export function deploymentContext(){
-  return typeof Netlify==='undefined'?'':String(Netlify.context?.deploy?.context||'')
+  return runtimeContext.getStore() || ''
 }
 export async function persistPortalNotice(input:{userIds:string[];eventKey:string;title:string;body:string;url?:string}){
   const ids=[...new Set(input.userIds.map(x=>String(x||'').trim()).filter(Boolean))]

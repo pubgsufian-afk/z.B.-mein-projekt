@@ -1,3 +1,4 @@
+import { withDeploymentContext } from './_shared/portal-notification-storage.mts'
 import type { Config, Context } from '@netlify/functions'
 import { getDatabase } from '@netlify/database'
 import { getStore } from '@netlify/blobs'
@@ -7,6 +8,7 @@ import { reminderMessage } from './_shared/portal-notification-policy.mjs'
 // Minute timer, also when the portal is closed. German local time and overnight shifts.
 // An end reminder is sent only for a still-open attendance session for that shift.
 export default async function scheduleStartReminders(_request:Request,context:Context){
+  return withDeploymentContext(context, async()=>{
   if(context.deploy?.context!=='production')return
   const db=getDatabase()
   const due=await db.pool.query(
@@ -49,5 +51,6 @@ export default async function scheduleStartReminders(_request:Request,context:Co
       else await db.pool.query("UPDATE schedule_push_reminders SET status='processed',processed_at=now() WHERE reminder_key=$1",[key])
     }catch{console.error('Schedule reminder processing failed')}
   }
+  })
 }
 export const config:Config={schedule:'* * * * *'}

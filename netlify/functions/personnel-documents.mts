@@ -1,3 +1,4 @@
+import { withDeploymentContext } from './_shared/portal-notification-storage.mts'
 import type { Config, Context } from '@netlify/functions'
 import { getDatabase } from '@netlify/database'
 import { getStore } from '@netlify/blobs'
@@ -118,6 +119,7 @@ function publicRow(row: Record<string,unknown>, admin: boolean, actor: {userId:s
   return {id:row.id, employeeName:row.employee_name, creatorName:row.creator_name, creatorFunction:row.creator_function, kind:row.kind, title:row.title, ...(admin?{reason:row.reason}:{}), createdAt:row.created_at, publishedAt:row.published_at, openedAt:row.first_opened_at, paperDeliveredOn:row.paper_delivered_on, acknowledgedAt:row.receipt_at, canPublish:admin&&canPublishPersonnel(row),canAcknowledge:canAcknowledgePersonnel(actor,row)}
 }
 export default async function personnel(request: Request, context: Context) {
+  return withDeploymentContext(context, async()=>{
   const access=await requirePortalRole(['owner','admin','manager','employee'])
   if(access.response||!access.current)return access.response
   const actor=access.current, admin=canManagePersonnel(actor.role), db=getDatabase(), url=new URL(request.url)
@@ -204,5 +206,6 @@ export default async function personnel(request: Request, context: Context) {
     console.error('Personnel document operation failed',request.method,url.searchParams.get('action'))
     return json({message:'Personalunterlagen sind momentan nicht verfügbar.'},500)
   }
+  })
 }
 export const config: Config = {path:'/api/personnel-documents'}

@@ -1,5 +1,6 @@
+import { withDeploymentContext } from './_shared/portal-notification-storage.mts'
 import { notifyPortalAdmins, notifyPortalUsers } from './_shared/portal-notification-service.mts'
-import type { Config } from '@netlify/functions'
+import type { Config, Context } from '@netlify/functions'
 import { verifyRequestOrigin } from '@netlify/identity'
 import { requirePortalRole } from './_shared/portal-role.mts'
 import { listSuppressedTimesheetEntries, listTimesheetEntries, writeTimesheetAudit } from './_shared/timesheet-repository.mts'
@@ -102,7 +103,8 @@ function requireReason(value: unknown) {
   return reason
 }
 
-export default async function timesheets(request: Request) {
+export default async function timesheets(request: Request, context?: Context) {
+  return withDeploymentContext(context, async()=>{
   const access = await requirePortalRole([...MANAGEMENT])
   if (access.response || !access.current) return access.response
   const current = access.current
@@ -221,6 +223,7 @@ export default async function timesheets(request: Request) {
     console.error('timesheets failed', error)
     return json({ message: 'Stundenzettel konnten nicht verarbeitet werden.' }, 500)
   }
+  })
 }
 
 export const config: Config = { path: '/api/timesheets' }

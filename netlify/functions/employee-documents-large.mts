@@ -1,3 +1,4 @@
+import { withDeploymentContext } from './_shared/portal-notification-storage.mts'
 import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { getDatabase } from '@netlify/database'
@@ -121,6 +122,7 @@ async function storedManifest(context: Context, row: Record<string, unknown>) {
 }
 
 export default async function employeeLargeDocuments(request: Request, context: Context) {
+  return withDeploymentContext(context, async()=>{
   const access = await requirePortalRole(['owner', 'admin', 'manager', 'employee'])
   if (access.response || !access.current) return access.response
   const actor = access.current
@@ -331,6 +333,7 @@ export default async function employeeLargeDocuments(request: Request, context: 
     console.error('Large employee document action failed', { action, error })
     return json({ message: 'Das Postfach ist momentan nicht erreichbar. Bitte erneut versuchen.' }, 500)
   }
+  })
 }
 
 export const config: Config = { path: '/api/employee-documents-large' }

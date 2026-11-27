@@ -1,7 +1,7 @@
 import { getStore } from '@netlify/blobs'
 import { readPortalRegistrationIdentities } from './registration-email-guard.mts'
 import { sendPushToUsers } from './push-core.mts'
-import { deploymentContext, persistPortalNotice } from './portal-notification-storage.mts'
+import { deploymentContext } from './portal-notification-storage.mts'
 import { isActiveAdmin, notificationUrl } from './portal-notification-policy.mjs'
 
 type Notice={eventKey:string;title:string;body:string;url:string}
@@ -51,8 +51,7 @@ export async function notifyPortalUsers(userIds:string[],notice:Notice){
     if(!ids.length)return
     const input={...notice,url:notificationUrl(notice.url),userIds:ids}
     // The persistent inbox does not depend on device subscriptions.
-    await persistPortalNotice(input)
-    if(deploymentContext()==='production')await sendPushToUsers(input)
+    await sendPushToUsers(input)
   }catch{console.error('Portal notification failed',notice.eventKey.split(':')[0])}
 }
 export async function notifyPortalAdmins(notice:Notice,exclude=''){

@@ -1,3 +1,4 @@
+import { withDeploymentContext } from './_shared/portal-notification-storage.mts'
 import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { getUser, verifyRequestOrigin } from '@netlify/identity'
@@ -332,6 +333,7 @@ async function retention(sql: Awaited<ReturnType<typeof connection>>, current: N
 }
 
 export default async function maintenance(request: Request, _context: Context) {
+  return withDeploymentContext(_context, async()=>{
   const current = await actor()
   if (!current) return json({ message: 'Nicht angemeldet.' }, 401)
   if (!MANAGEMENT.has(current.role)) return json({ message: 'Keine Berechtigung.' }, 403)
@@ -359,6 +361,7 @@ export default async function maintenance(request: Request, _context: Context) {
     console.error('Habun attendance maintenance', error)
     return json({ message: 'Die Korrektur-, Zeit- oder Aufbewahrungsaktion ist fehlgeschlagen.' }, 500)
   }
+  })
 }
 
 export const config: Config = { path: '/api/attendance-maintenance' }

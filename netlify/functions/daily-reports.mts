@@ -1,4 +1,5 @@
-import type { Config } from '@netlify/functions'
+import { withDeploymentContext } from './_shared/portal-notification-storage.mts'
+import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { verifyRequestOrigin } from '@netlify/identity'
 import { randomUUID } from 'node:crypto'
@@ -64,7 +65,8 @@ async function authorNameFor(current: NonNullable<Awaited<ReturnType<typeof requ
   return localPart || 'Mitarbeiter'
 }
 
-export default async function dailyReports(request: Request) {
+export default async function dailyReports(request: Request, context?: Context) {
+  return withDeploymentContext(context, async()=>{
   if (request.method === 'OPTIONS') return new Response(null, { status: 204 })
   if (!['GET', 'POST', 'PATCH', 'DELETE'].includes(request.method)) return response({ message: 'Methode nicht erlaubt.' }, 405)
 
@@ -148,6 +150,7 @@ export default async function dailyReports(request: Request) {
     console.error('Habun daily reports', error)
     return response({ message: 'Der Tagesbericht konnte nicht verarbeitet werden.' }, 500)
   }
+  })
 }
 
 export const config: Config = { path: '/api/daily-reports' }

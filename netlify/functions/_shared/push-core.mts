@@ -259,10 +259,10 @@ export async function sendPushToUsers(options: {
   if (!userIds.length) return { targeted: 0, delivered: 0, removed: 0, messageId: message.id }
 
   const deployment=deploymentContext()
-  if(deployment){
-    try{await persistPortalNotice({userIds,eventKey:options.eventKey||message.id,title,body,url})}catch{console.error('Could not persist targeted portal notification')}
-    if(deployment!=='production')return {targeted:0,delivered:0,removed:0,messageId:message.id}
-  }
+  // No real device dispatch without a trusted production invocation.
+  if(!deployment)return {targeted:0,delivered:0,removed:0,messageId:message.id}
+  try{await persistPortalNotice({userIds,eventKey:options.eventKey||message.id,title,body,url})}catch{console.error('Could not persist targeted portal notification')}
+  if(deployment!=='production')return {targeted:0,delivered:0,removed:0,messageId:message.id}
   const recipients = new Set(userIds)
   const devices = (await listDevices()).filter((row) => recipients.has(row.userId))
   const config = devices.length ? await vapidConfig() : null

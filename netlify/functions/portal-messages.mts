@@ -1,4 +1,5 @@
-import type { Config } from '@netlify/functions'
+import { withDeploymentContext } from './_shared/portal-notification-storage.mts'
+import type { Config, Context } from '@netlify/functions'
 import { getDatabase } from '@netlify/database'
 import { getStore } from '@netlify/blobs'
 import { verifyRequestOrigin } from '@netlify/identity'
@@ -23,7 +24,8 @@ function parseAttachment(value:any){
   const name=(value.name.replace(/[^a-zA-Z0-9._ -]/g,'_').replace(/\.[^.]+$/,'').slice(0,100)||'Anhang')+ext
   return {name,type,base64:bytes.toString('base64'),sha256:hash(bytes)}
 }
-export default async function messages(request:Request){
+export default async function messages(request:Request, context?: Context) {
+  return withDeploymentContext(context, async()=>{
   const access=await requirePortalRole(['owner','admin','manager','employee'])
   if(access.response||!access.current)return access.response
   const actor=access.current,admin=administrationRole(actor.role),db=getDatabase(),url=new URL(request.url)
@@ -65,5 +67,6 @@ export default async function messages(request:Request){
     else await notifyPortalUsers([destination.recipientUserId!],notice)
     return json({ok:true,id:body.id},201)
   }catch(error){if(error instanceof TypeError)return json({message:error.message},400);console.error('Portal messages operation failed');return json({message:'Nachricht konnte nicht verarbeitet werden.'},500)}
+  })
 }
 export const config:Config={path:'/api/portal-messages'}
