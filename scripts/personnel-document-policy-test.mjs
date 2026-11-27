@@ -55,3 +55,6 @@ assert.equal(normalizePersonnelAddress(' Teststraße 1\r\n 12345 Teststadt '),'T
 assert.equal(validTerminationAddress('Kksks'),false)
 assert.equal(validTerminationAddress('Teststraße 1\n12345 Teststadt'),true)
 assert.equal(validTerminationAddress('Teststraße 1\nTeststadt\nDeutschland'),false)
+
+assert.equal(validTerminationAddress('Teststraße\n12345 Teststadt'),false)
+assert.equal(validTerminationAddress('Postfach 123\n12345 Teststadt'),true)
