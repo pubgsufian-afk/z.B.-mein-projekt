@@ -3,7 +3,10 @@ import { getDatabase } from '@netlify/database'
 import { getStore } from '@netlify/blobs'
 import { verifyRequestOrigin } from '@netlify/identity'
 import { createHash } from 'node:crypto'
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
+import { PDFDocument, rgb } from 'pdf-lib'
+import fontkit from '@pdf-lib/fontkit'
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import { requirePortalRole } from './_shared/portal-role.mts'
 import { readCompanySettings } from './_shared/company-settings.mts'
 import { readPdfLogoBytes } from './_shared/pdf-branding.mts'
@@ -39,8 +42,16 @@ const dateLabel = (d: Date) => new Intl.DateTimeFormat('de-DE',{dateStyle:'long'
 async function renderPdf(input: { title: string; paragraphs: string[]; employeeName: string; address?: string; signerName: string; signerFunction: string; issued: Date; signatureBytes?: Buffer; reference: string; receipt?: boolean }) {
   const settings = await readCompanySettings()
   const pdf = await PDFDocument.create()
-  const font = await pdf.embedFont(StandardFonts.Helvetica)
-  const bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  pdf.registerFontkit(fontkit)
+  const fontRoot=resolve(process.cwd(),'node_modules/dejavu-fonts-ttf/ttf')
+  const [regularBytes,boldBytes]=await Promise.all([readFile(resolve(fontRoot,'DejaVuSans.ttf')),readFile(resolve(fontRoot,'DejaVuSans-Bold.ttf'))])
+  const font = await pdf.embedFont(regularBytes,{subset:true})
+  const bold = await pdf.embedFont(boldBytes,{subset:true})
+  const regularSet=new Set(font.getCharacterSet()),boldSet=new Set(bold.getCharacterSet())
+  function checkText(text:string,strong:boolean){
+    const supported=strong?boldSet:regularSet
+    for(const c of text)if(c!=='\n'&&!supported.has(c.codePointAt(0)!))throw new TypeError('Ein Zeichen wird von der PDF-Schrift nicht unterstützt. Der Name darf nicht verändert werden.')
+  }
   const logo = await pdf.embedPng((await readPdfLogoBytes()).bytes)
   let page = pdf.addPage([595.28, 841.89]), y = 0
   const width=475, margin=60
@@ -55,13 +66,14 @@ async function renderPdf(input: { title: string; paragraphs: string[]; employeeN
   }
   function line(text: string, size=11, strong=false) {
     const f=strong?bold:font
-    try { f.encodeText(text) } catch { throw new TypeError('Ein Name oder Text enthält Zeichen, die diese PDF-Schrift nicht unterstützt. Bitte nicht durch einen falschen Namen ersetzen; PDF-Erstellung benötigt eine passende Schrift.') }
+    checkText(text,strong)
     if(y<75){page=pdf.addPage([595.28,841.89]);y=page.getHeight()-60}
     page.drawText(text,{x:margin,y,size,font:f,color:rgb(.1,.1,.1)})
     y-=size+5
   }
   function paragraph(text:string,size=11,strong=false) {
     const f=strong?bold:font
+    checkText(text,strong)
     for(const block of text.split('\n')){
       let current=''
       for(const word of block.split(/\s+/)){

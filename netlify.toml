@@ -7,6 +7,9 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
+[functions."personnel-documents"]
+  included_files = ["node_modules/dejavu-fonts-ttf/ttf/DejaVuSans.ttf", "node_modules/dejavu-fonts-ttf/ttf/DejaVuSans-Bold.ttf"]
+
 [[redirects]]
   from = "/api/unified-reports"
   to = "/.netlify/functions/unified-reports-fixed"
