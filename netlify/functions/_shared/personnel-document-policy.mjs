@@ -61,21 +61,49 @@ const val = (v, max) => {
   return s
 }
 // Preserve postal lines; accept a common single-line German address without guessing missing data.
-export function normalizePersonnelAddress(value) {
-  const address = val(value, 400).replace(/\r/g, '\n')
-  const lines = address.replace(/,\s*(?=\d{5}\s+\S)/g, '\n').split('\n').map(line=>line.trim().replace(/[ \t]+/g,' ')).filter(Boolean)
-  return lines.join('\n')
+export function addressStartsWithName(value,name) {
+  const cleanName=typeof name==='string'?name.trim().replace(/\s+/g,' '):''
+  if(!cleanName||!/\p{L}/u.test(cleanName))return false
+  const address=typeof value==='string'?value.trim().replace(/\s+/g,' '):''
+  const prefix=address.slice(0,cleanName.length).toLocaleLowerCase('de-DE')
+  return prefix===cleanName.toLocaleLowerCase('de-DE')&&/^[\s,]/.test(address.slice(cleanName.length))
 }
-export function validTerminationAddress(value) {
+export function normalizePersonnelAddress(value,employeeName='') {
+  let address = val(value, 400).replace(/\r/g, '\n').trim()
+  // The PDF has a separate recipient name. Remove only an exact, known name,
+  // never infer a stranger's name or silently transfer their address.
+  if(addressStartsWithName(address,employeeName)){
+    const parts=employeeName.trim().split(/\s+/)
+    const words=parts.map(x=>x.replace(/[.*+?^\x24{}()|[\]\\]/g,'\\$&'))
+    address=address.replace(new RegExp('^'+words.join('\\s+')+'[\\s,]+','iu'),'')
+  }
+  const lines=address.split('\n').map(line=>line.trim().replace(/[ \t]+/g,' ')).filter(Boolean)
+  const normalized=lines.map(line=>{
+    // Split only at a five-digit postcode preceded by an existing house or
+    // postbox number. Keep the actual street and locality exactly as entered.
+    if(/^\d{5}\s+\p{L}/u.test(line))return line
+    const match=/^(.+?\d[\p{L}]?(?:\s*[-/]\s*\d[\p{L}]?)?)[,; ]+\s*(\d{5}\s+\p{L}.*)$/u.exec(line)
+    return match?match[1].trim()+'\n'+match[2].trim():line
+  })
+  return normalized.join('\n')
+}
+export function validTerminationAddress(value,employeeName='') {
   try {
-    const lines=normalizePersonnelAddress(value).split('\n')
+    const lines=normalizePersonnelAddress(value,employeeName).split('\n')
     if(lines.length<2 || !/\p{L}/u.test(lines[0]))return false
-    // German addresses: separate postcode and locality; international addresses
-    // may use another postal format if a separate country line is supplied.
     const postcodeIndex=lines.findIndex((line,i)=>i>0&&/^\d{5}\s+\p{L}/u.test(line))
     if(postcodeIndex>0)return lines.slice(0,postcodeIndex).some(line=>/\p{L}/u.test(line)&&/\d/.test(line))
     return lines.length>=3 && /\p{L}/u.test(lines.at(-2)) && /^[\p{L}][\p{L} .'-]{1,60}$/u.test(lines.at(-1)) && !/^(Deutschland|Germany)$/i.test(lines.at(-1))
   } catch { return false }
+}
+export function recipientNameValid(value) {
+  return typeof value==='string' && /\p{L}/u.test(value.trim())
+}
+export function addressMatchesOtherAccount(value,employeeName,accountName) {
+  return Boolean(accountName&&employeeName&&accountName.trim().toLocaleLowerCase('de-DE')!==employeeName.trim().toLocaleLowerCase('de-DE')&&addressStartsWithName(value,accountName))
+}
+export function defaultSignerFunction(name) {
+  return String(name||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('de-DE')==='marwan ziad'?'Inhaber':'Bevollmächtigter'
 }
 const de = (v) => v.split('-').reverse().join('.')
 const longDate = v => new Intl.DateTimeFormat('de-DE',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(v+'T12:00:00Z'))
