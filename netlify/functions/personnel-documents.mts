@@ -13,7 +13,7 @@ import { readCompanySettings } from './_shared/company-settings.mts'
 import { readPdfLogoBytes } from './_shared/pdf-branding.mts'
 import { sendPushToUsers } from './_shared/push-core.mts'
 import { notifyPortalAdmins, notifyPortalUsers } from './_shared/portal-notification-service.mts'
-import { ACK_TEXT, makePersonnelText, dateValid, canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel } from './_shared/personnel-document-policy.mjs'
+import { ACK_TEXT, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS, makePersonnelText, dateValid, canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel } from './_shared/personnel-document-policy.mjs'
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 const SIGNER_FUNCTIONS = new Set(['Inhaber', 'Geschäftsführer', 'Personalverantwortlicher', 'Einsatzleiter', 'Bevollmächtigter'])
@@ -41,7 +41,7 @@ function pdfResponse(bytes: Uint8Array, filename: string) {
   return new Response(Buffer.from(bytes), {headers:{...headers,'Content-Type':'application/pdf','Content-Disposition':'attachment; filename="'+filename+'"','Content-Security-Policy':'sandbox'}})
 }
 const dateLabel = (d: Date) => new Intl.DateTimeFormat('de-DE',{dateStyle:'long',timeZone:'Europe/Berlin'}).format(d)
-async function renderPdf(input: { title: string; paragraphs: string[]; employeeName: string; address?: string; signerName: string; signerFunction: string; issued: Date; signatureBytes?: Buffer; reference: string; receipt?: boolean }) {
+async function renderPdf(input: { title: string; paragraphs: string[]; employeeName: string; address?: string; signerName: string; signerFunction: string; issued: Date; signatureBytes?: Buffer; reference: string; receipt?: boolean; notice?: boolean }) {
   const settings = await readCompanySettings()
   const pdf = await PDFDocument.create()
   pdf.registerFontkit(fontkit)
@@ -95,11 +95,12 @@ async function renderPdf(input: { title: string; paragraphs: string[]; employeeN
     y-=10
   }
   pageHeader()
-  paragraph(input.employeeName,12,true)
+  if(!input.notice)paragraph(input.employeeName,12,true)
   if(input.address)paragraph(input.address,10)
   paragraph('Hannover, '+dateLabel(input.issued),10)
   paragraph(input.title,18,true)
   for(const p of input.paragraphs)paragraph(p)
+  if(input.notice){pdf.setTitle(input.title);return Buffer.from(await pdf.save())}
   if(y<150){page=pdf.addPage([595.28,841.89]);y=page.getHeight()-60}
   if(input.signatureBytes){
     const sign=await pdf.embedPng(input.signatureBytes)
@@ -126,6 +127,11 @@ export default async function personnel(request: Request, context: Context) {
   try {
     if(request.method==='GET'){
       const id=url.searchParams.get('id')||'', action=url.searchParams.get('action')||'list'
+      if(action==='termination-notice'){
+        if(!admin)return json({message:'Keine Berechtigung.'},403)
+        const bytes=await renderPdf({title:TERMINATION_NOTICE_TITLE,paragraphs:TERMINATION_NOTICE_PARAGRAPHS,employeeName:'',signerName:'',signerFunction:'',issued:new Date(),reference:'',notice:true})
+        return pdfResponse(bytes,'Merkblatt-zur-Kuendigung.pdf')
+      }
       if(action==='list'||action==='mine'){
         const all=admin&&action==='list'
         const result=await db.pool.query('SELECT '+metadata+' FROM personnel_documents '+(all?'':'WHERE employee_user_id=$1 AND published_at IS NOT NULL ')+'ORDER BY created_at DESC LIMIT 200',all?[]:[actor.userId])
