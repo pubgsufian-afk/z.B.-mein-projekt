@@ -32,6 +32,15 @@ export const TERMINATION_NOTICE_PARAGRAPHS = [
   'Dieses Merkblatt dient der Information. Es ist keine Kündigung und ersetzt weder das unterschriebene Kündigungsschreiben noch eine individuelle Beratung.',
 ]
 export const ACK_TEXT = 'Ich bestätige ausschließlich den Erhalt dieses Dokuments im Portal. Die Bestätigung bedeutet keine Zustimmung zum Inhalt und keinen Verzicht auf Rechte.'
+export function makeReceiptText({title,createdAt,receiptAt}) {
+  const format=(value,withTime=false)=>{
+    const date=new Date(value)
+    if(!value||!Number.isFinite(date.getTime()))throw new TypeError('Datum der Empfangsbestätigung fehlt oder ist ungültig.')
+    const parts=Object.fromEntries(new Intl.DateTimeFormat('de-DE',{timeZone:'Europe/Berlin',day:'2-digit',month:'2-digit',year:'numeric',...(withTime?{hour:'2-digit',minute:'2-digit',hourCycle:'h23'}:{})}).formatToParts(date).map(p=>[p.type,p.value]))
+    return parts.day+'.'+parts.month+'.'+parts.year+(withTime?', '+parts.hour+':'+parts.minute+' Uhr':'')
+  }
+  return [ACK_TEXT,'Dokument: '+title,'Dokument erstellt am: '+format(createdAt),'Empfang bestätigt am: '+format(receiptAt,true)]
+}
 export function dateValid(v) {
   if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false
   const d = new Date(v + 'T12:00:00Z')
