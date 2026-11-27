@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel, makePersonnelText, dateValid, WARNING_REASONS, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS, normalizePersonnelAddress, validTerminationAddress } from '../netlify/functions/_shared/personnel-document-policy.mjs'
+import { canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel, makePersonnelText, makeReceiptText, dateValid, WARNING_REASONS, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS, normalizePersonnelAddress, validTerminationAddress } from '../netlify/functions/_shared/personnel-document-policy.mjs'
 const employee={userId:'e1',role:'employee'}, other={userId:'e2',role:'employee'}, admin={userId:'a1',role:'admin'}
 const row={employee_user_id:'e1',kind:'warning',published_at:null}
 assert.equal(canManagePersonnel('manager'),false)
@@ -58,3 +58,9 @@ assert.equal(validTerminationAddress('Teststraße 1\nTeststadt\nDeutschland'),fa
 
 assert.equal(validTerminationAddress('Teststraße\n12345 Teststadt'),false)
 assert.equal(validTerminationAddress('Postfach 123\n12345 Teststadt'),true)
+
+const receiptText=makeReceiptText({title:'Abmahnung',createdAt:'2026-11-26T23:30:00Z',receiptAt:'2026-11-27T17:28:45.772Z',id:'internal-id',sha256:'private-hash'})
+assert.deepEqual(receiptText.slice(1),['Dokument: Abmahnung','Dokument erstellt am: 27.11.2026','Empfang bestätigt am: 27.11.2026, 18:28 Uhr'])
+assert.doesNotMatch(receiptText.join(' '),/SHA-256|Dokument-ID|Dokumentreferenz|internal-id|private-hash/)
+assert.match(receiptText[0],/keine Zustimmung/)
+assert.match(makeReceiptText({title:'Abmahnung',createdAt:'2026-07-01T10:00:00Z',receiptAt:'2026-07-01T10:00:00Z'}).at(-1),/12:00 Uhr/)
