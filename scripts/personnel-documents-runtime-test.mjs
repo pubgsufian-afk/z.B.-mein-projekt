@@ -95,6 +95,16 @@ assert.equal((await call('acknowledge',{id,accepted:false,signature:sig})).statu
 assert.equal((await call('acknowledge',{id,accepted:true,signature:sig})).status,200)
 assert.equal((await call('acknowledge',{id,accepted:true,signature:sig})).status,409)
 const receipt=await call('receipt&id='+id);assert.equal(receipt.status,200);assert.ok((await PDFDocument.load(await receipt.arrayBuffer())).getPageCount()>0)
+const confirmed=state.rows.get(id)
+assert.equal(confirmed.receipt_document_sha256,confirmed.pdf_sha256)
+assert.equal(confirmed.receipt_signature,sig)
+const originalHash=confirmed.receipt_document_sha256,originalId=confirmed.id
+const originalReceipt=await drawingStreams(await call('receipt&id='+id))
+try {
+ confirmed.receipt_document_sha256='0'.repeat(64);confirmed.id=randomUUID()
+ assert.deepEqual(await drawingStreams(await call('receipt&id='+id)),originalReceipt)
+} finally {confirmed.receipt_document_sha256=originalHash;confirmed.id=originalId}
+select('e2');assert.equal((await call('receipt&id='+id)).status,404)
 select('a');const tid=randomUUID(), termination={id:tid,kind:'termination',employeeUserId:'e1',reason:'ordinary',endDate:'2026-12-31',address:'Teststraße 1, 12345 Teststadt',signerFunction:'Inhaber',authorized:true,legalReviewed:true}
 assert.equal((await call('create',{...termination,legalReviewed:false})).status,400)
 assert.equal((await call('preview',{...termination,address:'Kksks'})).status,400)
