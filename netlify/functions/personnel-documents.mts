@@ -101,8 +101,8 @@ async function renderPdf(input: { title: string; paragraphs: string[]; employeeN
   pdf.setTitle(input.title)
   return Buffer.from(await pdf.save())
 }
-function publicRow(row: Record<string,unknown>, admin: boolean) {
-  return {id:row.id, employeeName:row.employee_name, creatorName:row.creator_name, creatorFunction:row.creator_function, kind:row.kind, title:row.title, ...(admin?{reason:row.reason}:{}), createdAt:row.created_at, publishedAt:row.published_at, openedAt:row.first_opened_at, paperDeliveredOn:row.paper_delivered_on, acknowledgedAt:row.receipt_at, canPublish:admin&&canPublishPersonnel(row)}
+function publicRow(row: Record<string,unknown>, admin: boolean, actor: {userId:string;role:string}) {
+  return {id:row.id, employeeName:row.employee_name, creatorName:row.creator_name, creatorFunction:row.creator_function, kind:row.kind, title:row.title, ...(admin?{reason:row.reason}:{}), createdAt:row.created_at, publishedAt:row.published_at, openedAt:row.first_opened_at, paperDeliveredOn:row.paper_delivered_on, acknowledgedAt:row.receipt_at, canPublish:admin&&canPublishPersonnel(row),canAcknowledge:canAcknowledgePersonnel(actor,row)}
 }
 export default async function personnel(request: Request, context: Context) {
   const access=await requirePortalRole(['owner','admin','manager','employee'])
@@ -111,9 +111,10 @@ export default async function personnel(request: Request, context: Context) {
   try {
     if(request.method==='GET'){
       const id=url.searchParams.get('id')||'', action=url.searchParams.get('action')||'list'
-      if(action==='list'){
-        const result=await db.pool.query('SELECT '+metadata+' FROM personnel_documents '+(admin?'':'WHERE employee_user_id=$1 AND published_at IS NOT NULL ')+'ORDER BY created_at DESC LIMIT 200',admin?[]:[actor.userId])
-        return json({documents:result.rows.map(row=>publicRow(row,admin))})
+      if(action==='list'||action==='mine'){
+        const all=admin&&action==='list'
+        const result=await db.pool.query('SELECT '+metadata+' FROM personnel_documents '+(all?'':'WHERE employee_user_id=$1 AND published_at IS NOT NULL ')+'ORDER BY created_at DESC LIMIT 200',all?[]:[actor.userId])
+        return json({documents:result.rows.map(row=>publicRow(row,all,actor))})
       }
       if(!UUID.test(id))return json({message:'Dokument nicht gefunden.'},404)
       const row=(await db.pool.query('SELECT * FROM personnel_documents WHERE id=$1',[id])).rows[0]

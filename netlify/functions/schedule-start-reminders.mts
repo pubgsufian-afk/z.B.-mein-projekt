@@ -31,7 +31,7 @@ export default async function scheduleStartReminders(_request: Request, context:
       // Recheck the assignment and start time just before dispatching.
       const currentShift=await db.pool.query("SELECT id FROM schedule_shifts WHERE id=$1 AND employee_user_id=$2 AND status='published' AND ((shift_date+start_time) AT TIME ZONE 'Europe/Berlin')=$3::timestamptz AND ((shift_date+start_time) AT TIME ZONE 'Europe/Berlin')>now()",[row.id,row.employee_user_id,instant])
       if(!currentShift.rows.length){await db.pool.query('DELETE FROM schedule_push_reminders WHERE reminder_key=$1 AND status=$2',[key,'claimed']);continue}
-      const message=row.minutes===30?'Dein Dienst beginnt um '+row.clock+' Uhr (in 30 Minuten). Bitte bereite dich vor.':'Dein Dienst beginnt um '+row.clock+' Uhr (in 5 Minuten). Bitte öffne die Stempeluhr und stemple zum tatsächlichen Dienstbeginn ein.'
+      const message=Number(row.minutes)===30?'Dein Dienst beginnt um '+row.clock+' Uhr (in 30 Minuten). Bitte bereite dich vor.':'Dein Dienst beginnt um '+row.clock+' Uhr (in 5 Minuten). Bitte öffne die Stempeluhr und stemple zum tatsächlichen Dienstbeginn ein.'
       const result=await sendPushToUsers({userIds:[row.employee_user_id],title:'HABUN – Diensterinnerung',body:message,url:'/?view=attendance'})
       if(!result.targeted)await db.pool.query('DELETE FROM schedule_push_reminders WHERE reminder_key=$1 AND status=$2',[key,'claimed'])
       else await db.pool.query("UPDATE schedule_push_reminders SET status='processed',processed_at=now() WHERE reminder_key=$1",[key])

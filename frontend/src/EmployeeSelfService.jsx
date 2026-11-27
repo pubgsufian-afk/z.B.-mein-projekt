@@ -432,6 +432,6 @@ export function EmployeeMailboxPage({ session }) {
         </article>)}
       </div> : <p>Im Postfach sind noch keine Dokumente vorhanden.</p>}
     </section>
-    {!isAdmin && <PersonnelDocuments session={session} embedded />}
+    <PersonnelDocuments session={session} embedded />
   </div>
 }

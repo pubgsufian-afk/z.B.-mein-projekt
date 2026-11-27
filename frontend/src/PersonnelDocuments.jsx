@@ -23,7 +23,7 @@ function Signature({value,onChange,label}){
 }
 function PaperRecord({id,onSaved,run,busy}){
   const [deliveredOn,setDate]=useState(today()),[deliveryNote,setNote]=useState(''),[paperConfirmed,setConfirmed]=useState(false),[copy,setCopy]=useState('')
-  return <form className="personnel-form" onSubmit={e=>{e.preventDefault();run(async()=>{await request('record-paper',{id,deliveredOn,deliveryNote,paperConfirmed,copy});onSaved()})}}>
+  return <form className="personnel-form" onSubmit={e=>{e.preventDefault();run(async()=>{await request('record-paper',{id,deliveredOn,deliveryNote,paperConfirmed,copy});await onSaved()})}}>
     <p>Erst nach tatsächlicher Übergabe/Zustellung des eigenhändig unterschriebenen Originals erfassen. Der Scan ersetzt das Original nicht.</p>
     <label>Zustelldatum<input type="date" required max={today()} value={deliveredOn} onChange={e=>setDate(e.target.value)}/></label>
     <label>Zustellart / Nachweis<input required minLength={5} maxLength={300} value={deliveryNote} onChange={e=>setNote(e.target.value)}/></label>
@@ -35,7 +35,7 @@ function PaperRecord({id,onSaved,run,busy}){
 export default function PersonnelDocuments({session,embedded=false}){
   const admin=['owner','admin'].includes(session.role)&&!embedded
   const [form,setForm]=useState(fresh),[sign,setSign]=useState(''),[employees,setEmployees]=useState([]),[docs,setDocs]=useState([]),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[ok,setOk]=useState(''),[previewed,setPreviewed]=useState(false),[selected,setSelected]=useState(''),[ackSign,setAckSign]=useState(''),[ack,setAck]=useState(false),[paper,setPaper]=useState('')
-  const reload=useCallback(async()=>{const result=await request();setDocs(result.documents||[])},[])
+  const reload=useCallback(async()=>{const result=await request(embedded?'mine':'list');setDocs(result.documents||[])},[embedded])
   useEffect(()=>{reload().catch(e=>setMessage(e.message));if(admin)fetch('/api/registrations',{credentials:'same-origin',cache:'no-store'}).then(r=>{if(!r.ok)throw Error('Mitarbeiterliste konnte nicht geladen werden.');return r.json()}).then(r=>setEmployees((r.employees||[]).filter(e=>e.status==='active'&&(e.userId||e.id)))).catch(e=>setMessage(e.message))},[admin,reload])
   async function run(fn){if(busy)return;setBusy(true);setMessage('');setOk('');try{await fn()}catch(e){setMessage(e.message)}finally{setBusy(false)}}
   const change=(key,value)=>{setForm(f=>({...f,[key]:value}));setPreviewed(false);setSign('')}
@@ -67,9 +67,9 @@ export default function PersonnelDocuments({session,embedded=false}){
       <div className="personnel-actions"><button type="button" className="secondary-button compact" disabled={busy} onClick={()=>run(()=>pdf(doc.id))}>PDF herunterladen / drucken</button>{doc.acknowledgedAt&&<button type="button" className="secondary-button compact" disabled={busy} onClick={()=>run(()=>pdf(doc.id,true))}>Empfangsbestätigung PDF</button>}
       {admin&&doc.kind==='termination'&&!doc.paperDeliveredOn&&!doc.publishedAt&&<button type="button" className="secondary-button compact" onClick={()=>setPaper(paper===doc.id?'':doc.id)}>Papierzustellung erfassen</button>}
       {admin&&doc.canPublish&&<button type="button" className="primary-button compact" disabled={busy} onClick={()=>{if(window.confirm('Dieses Dokument wirklich an '+doc.employeeName+' ins persönliche Postfach senden?'))run(async()=>{await request('publish',{id:doc.id});await reload();setOk('Dokument im persönlichen Postfach bereitgestellt.')})}}>Ins Postfach senden</button>}
-      {!admin&&!doc.acknowledgedAt&&<button type="button" className="secondary-button compact" disabled={busy} onClick={()=>{setSelected(selected===doc.id?'':doc.id);setAck(false);setAckSign('')}}>Empfang bestätigen</button>}</div>
+      {!admin&&doc.canAcknowledge&&<button type="button" className="secondary-button compact" disabled={busy} onClick={()=>{setSelected(selected===doc.id?'':doc.id);setAck(false);setAckSign('')}}>Empfang bestätigen</button>}</div>
       {admin&&paper===doc.id&&<PaperRecord id={doc.id} run={run} busy={busy} onSaved={async()=>{setPaper('');await reload();setOk('Papierzustellung dokumentiert. Die Kopie kann jetzt ins Postfach gesendet werden.')}}/>}
-      {!admin&&selected===doc.id&&!doc.acknowledgedAt&&<div className="personnel-form"><p>{ACK_TEXT}</p><label className="personnel-check"><input type="checkbox" checked={ack} onChange={e=>setAck(e.target.checked)}/>Ich bestätige den Erhalt.</label><Signature key={doc.id} value={ackSign} onChange={setAckSign} label="Unterschrift des Empfängers"/><button className="primary-button" disabled={!ack||!ackSign||busy} onClick={()=>run(async()=>{await request('acknowledge',{id:doc.id,accepted:ack,signature:ackSign});setSelected('');setAckSign('');setAck(false);await reload();setOk('Empfang bestätigt.')})}>Empfang verbindlich dokumentieren</button></div>}
+      {!admin&&selected===doc.id&&doc.canAcknowledge&&<div className="personnel-form"><p>{ACK_TEXT}</p><label className="personnel-check"><input type="checkbox" checked={ack} onChange={e=>setAck(e.target.checked)}/>Ich bestätige den Erhalt.</label><Signature key={doc.id} value={ackSign} onChange={setAckSign} label="Unterschrift des Empfängers"/><button className="primary-button" disabled={!ack||!ackSign||busy} onClick={()=>run(async()=>{await request('acknowledge',{id:doc.id,accepted:ack,signature:ackSign});setSelected('');setAckSign('');setAck(false);await reload();setOk('Empfang bestätigt.')})}>Empfang verbindlich dokumentieren</button></div>}
       </article>)}
       {!docs.length&&!message&&<p>Noch keine Personalunterlagen vorhanden.</p>}
     </section>
