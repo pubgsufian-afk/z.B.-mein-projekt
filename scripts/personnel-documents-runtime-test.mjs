@@ -113,6 +113,14 @@ for(const reason of ['ordinary','probation','extraordinary']){
  assert.equal(response.status,200)
  assert.equal((await PDFDocument.load(await response.arrayBuffer())).getPageCount(),1)
 }
+const confirmationInput={...termination,id:randomUUID(),reason:'confirmation',resignationDate:'2026-01-01',employeeResignationConfirmed:true,salutation:'frau',surname:'Çelik'}
+assert.equal((await call('preview',{...confirmationInput,employeeResignationConfirmed:false})).status,400)
+const confirmationPreview=await call('preview',confirmationInput)
+assert.equal(confirmationPreview.status,200)
+assert.equal((await PDFDocument.load(await confirmationPreview.arrayBuffer())).getPageCount(),1)
+const withNotice=await call('preview',{...termination,reason:'probation',terminationGround:'operational',includeEmploymentNotice:true,salutation:'herr',surname:'Çelik'})
+assert.equal(withNotice.status,200)
+assert.equal((await PDFDocument.load(await withNotice.arrayBuffer())).getPageCount(),1)
 assert.equal(state.rows.size,1)
 // Compare actual PDF drawing streams, not metadata: a different internal ID
 // must not affect the visible termination PDF. Warning references remain visible.
