@@ -105,7 +105,7 @@ try {
  assert.deepEqual(await drawingStreams(await call('receipt&id='+id)),originalReceipt)
 } finally {confirmed.receipt_document_sha256=originalHash;confirmed.id=originalId}
 select('e2');assert.equal((await call('receipt&id='+id)).status,404)
-select('a');const tid=randomUUID(), termination={id:tid,kind:'termination',employeeUserId:'e1',reason:'ordinary',endDate:'2026-12-31',address:'Teststraße 1, 12345 Teststadt',signerFunction:'Inhaber',authorized:true,legalReviewed:true}
+select('a');const tid=randomUUID(), termination={id:tid,kind:'termination',employeeUserId:'e1',reason:'ordinary',endDate:'2026-12-31',address:'Teststraße 1, 12345 Teststadt',signerFunction:'Bevollmächtigter',authorized:true,legalReviewed:true}
 assert.equal((await call('create',{...termination,legalReviewed:false})).status,400)
 assert.equal((await call('preview',{...termination,address:'Kksks'})).status,400)
 for(const reason of ['ordinary','probation','extraordinary']){
@@ -113,6 +113,9 @@ for(const reason of ['ordinary','probation','extraordinary']){
  assert.equal(response.status,200)
  assert.equal((await PDFDocument.load(await response.arrayBuffer())).getPageCount(),1)
 }
+assert.equal((await call('preview',{...termination,signerFunction:'Inhaber'})).status,400)
+assert.equal((await call('preview',{...termination,address:'Verwaltung Test Teststraße 1 12345 Teststadt'})).status,400)
+assert.equal((await call('preview',{...termination,address:'Teststraße 1 12345 Teststadt'})).status,200)
 const confirmationInput={...termination,id:randomUUID(),reason:'confirmation',resignationDate:'2026-01-01',employeeResignationConfirmed:true,salutation:'frau',surname:'Çelik'}
 assert.equal((await call('preview',{...confirmationInput,employeeResignationConfirmed:false})).status,400)
 const confirmationPreview=await call('preview',confirmationInput)
