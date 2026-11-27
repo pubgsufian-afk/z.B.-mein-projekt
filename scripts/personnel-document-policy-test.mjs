@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel, makePersonnelText, makeReceiptText, dateValid, WARNING_REASONS, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS, normalizePersonnelAddress, validTerminationAddress } from '../netlify/functions/_shared/personnel-document-policy.mjs'
+import { canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel, makePersonnelText, makeReceiptText, dateValid, WARNING_REASONS, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS, normalizePersonnelAddress, validTerminationAddress, recipientNameValid, addressMatchesOtherAccount, defaultSignerFunction } from '../netlify/functions/_shared/personnel-document-policy.mjs'
 const employee={userId:'e1',role:'employee'}, other={userId:'e2',role:'employee'}, admin={userId:'a1',role:'admin'}
 const row={employee_user_id:'e1',kind:'warning',published_at:null}
 assert.equal(canManagePersonnel('manager'),false)
@@ -80,3 +80,13 @@ assert.throws(()=>makePersonnelText({...confirmInput,employeeResignationConfirme
 assert.throws(()=>makePersonnelText({...confirmInput,resignationDate:'2027-01-01'},'Eva Testperson'))
 assert.throws(()=>makePersonnelText({...example,reason:'ordinary',salutation:'herr',surname:''},'Testperson'))
 assert.throws(()=>makePersonnelText({...example,reason:'ordinary',terminationGround:'other'},'Testperson'))
+
+assert.equal(normalizePersonnelAddress('Teststraße 16 30880 Teststadt'),'Teststraße 16\n30880 Teststadt')
+assert.equal(normalizePersonnelAddress('Max Test Teststraße 16 30880 Teststadt','Max Test'),'Teststraße 16\n30880 Teststadt')
+assert.equal(normalizePersonnelAddress('Anderer Name Teststraße 16 30880 Teststadt','Max Test'),'Anderer Name Teststraße 16\n30880 Teststadt')
+assert.equal(validTerminationAddress('Teststraße 16 30880 Teststadt'),true)
+assert.equal(validTerminationAddress('Teststraße 30880 Teststadt'),false)
+assert.equal(recipientNameValid('12'),false)
+assert.equal(addressMatchesOtherAccount('Anderer Name Teststraße 16 30880 Teststadt','Max Test','Anderer Name'),true)
+assert.equal(defaultSignerFunction('Verwaltung Test'),'Bevollmächtigter')
+assert.equal(defaultSignerFunction('Marwan Ziad'),'Inhaber')
