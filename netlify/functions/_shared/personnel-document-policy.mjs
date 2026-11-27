@@ -55,7 +55,8 @@ export function validTerminationAddress(value) {
     if(lines.length<2 || !/\p{L}/u.test(lines[0]))return false
     // German addresses: separate postcode and locality; international addresses
     // may use another postal format if a separate country line is supplied.
-    if(lines.slice(1).some(line=>/^\d{5}\s+\p{L}/u.test(line)))return true
+    const postcodeIndex=lines.findIndex((line,i)=>i>0&&/^\d{5}\s+\p{L}/u.test(line))
+    if(postcodeIndex>0)return lines.slice(0,postcodeIndex).some(line=>/\p{L}/u.test(line)&&/\d/.test(line))
     return lines.length>=3 && /\p{L}/u.test(lines.at(-2)) && /^[\p{L}][\p{L} .'-]{1,60}$/u.test(lines.at(-1)) && !/^(Deutschland|Germany)$/i.test(lines.at(-1))
   } catch { return false }
 }
