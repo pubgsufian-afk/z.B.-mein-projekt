@@ -39,7 +39,7 @@ export function automaticActionsForPhase(phase: string) {
   return phase === 'paused' ? ['break-end', 'clock-out'] : ['clock-out']
 }
 
-async function listOpenSessions(userId: string | null = null): Promise<OpenSession[]> {
+async function listOpenSessions(userId: string | null, now: Date, recentOnly: boolean): Promise<OpenSession[]> {
   const database = getDatabase()
   const result = await database.pool.query(
     `WITH latest AS (
@@ -47,13 +47,16 @@ async function listOpenSessions(userId: string | null = null): Promise<OpenSessi
               e.user_id, e.action, e.client_occurred_at, e.schedule_id, e.object_id
          FROM attendance_events e
         WHERE ($1::text IS NULL OR e.user_id = $1::text)
+          AND (NOT $3::boolean OR e.event_date >= ($2::timestamptz AT TIME ZONE 'Europe/Berlin')::date - 1)
         ORDER BY e.user_id, e.client_occurred_at DESC, e.server_occurred_at DESC, e.id DESC
      )
-     SELECT l.user_id, l.action, l.client_occurred_at AS latest_at, l.schedule_id, l.object_id,
+     SELECT l.user_id, l.action, l.client_occurred_at AS latest_at,
+            COALESCE(start_event.schedule_id,l.schedule_id) AS schedule_id,
+            COALESCE(start_event.object_id,l.object_id) AS object_id,
             start_event.client_occurred_at AS clock_in_at
        FROM latest l
        JOIN LATERAL (
-         SELECT e.client_occurred_at
+         SELECT e.client_occurred_at, e.schedule_id, e.object_id
            FROM attendance_events e
           WHERE e.user_id = l.user_id
             AND e.action = 'clock-in'
@@ -61,9 +64,14 @@ async function listOpenSessions(userId: string | null = null): Promise<OpenSessi
           ORDER BY e.client_occurred_at DESC, e.server_occurred_at DESC, e.id DESC
           LIMIT 1
        ) start_event ON true
+       JOIN schedule_shifts s ON s.id=COALESCE(start_event.schedule_id,l.schedule_id)
+          AND s.employee_user_id=l.user_id AND s.status='published'
       WHERE l.action IN ('clock-in', 'break-start', 'break-end')
+        AND CASE WHEN s.source='attendance-flex' THEN start_event.client_occurred_at+interval '12 hours'
+          ELSE ((s.shift_date+s.end_time+CASE WHEN s.end_time<=s.start_time THEN interval '1 day' ELSE interval '0 day' END) AT TIME ZONE 'Europe/Berlin')+interval '30 minutes'
+          END <= $2::timestamptz
       ORDER BY l.user_id`,
-    [userId],
+    [userId, now.toISOString(), recentOnly],
   )
   return result.rows.map((row) => ({
     userId: String(row.user_id),
@@ -75,23 +83,24 @@ async function listOpenSessions(userId: string | null = null): Promise<OpenSessi
   }))
 }
 
-async function runAutoCheckout(userId: string | null, now = new Date()) {
+async function runAutoCheckout(userId: string | null, now = new Date(), recentOnly = false) {
   const connectionString = databaseConnectionString()
   if (!connectionString) {
     console.error('Attendance auto-checkout skipped: database is not configured')
     return { checked: 0, checkedOut: 0 }
   }
 
-  const repository = await createAttendanceRepository(connectionString)
-  const service = createAttendanceService({ repository })
   let sessions: OpenSession[] = []
   try {
-    sessions = await listOpenSessions(userId)
+    sessions = await listOpenSessions(userId, now, recentOnly)
   } catch (error) {
     console.error('Attendance auto-checkout open-session lookup failed', error)
     return { checked: 0, checkedOut: 0 }
   }
 
+  if (!sessions.length) return { checked: 0, checkedOut: 0 }
+  const repository = await createAttendanceRepository(connectionString)
+  const service = createAttendanceService({ repository })
   let checkedOut = 0
   for (const session of sessions) {
     if (!session.scheduleId) continue
@@ -103,7 +112,8 @@ async function runAutoCheckout(userId: string | null, now = new Date()) {
 
       const nextStart = await nextPublishedShiftStart(session.userId, timing.scheduledStartAt)
       if (nextStart && new Date(nextStart).getTime() <= deadline.getTime()) {
-        await writeAutomationScheduleAudit('auto-checkout-conflict', timing.id, {
+        // Hourly safety scan records conflicts; the minute scan must not flood the audit log.
+        if (!recentOnly) await writeAutomationScheduleAudit('auto-checkout-conflict', timing.id, {
           employeeUserId: session.userId,
           deadline: deadline.toISOString(),
           nextShiftStart: nextStart,
@@ -145,7 +155,13 @@ export async function runAutoCheckoutForUser(userId: string, now = new Date()) {
   return runAutoCheckout(normalizedUserId, now)
 }
 
-export default async function attendanceAutoCheckout(_request: Request, _context: Context) {
+// Reuse the already scheduled minute reminder worker; restrict its scan to recent
+// events. The independent hourly job remains a safety net for older sessions.
+export async function runDueAutoCheckouts(now = new Date()) {
+  return runAutoCheckout(null, now, true)
+}
+export default async function attendanceAutoCheckout(_request: Request, context: Context) {
+  if (context.deploy?.context !== 'production') return
   await runAutoCheckout(null, new Date())
 }
 

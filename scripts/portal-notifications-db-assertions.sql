@@ -6,6 +6,12 @@ DO $$ BEGIN
  IF EXISTS(SELECT 1 FROM five_due WHERE id='out') THEN RAISE EXCEPTION 'Already checked out'; END IF;
  IF NOT EXISTS(SELECT 1 FROM zero_due WHERE id='end' AND kind='end' AND minutes=0) THEN RAISE EXCEPTION 'Missing final reminder'; END IF;
  IF EXISTS(SELECT 1 FROM zero_due WHERE id='out') THEN RAISE EXCEPTION 'Already checked out'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM post_due WHERE id='end' AND kind='end' AND minutes=-25) THEN RAISE EXCEPTION 'Missing final post-end warning'; END IF;
+ IF EXISTS(SELECT 1 FROM post_due WHERE id='out' OR kind='start') THEN RAISE EXCEPTION 'Invalid post-end warning'; END IF;
+ IF EXISTS(SELECT 1 FROM checkout_before WHERE user_id='end-user') THEN RAISE EXCEPTION 'Early automatic checkout'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM checkout_due WHERE user_id='end-user' AND schedule_id='end') THEN RAISE EXCEPTION 'Missing due automatic checkout'; END IF;
+ IF EXISTS(SELECT 1 FROM checkout_due WHERE user_id='out-user' OR user_id='start-user') THEN RAISE EXCEPTION 'Invalid automatic checkout candidate'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM checkout_due WHERE user_id='night-user') THEN RAISE EXCEPTION 'Missing overdue overnight checkout'; END IF;
 END $$;
 INSERT INTO portal_notifications(recipient_user_id,event_key,title,body,url)
 SELECT unnest(ARRAY['admin','owner']::text[]),'test:event','HABUN','Neue Nachricht','/?view=mailbox' ON CONFLICT(recipient_user_id,event_key) DO NOTHING;

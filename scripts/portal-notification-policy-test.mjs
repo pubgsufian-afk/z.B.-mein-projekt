@@ -19,4 +19,6 @@ assert.equal(notificationUrl('/?view=personnel'), '/?view=personnel')
 assert.equal(notificationUrl('/?view=attendance'), '/?view=attendance')
 for(const offset of [30,5]){assert.match(reminderMessage('start',offset,'06:00'),new RegExp(offset+' Minuten'));assert.match(reminderMessage('end',offset,'14:30'),new RegExp(offset+' Minuten'));assert.match(reminderMessage('end',offset,'14:30'),/tatsächlichen Arbeitsende/)}
 assert.match(reminderMessage('end',0,'14:30'),/endet jetzt/)
+assert.match(reminderMessage('end',-25,'14:30'),/seit 25 Minuten/)
+assert.match(reminderMessage('end',-25,'14:30'),/nach 30 Minuten automatisch/)
 console.log('Notification recipient isolation and reminder policy passed')

@@ -4,12 +4,15 @@ import { getDatabase } from '@netlify/database'
 import { getStore } from '@netlify/blobs'
 import { sendPushToUsers } from './_shared/push-core.mts'
 import { reminderMessage } from './_shared/portal-notification-policy.mjs'
+import { runDueAutoCheckouts } from './attendance-auto-checkout.mts'
 
 // Minute timer, also when the portal is closed. German local time and overnight shifts.
 // An end reminder is sent only for a still-open attendance session for that shift.
 export default async function scheduleStartReminders(_request:Request,context:Context){
   return withDeploymentContext(context, async()=>{
   if(context.deploy?.context!=='production')return
+  // Run independently of reminder delivery (including push or database errors).
+  try { await runDueAutoCheckouts() } catch { console.error('Minute auto-checkout failed') }
   const db=getDatabase()
   const due=await db.pool.query(
     "WITH scheduled AS ("+
@@ -19,7 +22,7 @@ export default async function scheduleStartReminders(_request:Request,context:Co
     " WHERE s.status='published' AND s.shift_date BETWEEN (now() AT TIME ZONE 'Europe/Berlin')::date-1 AND (now() AT TIME ZONE 'Europe/Berlin')::date+1"+
     "), events AS ("+
     " SELECT s.*,k.kind,m.minutes,CASE WHEN k.kind='start' THEN s.starts ELSE s.ends END AS target,CASE WHEN k.kind='start' THEN s.start_time ELSE s.end_time END AS clock"+
-    " FROM scheduled s CROSS JOIN (VALUES ('start'),('end')) k(kind) CROSS JOIN (VALUES (30),(5),(0)) m(minutes)"+
+    " FROM scheduled s CROSS JOIN (VALUES ('start'),('end')) k(kind) CROSS JOIN (VALUES (30),(5),(0),(-25)) m(minutes)"+
     " WHERE (k.kind='end' OR m.minutes>0)"+
     "), due AS ("+
     " SELECT s.* FROM events s WHERE s.target-s.minutes*interval '1 minute'<=now() AND s.target-s.minutes*interval '1 minute'>now()-interval '2 minutes'"+

@@ -60,10 +60,11 @@ assert.equal(
   'a shift belonging to another employee must never be used',
 )
 
-const [source, attendance, patch] = await Promise.all([
+const [source, attendance, patch, reminders] = await Promise.all([
   readFile('netlify/functions/attendance-auto-checkout.mts', 'utf8'),
   readFile('netlify/functions/attendance.mts', 'utf8'),
   readFile('scripts/apply-sparse-attendance-auto-checkout.mjs', 'utf8'),
+  readFile('netlify/functions/schedule-start-reminders.mts', 'utf8'),
 ])
 
 assert.match(source, /listOpenSessions/)
@@ -75,7 +76,13 @@ assert.match(source, /clientOccurredAt:\s*deadline\.toISOString\(\)/)
 assert.match(source, /export\s+async\s+function\s+runAutoCheckoutForUser/,
   'employee-scoped reconciliation must be available without a global poll')
 assert.match(source, /schedule:\s*'@hourly'/,
-  'global safety scan must run hourly so forgotten clock-outs cannot stay open all day')
+  'the independent global safety scan remains hourly')
+assert.match(source,/runAutoCheckout\(null, now, true\)/)
+assert.match(source,/COALESCE\(start_event\.schedule_id,l\.schedule_id\)/)
+assert.match(source,/interval '30 minutes'/)
+assert.match(source,/context\.deploy\?\.context !== 'production'/)
+assert.match(reminders,/await runDueAutoCheckouts\(\)/)
+assert.match(reminders,/schedule:'\* \* \* \* \*'/)
 assert.doesNotMatch(source, /schedule:\s*'@daily'/,
   'a daily safety scan can leave forgotten clock-outs visibly open for too long')
 assert.doesNotMatch(source, /schedule:\s*'\*\/15 \* \* \* \*'/,
