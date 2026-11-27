@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { build } from 'esbuild'
 import { deflateSync } from 'node:zlib'
 import { randomUUID } from 'node:crypto'
-import { PDFDocument } from 'pdf-lib'
+import { PDFDocument, PDFArray } from 'pdf-lib'
 // Isolated integration test: real authorization, PDF rendering, and API routes;
 // fake identity, database and push delivery; no access to actual employee data.
 const state={actor:null,rows:new Map(),access:{
@@ -97,7 +97,22 @@ assert.equal((await call('acknowledge',{id,accepted:true,signature:sig})).status
 const receipt=await call('receipt&id='+id);assert.equal(receipt.status,200);assert.ok((await PDFDocument.load(await receipt.arrayBuffer())).getPageCount()>0)
 select('a');const tid=randomUUID(), termination={id:tid,kind:'termination',employeeUserId:'e1',reason:'ordinary',endDate:'2026-12-31',address:'Teststraße 1, 12345 Teststadt',signerFunction:'Inhaber',authorized:true,legalReviewed:true}
 assert.equal((await call('create',{...termination,legalReviewed:false})).status,400)
+// Compare actual PDF drawing streams, not metadata: a different internal ID
+// must not affect the visible termination PDF. Warning references remain visible.
+async function drawingStreams(response){
+ assert.equal(response.status,200)
+ const pdf=await PDFDocument.load(await response.arrayBuffer())
+ return pdf.getPages().map(page=>{
+  const contents=page.node.Contents()
+  const streams=contents instanceof PDFArray?contents.asArray():[contents]
+  return streams.map(stream=>Buffer.from(pdf.context.lookup(stream).getContents()).toString('base64'))
+ })
+}
+assert.notDeepEqual(await drawingStreams(await call('preview',warning)),await drawingStreams(await call('preview',{...warning,id:randomUUID()})))
+assert.deepEqual(await drawingStreams(await call('preview',termination)),await drawingStreams(await call('preview',{...termination,id:randomUUID()})))
 const tc=await call('create',termination);assert.equal(tc.status,201,await tc.clone().text())
+assert.equal(state.rows.get(tid).id,tid)
+assert.match(state.rows.get(tid).pdf_sha256,/^[a-f0-9]{64}$/)
 assert.equal((await call('publish',{id:tid})).status,409)
 assert.equal((await call('record-paper',{id:tid,deliveredOn:'2026-01-01',deliveryNote:'Persönlich gegen Empfang',paperConfirmed:false,copy:state.rows.get(tid).pdf_base64})).status,400)
 assert.equal((await call('record-paper',{id:tid,deliveredOn:'2026-01-01',deliveryNote:'Persönlich gegen Empfang',paperConfirmed:true,copy:state.rows.get(tid).pdf_base64})).status,200)
