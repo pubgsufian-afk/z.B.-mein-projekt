@@ -58,7 +58,7 @@ assert.doesNotMatch(commandWorker, /notifySchedulePublished|notifyScheduleChange
 // The new requested policy supersedes the earlier prohibition on reminders.
 const startReminder = await readFile('netlify/functions/schedule-start-reminders.mts','utf8')
 assert.match(startReminder, /schedule:'\* \* \* \* \*'/, 'check every minute')
-assert.match(startReminder, /VALUES \(30\),\(5\),\(0\)/, 'start and end offsets')
+assert.match(startReminder, /VALUES \(30\),\(5\),\(0\),\(-25\)/, 'start/end reminders and final warning 25 minutes after end')
 assert.match(startReminder, /end_time<=s.start_time/, 'support overnight shift ends')
 assert.match(startReminder, /k.kind='end' OR m.minutes>0/, 'zero-minute reminder is end only')
 assert.match(startReminder, /clock-in','break-start','break-end'/, 'end reminder only for open sessions')
