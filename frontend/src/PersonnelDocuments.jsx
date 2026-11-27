@@ -6,7 +6,7 @@ const funcs=['Inhaber','Geschäftsführer','Personalverantwortlicher','Einsatzle
 const today=()=>{const parts=Object.fromEntries(new Intl.DateTimeFormat('de-DE',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(p=>[p.type,p.value]));return parts.year+'-'+parts.month+'-'+parts.day}
 const employeeName=e=>String(e?.fullName||e?.name||'').trim()
 const employeeAddress=e=>{const a=e?.postalAddress||e?.address;try{return normalizePersonnelAddress(typeof a==='string'?a:'',employeeName(e))}catch{return ''}}
-const fresh=(name,kind='warning',employeeUserId='')=>({id:crypto.randomUUID(),kind,employeeUserId,reason:'',incidentDate:today(),incidentTime:'',location:'',facts:'',duty:'',expected:'',address:'',endDate:'',terminationText:'',salutation:'neutral',surname:'',terminationGround:'none',includeEmploymentNotice:false,resignationDate:'',employeeResignationConfirmed:false,signerFunction:defaultSignerFunction(name),authorized:false,legalReviewed:false})
+const fresh=(name,kind='warning',employeeUserId='')=>({id:crypto.randomUUID(),kind,employeeUserId,reason:'',incidentDate:today(),incidentTime:'',location:'',facts:'',duty:'',expected:'',address:'',endDate:'',terminationText:'',salutation:'neutral',surname:'',terminationGround:'none',resignationDate:'',employeeResignationConfirmed:false,signerFunction:defaultSignerFunction(name),authorized:false,legalReviewed:false})
 async function request(action='list',body){
   const res=await fetch(api+'?action='+action,{credentials:'same-origin',cache:'no-store',...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})})
   if(!res.ok){const err=await res.json().catch(()=>({}));throw Error(err.message||'Anfrage fehlgeschlagen.')}
@@ -74,12 +74,6 @@ export default function PersonnelDocuments({session,embedded=false}){
     setPdfLink({url:URL.createObjectURL(blob),name:'Personalunterlage-Vorschau.pdf'})
     setOk('PDF-Vorschau erstellt. Du kannst sie unten öffnen oder speichern.')
   })
-  const downloadNotice=()=>run(async()=>{
-    const blob=await request('termination-notice')
-    if(!(blob instanceof Blob)||blob.type!=='application/pdf')throw Error('Das Merkblatt konnte nicht als PDF geladen werden.')
-    savePdf(blob,'Merkblatt-zur-Kuendigung.pdf')
-    setOk('Merkblatt separat heruntergeladen. Bitte rechtzeitig an den Mitarbeiter übergeben.')
-  })
   const submitDocument=(mode)=>run(async()=>{
     const result=await request('create',{...form,signature:sign,authorized:true})
     // Creation is already committed: a failed send must not create another copy.
@@ -107,7 +101,7 @@ export default function PersonnelDocuments({session,embedded=false}){
           const uid=e.target.value,employee=employees.find(x=>String(x.userId||x.id)===uid)
           setMessage('');setOk('');setForm(f=>({...f,employeeUserId:uid,address:employeeAddress(employee),salutation:'neutral',surname:'',employeeResignationConfirmed:false,legalReviewed:false}));setSign('')
         }}><option value="">Mitarbeiter auswählen</option>{employees.map(e=><option key={e.userId||e.id} value={e.userId||e.id}>{employeeName(e)||'Mitarbeiter'}{employees.filter(x=>employeeName(x)===employeeName(e)).length>1?' · Konto …'+String(e.userId||e.id).slice(-8):''}</option>)}</select></label>
-        <label>{form.kind==='warning'?'Abmahnungsgrund':'Kündigungsart'}<select aria-label={form.kind==='warning'?'Abmahnungsgrund':'Kündigungsart'} required value={form.reason} onChange={e=>{setMessage('');setOk('');setForm(f=>({...f,reason:e.target.value,expected:'',...(f.kind==='termination'?{endDate:'',terminationText:'',terminationGround:'none',includeEmploymentNotice:false,resignationDate:'',employeeResignationConfirmed:false,legalReviewed:false}:{})}));setSign('')}}><option value="">Bitte auswählen</option>{Object.entries(form.kind==='warning'?WARNING_REASONS:TERMINATION_TYPES).map(([k,v])=><option key={k} value={k}>{Array.isArray(v)?v[0]:v}</option>)}</select></label>
+        <label>{form.kind==='warning'?'Abmahnungsgrund':'Kündigungsart'}<select aria-label={form.kind==='warning'?'Abmahnungsgrund':'Kündigungsart'} required value={form.reason} onChange={e=>{setMessage('');setOk('');setForm(f=>({...f,reason:e.target.value,expected:'',...(f.kind==='termination'?{endDate:'',terminationText:'',terminationGround:'none',resignationDate:'',employeeResignationConfirmed:false,legalReviewed:false}:{})}));setSign('')}}><option value="">Bitte auswählen</option>{Object.entries(form.kind==='warning'?WARNING_REASONS:TERMINATION_TYPES).map(([k,v])=><option key={k} value={k}>{Array.isArray(v)?v[0]:v}</option>)}</select></label>
         {form.kind==='warning'?<>
           {field('incidentDate','Datum des Vorfalls (heute voreingestellt)','date')}
           <label>Was ist passiert?<textarea aria-label="Was ist passiert?" required maxLength={1800} rows={3} value={form.facts} onChange={e=>change('facts',e.target.value)} placeholder="Kurz beschreiben: Uhrzeit, Einsatzort, konkreter Vorfall. Keine Vermutungen."/></label>
@@ -124,8 +118,6 @@ export default function PersonnelDocuments({session,embedded=false}){
           {confirmation&&<label className="personnel-check"><input aria-label="Eigenkündigung liegt vor" type="checkbox" checked={form.employeeResignationConfirmed} onChange={e=>change('employeeResignationConfirmed',e.target.checked)}/><span>Die Kündigung des Mitarbeiters liegt tatsächlich vor.</span></label>}
           <label className="personnel-check"><input aria-label="Rechtliche Voraussetzungen geprüft" type="checkbox" checked={form.legalReviewed} onChange={e=>change('legalReviewed',e.target.checked)} required/><span>{confirmation?'Die Eigenkündigung und das tatsächliche Beendigungsdatum wurden geprüft.':form.reason==='extraordinary'?'Wichtiger Grund, Erklärungsfrist und Kündigungsschutz sowie erforderliche Beteiligungen sind geprüft.':form.reason==='probation'?'Vereinbarte Probezeit, maßgebliche Kündigungsfrist, Kündigungsschutz und erforderliche Beteiligungen sind geprüft.':'Kündigungsfrist, Kündigungsschutz und erforderliche Beteiligungen sind geprüft.'}</span></label>
           <p>{confirmation?'Die Bestätigung dokumentiert die Eigenkündigung und kann digital unterschrieben werden. Sie ersetzt nicht die Kündigung des Mitarbeiters.':'Die Kündigung wird als druckfertiges PDF erstellt. Das Papieroriginal muss eigenhändig unterschrieben und zugestellt werden (§ 623 BGB).'}</p>
-          {!confirmation&&<label>Hinweis zur Agentur für Arbeit<select aria-label="Hinweis zur Agentur für Arbeit" value={form.includeEmploymentNotice?'letter':'separate'} onChange={e=>change('includeEmploymentNotice',e.target.value==='letter')}><option value="separate">Nur separates Merkblatt</option><option value="letter">Zusätzlich im Kündigungsschreiben</option></select></label>}
-          {!confirmation&&<div className="personnel-auto"><strong>Separates Mitarbeitermerkblatt</strong><span>Bitte informieren Sie den Mitarbeiter rechtzeitig über die Arbeitsuchendmeldung (§ 2 Abs. 2 Nr. 3 SGB III). Das Merkblatt kann unabhängig von der Kündigung ausgedruckt und übergeben werden. Es wird nicht automatisch gespeichert oder versendet.</span><button type="button" className="secondary-button" disabled={busy} onClick={downloadNotice}>Merkblatt herunterladen / drucken</button></div>}
         </>}
         <div className="personnel-auto"><strong>Automatisch ausgefüllt</strong><span>Firmenlogo · Firmendaten · Name: {session.fullName||'aus angemeldetem Konto'} · {form.signerFunction}</span></div>
         <details className="personnel-extra"><summary>Weitere Angaben (optional)</summary>
