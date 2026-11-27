@@ -98,7 +98,7 @@ function installIOSPdfPreviewFallback() {
 
   document.addEventListener('click', (event) => {
     const button = event.target.closest('button')
-    if (!button || !String(button.textContent || '').includes('PDF-Vorschau')) return
+    if (!button || button.hasAttribute('data-direct-pdf-download') || !String(button.textContent || '').includes('PDF-Vorschau')) return
     closePendingWindow()
     pendingWindow = window.open('', '_blank')
     showLoadingWindow(pendingWindow)

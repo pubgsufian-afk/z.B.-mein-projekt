@@ -53,7 +53,7 @@ export default function PersonnelDocuments({session,embedded=false}){
         <label>Funktion der unterzeichnenden Person<select value={form.signerFunction} onChange={e=>change('signerFunction',e.target.value)} required><option value="">Funktion auswählen</option>{funcs.map(x=><option key={x}>{x}</option>)}</select></label>
         <p>Der Name des angemeldeten Admins wird aus dem Konto übernommen. Keine Unterschrift im Namen einer anderen Person.</p>
         <label className="personnel-check"><input type="checkbox" checked={form.authorized} onChange={e=>change('authorized',e.target.checked)} required/>Ich bin für dieses Schreiben vertretungsberechtigt und habe die Angaben geprüft.</label>
-        <button className="secondary-button" disabled={busy||!ready}>PDF-Vorschau herunterladen</button>
+        <button className="secondary-button" data-direct-pdf-download="true" disabled={busy||!ready}>PDF-Vorschau herunterladen</button>
         {previewed&&form.kind==='warning'&&<Signature value={sign} onChange={setSign} label="Unterschrift der unterzeichnenden Person"/>}
         {previewed&&<button type="button" className="primary-button" disabled={busy||!ready||(form.kind==='warning'&&!sign)} onClick={()=>run(async()=>{const result=await request('create',{...form,signature:sign});await reload();setOk('Dokument gespeichert. Im Archiv kannst du es herunterladen, ausdrucken oder freigegeben versenden.');setForm(fresh());setPreviewed(false);setSign('');setSelected(result.id)})}>{form.kind==='warning'?'Unterschriebenes PDF speichern':'PDF zum Ausdrucken speichern'}</button>}
       </form>
