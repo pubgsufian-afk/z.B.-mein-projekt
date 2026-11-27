@@ -10,6 +10,8 @@ on:
       - 'frontend/src/App.jsx'
       - 'frontend/src/EmployeeSelfService.jsx'
       - 'scripts/personnel-document-policy-test.mjs'
+      - 'scripts/personnel-documents-runtime-test.mjs'
+      - 'ops/portal-admin-surface-policy.json'
       - 'netlify/database/migrations/**'
       - '.github/workflows/personnel-documents-verify.yml'
 permissions:
@@ -24,5 +26,6 @@ jobs:
           node-version: '24'
       - run: npm ci
       - run: node scripts/personnel-document-policy-test.mjs
+      - run: node scripts/personnel-documents-runtime-test.mjs
       - run: npm run build
       - run: npx esbuild netlify/functions/personnel-documents.mts netlify/functions/schedule-start-reminders.mts --bundle --platform=node --format=esm --packages=external --outdir=/tmp/personnel-function-build
