@@ -5,6 +5,7 @@ import { verifyRequestOrigin } from '@netlify/identity'
 import { createHash, randomUUID } from 'node:crypto'
 import { requirePortalRole } from './_shared/portal-role.mts'
 import { sendPushToUsers } from './_shared/push-core.mts'
+import { notifyPortalAdmins, notifyPortalUsers } from './_shared/portal-notification-service.mts'
 import { mayManageEmployeeDocuments, mayDownloadEmployeeDocument, mayPublishToRecipient } from './_shared/employee-self-service-policy.mjs'
 
 const TYPES = new Set(['contract', 'payslip', 'other'])
@@ -190,11 +191,12 @@ export default async function employeeDocuments(request: Request, context: Conte
       const id = clean(body?.id, 40)
       if (!UUID.test(id)) return json({ message: 'Dokument nicht gefunden.' }, 404)
       const result = await db.pool.query(
-        'UPDATE employee_documents SET revoked_at = now(), revoked_by = $2 WHERE id = $1 AND revoked_at IS NULL RETURNING id',
+        'UPDATE employee_documents SET revoked_at = now(), revoked_by = $2 WHERE id = $1 AND revoked_at IS NULL RETURNING id, employee_user_id',
         [id, actor.userId],
       )
       if (!result.rows.length) return json({ message: 'Dokument nicht gefunden oder bereits zurückgezogen.' }, 404)
       await audit(id, actor.userId, 'revoke')
+      await notifyPortalUsers([String(result.rows[0].employee_user_id||'')],{eventKey:'document-revoked:'+id,title:'HABUN – Postfach',body:'Ein Dokument in deinem Postfach wurde zurückgezogen.',url:'/?view=mailbox'})
       return json({ ok: true })
     }
 

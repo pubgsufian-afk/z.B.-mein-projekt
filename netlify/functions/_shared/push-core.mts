@@ -1,5 +1,6 @@
 import { createHash, createPrivateKey, generateKeyPairSync, randomBytes, sign } from 'node:crypto'
 import { getStore } from '@netlify/blobs'
+import { deploymentContext, persistPortalNotice } from './portal-notification-storage.mts'
 
 type PortalActor = { userId: string; email?: string; role?: string }
 
@@ -242,6 +243,7 @@ export type PushDeliveryResult = {
 }
 
 export async function sendPushToUsers(options: {
+  eventKey?: string
   userIds: string[]
   title: string
   body: string
@@ -256,6 +258,11 @@ export async function sendPushToUsers(options: {
   const message: PushMessage = { id: crypto.randomUUID(), title, body, url, createdAt: new Date().toISOString() }
   if (!userIds.length) return { targeted: 0, delivered: 0, removed: 0, messageId: message.id }
 
+  const deployment=deploymentContext()
+  if(deployment){
+    try{await persistPortalNotice({userIds,eventKey:options.eventKey||message.id,title,body,url})}catch{console.error('Could not persist targeted portal notification')}
+    if(deployment!=='production')return {targeted:0,delivered:0,removed:0,messageId:message.id}
+  }
   const recipients = new Set(userIds)
   const devices = (await listDevices()).filter((row) => recipients.has(row.userId))
   const config = devices.length ? await vapidConfig() : null

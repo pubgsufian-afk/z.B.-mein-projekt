@@ -2,6 +2,7 @@ import type { Config, Context } from '@netlify/functions'
 import { getDatabase } from '@netlify/database'
 import { getStore } from '@netlify/blobs'
 import { verifyRequestOrigin } from '@netlify/identity'
+import { notifyPortalAdmins, notifyPortalUsers } from './_shared/portal-notification-service.mts'
 import { currentPortalActor } from './_shared/portal-role.mts'
 import { tryRecordPortalAdminChange } from './_shared/portal-private-audit-service.mts'
 
@@ -133,6 +134,7 @@ async function submitRequest(actor: Actor, body: RequestBody) {
     "INSERT INTO schedule_time_off_requests (id, employee_user_id, employee_name, requested_date, reason, status) VALUES ($1,$2,$3,$4::date,$5,'pending') RETURNING *",
     [id, actor.userId, name, date, reason],
   )
+  await notifyPortalAdmins({eventKey:'time-off-request:'+id,title:'HABUN – Neue Anfrage',body:'Ein neuer Freiwunsch wurde eingereicht.',url:'/?view=time-off'},actor.userId)
   return json({ request: mapRequest(result.rows[0]) }, 201)
 }
 
@@ -171,6 +173,7 @@ async function decideRequest(actor: Actor, body: RequestBody) {
     actor, category: 'Dienstfrei', action: decision === 'approve' ? 'Freiwunsch genehmigt' : 'Freiwunsch abgelehnt',
     entityId: id, after: { date: result?.requested_date, employeeName: result?.employee_name, decision },
   })
+  await notifyPortalUsers([String(result!.employee_user_id)],{eventKey:'time-off-decision:'+id,title:'HABUN – Freiwunsch',body:decision==='approve'?'Dein Freiwunsch wurde genehmigt.':'Dein Freiwunsch wurde bearbeitet.',url:'/?view=time-off'})
   return json({ request: mapRequest(result!) })
 }
 
@@ -189,6 +192,7 @@ async function setDayOff(actor: Actor, body: RequestBody) {
     actor, category: 'Dienstfrei', action: 'Dienstfrei eingetragen',
     entityId: userId + ':' + String(body.date), after: { employeeName: employee.full_name, date: body.date },
   })
+  await notifyPortalUsers([userId],{eventKey:'day-off:'+userId+':'+body.date+':'+new Date().toISOString(),title:'HABUN – Dienstplan',body:'Ein dienstfreier Tag wurde für dich eingetragen.',url:'/?view=time-off'})
   return json({ dayOff: mapDay(result.rows[0]) }, 201)
 }
 
@@ -221,6 +225,7 @@ async function removeDayOff(actor: Actor, body: RequestBody) {
     actor, category: 'Dienstfrei', action: 'Dienstfrei aufgehoben',
     entityId: userId + ':' + String(body.date), before: { employeeName: previous?.employee_name, date: body.date },
   })
+  await notifyPortalUsers([userId],{eventKey:'day-off-removed:'+userId+':'+body.date+':'+new Date().toISOString(),title:'HABUN – Dienstplan',body:'Ein dienstfreier Tag wurde geändert. Bitte prüfe deinen Dienstplan.',url:'/?view=time-off'})
   return json({ removed: true })
 }
 
@@ -232,6 +237,7 @@ async function withdraw(actor: Actor, body: RequestBody) {
     [id, actor.userId],
   )
   if (!result.rows.length) return json({ message: 'Nur eigene, offene Anfragen können zurückgezogen werden.' }, 409)
+  await notifyPortalAdmins({eventKey:'time-off-withdrawn:'+id,title:'HABUN – Freiwunsch',body:'Ein Freiwunsch wurde zurückgezogen.',url:'/?view=time-off'},actor.userId)
   return json({ request: mapRequest(result.rows[0]) })
 }
 

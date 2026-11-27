@@ -1,3 +1,4 @@
+import { notifyPortalAdmins, notifyPortalUsers } from './_shared/portal-notification-service.mts'
 import type { Config } from '@netlify/functions'
 import { verifyRequestOrigin } from '@netlify/identity'
 import { requirePortalRole } from './_shared/portal-role.mts'
@@ -142,6 +143,7 @@ export default async function timesheets(request: Request) {
         actorId: current.userId, actorRole: current.role, action: 'manual-create', entryId: saved.id,
         monthKey: monthKeyForDate(saved.workDate), reason, beforeData: null, afterData: saved,
       })
+      await notifyPortalUsers([saved.employeeUserId],{eventKey:'timesheet-created:'+saved.id,title:'HABUN – Arbeitsstunden',body:'Ein Stundenzettel-Eintrag wurde für dich erstellt.',url:'/?view=my-hours'})
       return json({ entry: saved }, 201)
     }
 
@@ -170,6 +172,7 @@ export default async function timesheets(request: Request) {
         beforeData: existing,
         afterData: refreshed || restored,
       })
+      await notifyPortalUsers([existing.employeeUserId],{eventKey:'timesheet-restored:'+id+':'+now.toISOString(),title:'HABUN – Arbeitsstunden',body:'Ein Stundenzettel-Eintrag wurde wiederhergestellt.',url:'/?view=my-hours'})
       return json({ entry: refreshed || restored })
     }
 
@@ -185,6 +188,7 @@ export default async function timesheets(request: Request) {
         actorId: current.userId, actorRole: current.role, action: 'manual-update', entryId: saved.id,
         monthKey: monthKeyForDate(saved.workDate), reason, beforeData: existing, afterData: saved,
       })
+      await notifyPortalUsers([existing.employeeUserId,saved.employeeUserId],{eventKey:'timesheet-updated:'+saved.id+':'+saved.updatedAt,title:'HABUN – Arbeitsstunden',body:'Ein Stundenzettel-Eintrag wurde geändert. Bitte prüfe deine Stunden.',url:'/?view=my-hours'})
       return json({ entry: saved })
     }
 
@@ -207,6 +211,7 @@ export default async function timesheets(request: Request) {
         beforeData: existing,
         afterData: existing.scheduleShiftId ? removed : null,
       })
+      await notifyPortalUsers([existing.employeeUserId],{eventKey:'timesheet-removed:'+id+':'+new Date().toISOString(),title:'HABUN – Arbeitsstunden',body:'Ein Stundenzettel-Eintrag wurde entfernt. Bitte prüfe deine Stunden.',url:'/?view=my-hours'})
       return json({ deleted: true, id, suppressed: Boolean(existing.scheduleShiftId) })
     }
 

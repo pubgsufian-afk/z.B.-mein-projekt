@@ -1,6 +1,7 @@
 import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { getUser, verifyRequestOrigin } from '@netlify/identity'
+import { notifyPortalAdmins, notifyPortalUsers } from './_shared/portal-notification-service.mts'
 import { databaseConnectionString } from './_shared/database-connection.mts'
 import { eventDateInBerlin } from './_shared/daily-attendance-service.mts'
 
@@ -121,6 +122,7 @@ async function requestCorrection(sql: Awaited<ReturnType<typeof connection>>, cu
      VALUES ($1,$2::timestamptz,$3,$4,$5,'correction-request','attendance_correction',$6,$7,$8::jsonb,$9::jsonb,$2::timestamptz + interval '24 months')`,
     [`attendance-audit:${crypto.randomUUID()}`, now, current.userId, current.email, current.role, id, reason, JSON.stringify(before), JSON.stringify(afterData)],
   )
+  await notifyPortalAdmins({eventKey:'correction-request:'+id,title:'HABUN – Neue Korrektur',body:'Ein Korrekturantrag zur Arbeitszeit wurde eingereicht.',url:'/?view=corrections'},current.userId)
   return json({ id, status: 'requested' }, 201)
 }
 
@@ -170,6 +172,7 @@ async function decideCorrection(sql: Awaited<ReturnType<typeof connection>>, cur
     [`attendance-audit:${crypto.randomUUID()}`, now, current.userId, current.email, current.role, `correction-${decision}`, correctionId, reason,
       JSON.stringify(correction.before_data), JSON.stringify(afterData)],
   )
+  await notifyPortalUsers([String(correction.requested_by)],{eventKey:'correction-decision:'+id,title:'HABUN – Arbeitszeit',body:'Dein Korrekturantrag wurde bearbeitet.',url:'/?view=attendance'})
   return json({ id, correctionId, decision }, 201)
 }
 

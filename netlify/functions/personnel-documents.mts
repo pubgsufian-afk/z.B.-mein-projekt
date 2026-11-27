@@ -11,6 +11,7 @@ import { requirePortalRole } from './_shared/portal-role.mts'
 import { readCompanySettings } from './_shared/company-settings.mts'
 import { readPdfLogoBytes } from './_shared/pdf-branding.mts'
 import { sendPushToUsers } from './_shared/push-core.mts'
+import { notifyPortalAdmins, notifyPortalUsers } from './_shared/portal-notification-service.mts'
 import { ACK_TEXT, makePersonnelText, dateValid, canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel } from './_shared/personnel-document-policy.mjs'
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
@@ -154,6 +155,7 @@ export default async function personnel(request: Request, context: Context) {
       const row=(await db.pool.query('SELECT * FROM personnel_documents WHERE id=$1',[body.id])).rows[0]
       if(!canAcknowledgePersonnel(actor,row))return json({message:'Keine offene Empfangsbestätigung für dieses Konto.'},409)
       const updated=await db.pool.query('UPDATE personnel_documents SET receipt_at=now(), receipt_signature=$3, receipt_document_sha256=COALESCE(paper_copy_sha256,pdf_sha256), first_opened_at=COALESCE(first_opened_at,now()) WHERE id=$1 AND employee_user_id=$2 AND published_at IS NOT NULL AND receipt_at IS NULL RETURNING id',[body.id,actor.userId,body.signature])
+      if(updated.rows.length)await notifyPortalAdmins({eventKey:'personnel-receipt:'+body.id,title:'HABUN – Empfangsbestätigung',body:'Eine neue Empfangsbestätigung liegt in den Personalunterlagen vor.',url:'/?view=personnel'},actor.userId)
       return updated.rows.length?json({ok:true}):json({message:'Bereits bestätigt.'},409)
     }
     if(!admin)return json({message:'Nur Admins dürfen Personalunterlagen erstellen und versenden.'},403)
