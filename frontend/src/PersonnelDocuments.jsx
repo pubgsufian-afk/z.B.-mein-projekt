@@ -68,6 +68,12 @@ export default function PersonnelDocuments({session,embedded=false}){
     setPdfLink({url:URL.createObjectURL(blob),name:'Personalunterlage-Vorschau.pdf'})
     setOk('PDF-Vorschau erstellt. Du kannst sie unten öffnen oder speichern.')
   })
+  const downloadNotice=()=>run(async()=>{
+    const blob=await request('termination-notice')
+    if(!(blob instanceof Blob)||blob.type!=='application/pdf')throw Error('Das Merkblatt konnte nicht als PDF geladen werden.')
+    savePdf(blob,'Merkblatt-zur-Kuendigung.pdf')
+    setOk('Merkblatt separat heruntergeladen. Bitte rechtzeitig an den Mitarbeiter übergeben.')
+  })
   const submitDocument=(mode)=>run(async()=>{
     const result=await request('create',{...form,signature:sign,authorized:true})
     // Creation is already committed: a failed send must not create another copy.
@@ -107,6 +113,7 @@ export default function PersonnelDocuments({session,embedded=false}){
           {area('address','Empfängeranschrift (prüfen)',true,400)}
           <label className="personnel-check"><input type="checkbox" checked={form.legalReviewed} onChange={e=>change('legalReviewed',e.target.checked)} required/>Kündigungsfrist, Kündigungsschutz und erforderliche Beteiligungen sind geprüft.</label>
           <p>Die Kündigung wird als druckfertiges PDF erstellt. Das Papieroriginal muss eigenhändig unterschrieben und zugestellt werden (§ 623 BGB).</p>
+          <div className="personnel-auto"><strong>Separates Mitarbeitermerkblatt</strong><span>Bitte informieren Sie den Mitarbeiter rechtzeitig über die Arbeitsuchendmeldung (§ 2 Abs. 2 Nr. 3 SGB III). Das Merkblatt kann unabhängig von der Kündigung ausgedruckt und übergeben werden. Es wird nicht automatisch gespeichert oder versendet.</span><button type="button" className="secondary-button" disabled={busy} onClick={downloadNotice}>Merkblatt herunterladen / drucken</button></div>
         </>}
         <div className="personnel-auto"><strong>Automatisch ausgefüllt</strong><span>Firmenlogo · Firmendaten · Name: {session.fullName||'aus angemeldetem Konto'} · {form.signerFunction}</span></div>
         <details className="personnel-extra"><summary>Weitere Angaben (optional)</summary>
