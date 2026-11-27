@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import './employee-self-service.css'
+import PersonnelDocuments from './PersonnelDocuments.jsx'
 
 const PDF = 'application/pdf'
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -431,5 +432,6 @@ export function EmployeeMailboxPage({ session }) {
         </article>)}
       </div> : <p>Im Postfach sind noch keine Dokumente vorhanden.</p>}
     </section>
+    {!isAdmin && <PersonnelDocuments session={session} embedded />}
   </div>
 }

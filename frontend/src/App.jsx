@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { plannedNetMinutes } from './timesheet-utils.js'
 import { EmployeeTimesheetPage, EmployeeMailboxPage } from './EmployeeSelfService.jsx'
 import EmployeeDailyReports from './EmployeeDailyReports.jsx'
+import PersonnelDocuments from './PersonnelDocuments.jsx'
 import PrivateOwnerAudit from './PrivateOwnerAudit.jsx'
 import TimeOffPage from './TimeOffPage.jsx'
 import { schedulableEmployees } from './time-off-policy.mjs'
@@ -50,6 +51,7 @@ const NAVIGATION = [
   { key: 'time-off', label: 'Freiwünsche', roles: ['owner', 'admin', 'manager', 'employee'] },
   { key: 'my-hours', label: 'Meine Stunden', roles: ['owner', 'admin', 'manager', 'employee'] },
   { key: 'mailbox', label: 'Postfach', roles: ['owner', 'admin', 'manager', 'employee'] },
+  { key: 'personnel', label: 'Personalunterlagen', roles: ['owner', 'admin'] },
   { key: 'daily-reports', label: 'Tagesberichte', roles: ['manager', 'employee'] },
   { key: 'times', label: 'Zeiten', roles: ['owner', 'admin', 'manager'] },
   { key: 'worksites', label: 'Einsatzorte', roles: ['owner', 'admin'] },
@@ -1087,6 +1089,7 @@ function UnifiedPortal({ session, onLogout }) {
           : page === 'time-off' ? <TimeOffPage session={session} />
           : page === 'my-hours' ? <EmployeeTimesheetPage />
             : page === 'mailbox' ? <EmployeeMailboxPage session={session} />
+            : page === 'personnel' ? <PersonnelDocuments session={session} />
             : page === 'daily-reports' ? <EmployeeDailyReports />
           : page === 'times' ? <TimesPage session={session} />
             : page === 'worksites' ? <WorksitesPage />
