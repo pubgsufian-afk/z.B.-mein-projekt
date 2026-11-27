@@ -20,6 +20,7 @@ export function isActiveAdmin(access){
 }
 export function reminderMessage(kind,minutes,clock){
   if(kind==='start')return Number(minutes)===30?'Dein Dienst beginnt um '+clock+' Uhr (in 30 Minuten). Bitte bereite dich vor.':'Dein Dienst beginnt um '+clock+' Uhr (in 5 Minuten). Bitte öffne die Stempeluhr und stemple zum tatsächlichen Dienstbeginn ein.'
+  if(Number(minutes)===-25)return 'Dein geplanter Dienst ist seit 25 Minuten beendet. Die Stempeluhr wird nach 30 Minuten automatisch beendet, sofern kein Folgedienst entgegensteht. Bitte stemple zum tatsächlichen Arbeitsende aus. Falls du weiterarbeitest, melde die tatsächlich geleistete Mehrarbeit zur Korrektur.'
   if(Number(minutes)===0)return 'Dein geplanter Dienst endet jetzt. Bitte beende die Stempeluhr, sobald deine Arbeit tatsächlich beendet ist.'
   return 'Dein geplanter Dienst endet um '+clock+' Uhr (in '+minutes+' Minuten). Bitte denke an die Dienstübergabe und das Ausstempeln zum tatsächlichen Arbeitsende.'
 }
