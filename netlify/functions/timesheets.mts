@@ -1,4 +1,6 @@
-import type { Config } from '@netlify/functions'
+import { withDeploymentContext } from './_shared/portal-notification-storage.mts'
+import { notifyPortalAdmins, notifyPortalUsers } from './_shared/portal-notification-service.mts'
+import type { Config, Context } from '@netlify/functions'
 import { verifyRequestOrigin } from '@netlify/identity'
 import { requirePortalRole } from './_shared/portal-role.mts'
 import { listSuppressedTimesheetEntries, listTimesheetEntries, writeTimesheetAudit } from './_shared/timesheet-repository.mts'
@@ -101,7 +103,8 @@ function requireReason(value: unknown) {
   return reason
 }
 
-export default async function timesheets(request: Request) {
+export default async function timesheets(request: Request, context?: Context) {
+  return withDeploymentContext(context, async()=>{
   const access = await requirePortalRole([...MANAGEMENT])
   if (access.response || !access.current) return access.response
   const current = access.current
@@ -142,6 +145,7 @@ export default async function timesheets(request: Request) {
         actorId: current.userId, actorRole: current.role, action: 'manual-create', entryId: saved.id,
         monthKey: monthKeyForDate(saved.workDate), reason, beforeData: null, afterData: saved,
       })
+      await notifyPortalUsers([saved.employeeUserId],{eventKey:'timesheet-created:'+saved.id,title:'HABUN – Arbeitsstunden',body:'Ein Stundenzettel-Eintrag wurde für dich erstellt.',url:'/?view=my-hours'})
       return json({ entry: saved }, 201)
     }
 
@@ -170,6 +174,7 @@ export default async function timesheets(request: Request) {
         beforeData: existing,
         afterData: refreshed || restored,
       })
+      await notifyPortalUsers([existing.employeeUserId],{eventKey:'timesheet-restored:'+id+':'+now.toISOString(),title:'HABUN – Arbeitsstunden',body:'Ein Stundenzettel-Eintrag wurde wiederhergestellt.',url:'/?view=my-hours'})
       return json({ entry: refreshed || restored })
     }
 
@@ -185,6 +190,7 @@ export default async function timesheets(request: Request) {
         actorId: current.userId, actorRole: current.role, action: 'manual-update', entryId: saved.id,
         monthKey: monthKeyForDate(saved.workDate), reason, beforeData: existing, afterData: saved,
       })
+      await notifyPortalUsers([existing.employeeUserId,saved.employeeUserId],{eventKey:'timesheet-updated:'+saved.id+':'+saved.updatedAt,title:'HABUN – Arbeitsstunden',body:'Ein Stundenzettel-Eintrag wurde geändert. Bitte prüfe deine Stunden.',url:'/?view=my-hours'})
       return json({ entry: saved })
     }
 
@@ -207,6 +213,7 @@ export default async function timesheets(request: Request) {
         beforeData: existing,
         afterData: existing.scheduleShiftId ? removed : null,
       })
+      await notifyPortalUsers([existing.employeeUserId],{eventKey:'timesheet-removed:'+id+':'+new Date().toISOString(),title:'HABUN – Arbeitsstunden',body:'Ein Stundenzettel-Eintrag wurde entfernt. Bitte prüfe deine Stunden.',url:'/?view=my-hours'})
       return json({ deleted: true, id, suppressed: Boolean(existing.scheduleShiftId) })
     }
 
@@ -216,6 +223,7 @@ export default async function timesheets(request: Request) {
     console.error('timesheets failed', error)
     return json({ message: 'Stundenzettel konnten nicht verarbeitet werden.' }, 500)
   }
+  })
 }
 
 export const config: Config = { path: '/api/timesheets' }

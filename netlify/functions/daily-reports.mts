@@ -1,7 +1,9 @@
-import type { Config } from '@netlify/functions'
+import { withDeploymentContext } from './_shared/portal-notification-storage.mts'
+import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { verifyRequestOrigin } from '@netlify/identity'
 import { randomUUID } from 'node:crypto'
+import { notifyPortalAdmins, notifyPortalUsers } from './_shared/portal-notification-service.mts'
 import { requirePortalRole } from './_shared/portal-role.mts'
 import { tryRecordPortalAdminChange } from './_shared/portal-private-audit-service.mts'
 import { canManageDailyReport, canSubmitDailyReport, mayReadDailyReport } from './_shared/daily-report-policy.mjs'
@@ -63,7 +65,8 @@ async function authorNameFor(current: NonNullable<Awaited<ReturnType<typeof requ
   return localPart || 'Mitarbeiter'
 }
 
-export default async function dailyReports(request: Request) {
+export default async function dailyReports(request: Request, context?: Context) {
+  return withDeploymentContext(context, async()=>{
   if (request.method === 'OPTIONS') return new Response(null, { status: 204 })
   if (!['GET', 'POST', 'PATCH', 'DELETE'].includes(request.method)) return response({ message: 'Methode nicht erlaubt.' }, 405)
 
@@ -107,6 +110,7 @@ export default async function dailyReports(request: Request) {
       const chronologicalKey = `${String(Date.parse(createdAt)).padStart(13, '0')}-${id}`
       await store.setJSON(`reports/${chronologicalKey}`, report)
       await tryRecordPortalAdminChange({ actor: current, category: 'Berichte', action: 'Tagesbericht erstellt', entityId: id, after: { authorName: report.authorName, createdAt, words: validation.words } })
+      await notifyPortalAdmins({eventKey:'report:'+id,title:'HABUN – Neuer Tagesbericht',body:'Ein neuer Tagesbericht wurde eingereicht.',url:'/?view=reports'},current.userId)
       return response({ report }, 201)
     }
 
@@ -134,16 +138,19 @@ export default async function dailyReports(request: Request) {
       }
       await store.setJSON(found.key, updated)
       await tryRecordPortalAdminChange({ actor: current, category: 'Berichte', action: 'Tagesbericht bearbeitet', entityId: id, before: { authorName: found.report.authorName, words: countWords(found.report.text) }, after: { updatedByName: updated.updatedByName, words: validation.words } })
+      if(found.report.authorId!==current.userId)await notifyPortalUsers([found.report.authorId],{eventKey:'report-updated:'+id+':'+updated.updatedAt,title:'HABUN – Bericht',body:'Die Verwaltung hat deinen Tagesbericht bearbeitet.',url:'/?view=daily-reports'})
       return response({ report: updated })
     }
 
     await store.delete(found.key)
     await tryRecordPortalAdminChange({ actor: current, category: 'Berichte', action: 'Tagesbericht gelöscht', entityId: id, before: { authorName: found.report.authorName, createdAt: found.report.createdAt, words: countWords(found.report.text) } })
+    if(found.report.authorId!==current.userId)await notifyPortalUsers([found.report.authorId],{eventKey:'report-deleted:'+id,title:'HABUN – Bericht',body:'Die Verwaltung hat deinen Tagesbericht entfernt.',url:'/?view=daily-reports'})
     return response({ deleted: true, id })
   } catch (error) {
     console.error('Habun daily reports', error)
     return response({ message: 'Der Tagesbericht konnte nicht verarbeitet werden.' }, 500)
   }
+  })
 }
 
 export const config: Config = { path: '/api/daily-reports' }

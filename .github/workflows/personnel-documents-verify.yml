@@ -1,0 +1,31 @@
+name: Personnel documents verification
+on:
+  pull_request:
+    paths:
+      - 'netlify/functions/personnel-documents.mts'
+      - 'netlify/functions/schedule-start-reminders.mts'
+      - 'netlify/functions/_shared/personnel-document-policy.mjs'
+      - 'frontend/src/PersonnelDocuments.jsx'
+      - 'frontend/src/personnel-documents.css'
+      - 'frontend/src/App.jsx'
+      - 'frontend/src/EmployeeSelfService.jsx'
+      - 'scripts/personnel-document-policy-test.mjs'
+      - 'scripts/personnel-documents-runtime-test.mjs'
+      - 'ops/portal-admin-surface-policy.json'
+      - 'netlify/database/migrations/**'
+      - '.github/workflows/personnel-documents-verify.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: node scripts/personnel-document-policy-test.mjs
+      - run: node scripts/personnel-documents-runtime-test.mjs
+      - run: npm run build
+      - run: npx esbuild netlify/functions/personnel-documents.mts netlify/functions/schedule-start-reminders.mts --bundle --platform=node --format=esm --packages=external --outdir=/tmp/personnel-function-build

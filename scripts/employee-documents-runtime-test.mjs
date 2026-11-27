@@ -3,7 +3,7 @@ import { build } from 'esbuild'
 
 // Backend integration test: the real API module and permission checks run
 // against fake Netlify identity, blobs and SQL. Never touches real personnel data.
-const state = { actor: null, access: {}, documents: [], blobs: new Map(), audit: [], pushRegistry: new Map(), pushCalls: [] }
+const state = { actor: null, access: {}, documents: [], blobs: new Map(), audit: [], pushRegistry: new Map(), pushCalls: [], notices: [] }
 globalThis.__habunMailboxTest = state
 globalThis.Netlify = { env: { get: () => '' } }
 // Network-safe test: only mocked push endpoints are allowed.
@@ -29,6 +29,7 @@ state.access['access/inactive-1'] = { role: 'employee', status: 'inactive' }
 
 function query(sql, params = []) {
   const normalized = sql.replace(/\s+/g, ' ').trim().toLowerCase()
+  if (normalized.startsWith('insert into portal_notifications')) { state.notices.push(params); return {rows:[]} }
   if (normalized.startsWith('insert into employee_document_access_audit')) {
     const [id, documentId, actorId, action] = params
     state.audit.push({ id, documentId, actorId, action })
@@ -160,7 +161,7 @@ function request(url = base, method = 'GET', data) {
   return new Request(url, init)
 }
 async function call(url = base, method = 'GET', data) {
-  return handler(request(url, method, data), { deploy: { context: 'deploy-preview' } })
+  return handler(request(url, method, data), { deploy: { context: 'production' } })
 }
 function upload(recipient, contents = '%PDF-1.7\nTest content, no personal data') {
   const body = new FormData()
@@ -207,6 +208,7 @@ for (const token of ['a', 'b']) {
   assert.ok(!push.body.includes('Testabrechnung'), 'Push must not expose payroll details')
 }
 assert.equal(state.pushRegistry.get('devices/manager')?.latestMessage, null)
+assert.deepEqual(state.notices.slice(0,2).map(p=>p[0]),[['employee-a'],['employee-b']])
 
 selectActor('a')
 const listingA = await (await call()).json()
@@ -268,7 +270,7 @@ async function largeCall(query = '', method = 'GET', body = null) {
       init.headers = { 'content-type': 'application/json' }
     }
   }
-  return largeHandler(new Request(largeBase + query, init), { deploy: { context: 'deploy-preview' } })
+  return largeHandler(new Request(largeBase + query, init), { deploy: { context: 'production' } })
 }
 const setup = {
   employeeUserId: 'employee-a', documentType: 'payslip', title: '',

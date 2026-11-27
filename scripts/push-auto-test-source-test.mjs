@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { access, readFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 
 await import('./apply-automatic-schedule-push.mjs')
 await import('./apply-automatic-schedule-push.mjs?check-idempotence')
@@ -55,7 +55,22 @@ assert.match(assistantSchedule, /notifySchedulePublished/)
 assert.match(assistantSchedule, /notifyScheduleChanged/)
 assert.match(assistantSchedule, /publishedUserIds = results\.flatMap/, 'assistant batch must aggregate successful publication recipients')
 assert.doesNotMatch(commandWorker, /notifySchedulePublished|notifyScheduleChanged|notifyShiftStartingSoon/, 'batch worker must inherit push from schedule assistant instead of double sending')
-await assert.rejects(() => access('netlify/functions/schedule-start-reminders.mts'), { code: 'ENOENT' }, 'no recurring start-reminder function may be deployed')
+// The new requested policy supersedes the earlier prohibition on reminders.
+const startReminder = await readFile('netlify/functions/schedule-start-reminders.mts','utf8')
+assert.match(startReminder, /schedule:'\* \* \* \* \*'/, 'check every minute')
+assert.match(startReminder, /VALUES \(30\),\(5\),\(0\)/, 'start and end offsets')
+assert.match(startReminder, /end_time<=s.start_time/, 'support overnight shift ends')
+assert.match(startReminder, /k.kind='end' OR m.minutes>0/, 'zero-minute reminder is end only')
+assert.match(startReminder, /clock-in','break-start','break-end'/, 'end reminder only for open sessions')
+assert.match(startReminder, /s\.status='published'/, 'never remind unpublished shifts')
+assert.match(startReminder, /Europe\/Berlin/, 'use German local time including DST')
+assert.match(startReminder, /ON CONFLICT DO NOTHING/, 'deduplicate reminder claims')
+assert.match(startReminder, /userIds:\[row\.employee_user_id\]/, 'notify only the assigned recipient')
+assert.match(startReminder, /context\.deploy\?\.context!=='production'/, 'preview must not send real reminders')
+assert.match(startReminder, /view=attendance/, 'link to the time clock')
+const noticePolicy = await readFile('netlify/functions/_shared/portal-notification-policy.mjs','utf8')
+assert.match(noticePolicy, /tatsächlichen Dienstbeginn/, 'do not ask workers to stamp prematurely')
+assert.match(noticePolicy, /tatsächlichen Arbeitsende/, 'do not require premature checkout')
 
 assert.match(reminderCore, /result\.targeted === 0/, 'claim is released only when certainly no device was targeted')
 assert.match(migration, /CREATE TABLE schedule_push_reminders/)

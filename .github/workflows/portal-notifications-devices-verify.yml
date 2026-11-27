@@ -1,0 +1,29 @@
+name: Portal notifications and device verification
+on:
+  pull_request:
+    paths:
+      - 'frontend/src/**'
+      - 'netlify/functions/**'
+      - 'netlify/database/migrations/**'
+      - 'scripts/portal-notification*'
+      - 'tests/e2e/portal-notifications-devices.spec.mjs'
+      - 'playwright.notifications.config.mjs'
+      - '.github/workflows/portal-notifications-devices-verify.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: node scripts/portal-notification-policy-test.mjs
+      - run: node scripts/portal-notification-runtime-test.mjs
+      - run: npm run build
+      - run: npx esbuild netlify/functions/portal-messages.mts netlify/functions/portal-notifications.mts netlify/functions/schedule-start-reminders.mts --bundle --platform=node --format=esm --packages=external --outdir=/tmp/notification-function-build
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npx playwright test -c playwright.notifications.config.mjs

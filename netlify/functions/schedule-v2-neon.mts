@@ -1,3 +1,4 @@
+import { withDeploymentContext } from './_shared/portal-notification-storage.mts'
 import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { getDatabase } from '@netlify/database'
@@ -450,6 +451,7 @@ async function deleteObject(current: NonNullable<Awaited<ReturnType<typeof curre
 }
 
 export default async function scheduleV2Neon(request: Request, _context: Context) {
+  return withDeploymentContext(_context, async()=>{
   const current = await currentPortalActor()
   if (!current) return json({ message: 'Nicht angemeldet.' }, 401)
   if (current.role === 'pending') return json({ message: 'Das Konto ist noch nicht freigeschaltet.' }, 403)
@@ -539,6 +541,7 @@ export default async function scheduleV2Neon(request: Request, _context: Context
     console.error('Habun schedule v3 Neon', error)
     return json({ message: 'Der Dienstplan konnte nicht verarbeitet werden.' }, 500)
   }
+  })
 }
 
 export const config: Config = { path: '/api/schedule-v2' }

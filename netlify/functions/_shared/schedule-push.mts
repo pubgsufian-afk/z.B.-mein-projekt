@@ -13,7 +13,7 @@ async function safeSend(label: string, userIds: string[], body: string): Promise
   const recipients = uniqueUserIds(userIds)
   if (!recipients.length) return { targeted: 0, delivered: 0, removed: 0, messageId: '' }
   try {
-    return await sendPushToUsers({ userIds: recipients, title: TITLE, body, url: '/' })
+    return await sendPushToUsers({ userIds: recipients, title: TITLE, body, url: '/?view=schedule' })
   } catch (error) {
     console.error(`Schedule push ${label} failed`, error)
     return null

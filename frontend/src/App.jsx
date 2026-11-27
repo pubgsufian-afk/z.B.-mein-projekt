@@ -3,6 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { plannedNetMinutes } from './timesheet-utils.js'
 import { EmployeeTimesheetPage, EmployeeMailboxPage } from './EmployeeSelfService.jsx'
 import EmployeeDailyReports from './EmployeeDailyReports.jsx'
+import PersonnelDocuments from './PersonnelDocuments.jsx'
+import { NotificationsBell, NotificationsPage } from './PortalNotifications.jsx'
+import { disconnectPushDevice } from './push-notifications.js'
 import PrivateOwnerAudit from './PrivateOwnerAudit.jsx'
 import TimeOffPage from './TimeOffPage.jsx'
 import { schedulableEmployees } from './time-off-policy.mjs'
@@ -50,6 +53,8 @@ const NAVIGATION = [
   { key: 'time-off', label: 'Freiwünsche', roles: ['owner', 'admin', 'manager', 'employee'] },
   { key: 'my-hours', label: 'Meine Stunden', roles: ['owner', 'admin', 'manager', 'employee'] },
   { key: 'mailbox', label: 'Postfach', roles: ['owner', 'admin', 'manager', 'employee'] },
+  { key: 'notifications', label: 'Benachrichtigungen', roles: ['owner', 'admin', 'manager', 'employee'] },
+  { key: 'personnel', label: 'Personalunterlagen', roles: ['owner', 'admin'] },
   { key: 'daily-reports', label: 'Tagesberichte', roles: ['manager', 'employee'] },
   { key: 'times', label: 'Zeiten', roles: ['owner', 'admin', 'manager'] },
   { key: 'worksites', label: 'Einsatzorte', roles: ['owner', 'admin'] },
@@ -277,6 +282,7 @@ function PendingScreen({ session, onLogout }) {
 
 function PortalShell({ session, page, setPage, onLogout, privateAuditAccess = false, children }) {
   const [drawer, setDrawer] = useState(false)
+  const secureLogout = async () => { await disconnectPushDevice().catch(() => {}); await onLogout() }
   const items = NAVIGATION.filter((item) => item.key === 'private-audit' ? privateAuditAccess : item.roles.includes(session.role))
   const title = items.find((item) => item.key === page)?.label || 'Übersicht'
   const navigate = (key) => { setPage(key); setDrawer(false); window.scrollTo({ top: 0, behavior: 'smooth' }) }
@@ -286,7 +292,8 @@ function PortalShell({ session, page, setPage, onLogout, privateAuditAccess = fa
       <div className="employee-kiosk-shell">
         <header className="employee-kiosk-header">
           <Brand />
-          <button className="secondary-button compact" type="button" onClick={onLogout}>Abmelden</button>
+          <NotificationsBell accountId={session.userId || session.id} onClick={() => navigate('notifications')} />
+          <button className="secondary-button compact" type="button" onClick={secureLogout}>Abmelden</button>
         </header>
         <nav className="employee-kiosk-nav" aria-label="Mitarbeiterbereiche">
           <button type="button" className={page === 'attendance' ? 'active' : ''} onClick={() => navigate('attendance')}>Stempeluhr</button>
@@ -296,7 +303,7 @@ function PortalShell({ session, page, setPage, onLogout, privateAuditAccess = fa
           <button type="button" className={page === 'mailbox' ? 'active' : ''} onClick={() => navigate('mailbox')}>Postfach</button>
           <button type="button" className={page === 'daily-reports' ? 'active' : ''} onClick={() => navigate('daily-reports')}>Berichte</button>
         </nav>
-        <main className="employee-kiosk-main" aria-label={page === 'schedule' ? 'Eigener Dienstplan' : page === 'time-off' ? 'Freiwünsche' : page === 'my-hours' ? 'Eigene Arbeitsstunden' : page === 'mailbox' ? 'Persönliches Postfach' : page === 'daily-reports' ? 'Eigene Tagesberichte' : 'Mitarbeiter-Zeiterfassung'}>{children}</main>
+        <main className="employee-kiosk-main" aria-label={page === 'schedule' ? 'Eigener Dienstplan' : page === 'time-off' ? 'Freiwünsche' : page === 'my-hours' ? 'Eigene Arbeitsstunden' : page === 'mailbox' ? 'Persönliches Postfach' : page === 'notifications' ? 'Persönliche Benachrichtigungen' : page === 'daily-reports' ? 'Eigene Tagesberichte' : 'Mitarbeiter-Zeiterfassung'}>{children}</main>
       </div>
     )
   }
@@ -309,13 +316,14 @@ function PortalShell({ session, page, setPage, onLogout, privateAuditAccess = fa
         <nav aria-label="Hauptnavigation">
           {items.map((item) => <button key={item.key} className={page === item.key ? 'active' : ''} onClick={() => navigate(item.key)}><span className="nav-dot" />{item.label}</button>)}
         </nav>
-        <div className="sidebar-footer"><Status tone="gold">{ROLE_LABELS[session.role]}</Status><button className="text-button light" onClick={onLogout}>Abmelden</button></div>
+        <div className="sidebar-footer"><Status tone="gold">{ROLE_LABELS[session.role]}</Status><button className="text-button light" onClick={secureLogout}>Abmelden</button></div>
       </aside>
       <main className="app-main">
         <header className="topbar">
           <button className="hamburger-button" type="button" aria-label="Menü öffnen" onClick={() => setDrawer(true)}><span /><span /><span /></button>
           <div className="topbar-logo" aria-hidden="true"><Brand compact /></div>
           <div className="topbar-title"><h1>{title}</h1><p>Habun Security · Geschützter Firmenbereich</p></div>
+          <NotificationsBell accountId={session.userId || session.id} onClick={() => navigate('notifications')} />
           <div className="account-chip"><span>{session.fullName?.slice(0, 1)?.toUpperCase() || 'H'}</span><div><strong>{session.fullName}</strong><small>{ROLE_LABELS[session.role]}</small></div></div>
         </header>
         <div className="page-content">{children}</div>
@@ -1087,6 +1095,8 @@ function UnifiedPortal({ session, onLogout }) {
           : page === 'time-off' ? <TimeOffPage session={session} />
           : page === 'my-hours' ? <EmployeeTimesheetPage />
             : page === 'mailbox' ? <EmployeeMailboxPage session={session} />
+            : page === 'personnel' ? <PersonnelDocuments session={session} />
+            : page === 'notifications' ? <NotificationsPage onNavigate={setPage} />
             : page === 'daily-reports' ? <EmployeeDailyReports />
           : page === 'times' ? <TimesPage session={session} />
             : page === 'worksites' ? <WorksitesPage />

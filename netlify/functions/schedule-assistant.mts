@@ -1,3 +1,4 @@
+import { withDeploymentContext } from './_shared/portal-notification-storage.mts'
 import type { Config, Context } from '@netlify/functions'
 import { getStore } from '@netlify/blobs'
 import { admin } from '@netlify/identity'
@@ -633,6 +634,7 @@ async function deleteAssistantShift(body: Record<string, unknown>, requestId: st
 }
 
 export default async function scheduleAssistant(request: Request, _context: Context) {
+  return withDeploymentContext(_context, async()=>{
   if (request.method !== 'POST') return json({ message: 'Methode nicht erlaubt.' }, 405)
 
   const expectedToken = Netlify.env.get('SCHEDULE_ASSISTANT_TOKEN') || ''
@@ -736,6 +738,7 @@ export default async function scheduleAssistant(request: Request, _context: Cont
     console.error('schedule-assistant failed', error)
     return json({ message: 'Dienstplan konnte nicht verarbeitet werden.' }, 500)
   }
+  })
 }
 
 export const config: Config = { path: '/api/schedule-assistant' }

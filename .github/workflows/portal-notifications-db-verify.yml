@@ -1,0 +1,45 @@
+name: Portal notifications PostgreSQL runtime verification
+on:
+  pull_request:
+    paths:
+      - 'netlify/functions/**'
+      - 'netlify/database/migrations/**'
+      - 'scripts/portal-notifications-db-*'
+      - '.github/workflows/portal-notifications-db-verify.yml'
+permissions:
+  contents: read
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: habun_ci
+          POSTGRES_PASSWORD: disposable-ci-only
+          POSTGRES_DB: habun_ci
+        options: >-
+          --health-cmd "pg_isready -U habun_ci -d habun_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Apply required real migrations in disposable database
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          for migration in 20260806123000_create-attendance-schema 20260807160500_create-schedule-schema 20260816132000_create-schedule-push-reminders 20260817193000_add-attendance-automation 20261127140000_personnel_documents 20261127153000_portal_messages_notifications; do
+            docker exec -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 -U habun_ci -d habun_ci < "netlify/database/migrations/$migration/migration.sql"
+          done
+      - name: Test production reminder SQL and message isolation
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          node scripts/portal-notifications-db-verify.mjs | docker exec -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 -U habun_ci -d habun_ci
