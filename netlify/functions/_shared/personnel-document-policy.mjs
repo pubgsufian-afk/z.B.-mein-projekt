@@ -32,12 +32,10 @@ export const TERMINATION_GROUNDS = {
   conduct: 'Verhaltensbedingte Gründe',
   other: 'Sonstiger rechtlich geprüfter Grund',
 }
-export const TERMINATION_NOTICE_TITLE = 'Merkblatt zur Beendigung des Arbeitsverhältnisses'
 export const TERMINATION_NOTICE_PARAGRAPHS = [
   'Arbeitsuchendmeldung (§ 38 Abs. 1 SGB III): Melden Sie sich spätestens drei Monate vor dem Ende Ihres Arbeitsverhältnisses bei der Agentur für Arbeit arbeitsuchend. Erfahren Sie weniger als drei Monate vorher von der Beendigung, melden Sie sich innerhalb von drei Tagen nach Kenntnis.',
   'Die Meldepflicht gilt auch dann, wenn Sie gegen die Kündigung vorgehen oder eine Weiterbeschäftigung in Aussicht gestellt wird. Eine verspätete Meldung kann Nachteile beim Arbeitslosengeld verursachen.',
   'Bemühen Sie sich frühzeitig eigenständig um eine neue Beschäftigung. Falls Sie arbeitslos werden, ist zusätzlich eine gesonderte Arbeitslosmeldung erforderlich. Informationen und Online-Dienste: www.arbeitsagentur.de.',
-  'Dieses Merkblatt dient der Information. Es ist keine Kündigung und ersetzt weder das unterschriebene Kündigungsschreiben noch eine individuelle Beratung.',
 ]
 export const ACK_TEXT = 'Ich bestätige ausschließlich den Erhalt dieses Dokuments im Portal. Die Bestätigung bedeutet keine Zustimmung zum Inhalt und keinen Verzicht auf Rechte.'
 export function makeReceiptText({title,createdAt,receiptAt}) {
@@ -179,7 +177,7 @@ export function makePersonnelText(input, employeeName) {
     greeting,first,
     ...(extraordinary&&groundText?['Kündigungsgrund: '+TERMINATION_GROUNDS[ground]+'.']:[]),
     ...(extra?[extra]:[]),
-    ...(input.includeEmploymentNotice===true?TERMINATION_NOTICE_PARAGRAPHS.slice(0,3):[]),
+    ...TERMINATION_NOTICE_PARAGRAPHS,
     'Mit freundlichen Grüßen',
   ]}
 }
