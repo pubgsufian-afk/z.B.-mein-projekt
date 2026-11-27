@@ -34,7 +34,6 @@ async function login(page,role){
   }
   if(p==='/api/personnel-documents'){
    const action=u.searchParams.get('action')
-   if(action==='termination-notice')return route.fulfill({status:200,contentType:'application/pdf',body:Buffer.from('%PDF-1.7\n%%EOF')})
    if(action==='preview')return route.fulfill({status:200,contentType:'application/pdf',body:Buffer.from('%PDF-1.7\n%%EOF')})
    if(action==='create'){const payload=request.postDataJSON();documents.push({...payload,title:'Abmahnung',employeeName:employee.user_metadata.full_name,creatorName:user.user_metadata.full_name,creatorFunction:payload.signerFunction,createdAt:new Date().toISOString(),publishedAt:null,canPublish:true});return fulfill(route,{id:payload.id},201)}
    if(action==='publish'){const d=documents.find(d=>d.id===request.postDataJSON().id);if(d){d.publishedAt=new Date().toISOString();d.canPublish=false}return fulfill(route,{ok:true})}
@@ -131,11 +130,7 @@ test('administrator targets a specific employee and sees the personnel form',asy
  const notice=form.getByRole('button',{name:'Merkblatt herunterladen / drucken'})
  await expect(notice).toHaveCount(0)
  await page.getByRole('button',{name:'Kündigung',exact:true}).click()
- await checkFits(page,notice)
- const download=page.waitForEvent('download')
- await notice.click()
- expect((await download).suggestedFilename()).toBe('Merkblatt-zur-Kuendigung.pdf')
- await expect(form.getByRole('status')).toContainText('Merkblatt separat heruntergeladen')
+ await expect(notice).toHaveCount(0)
  expect(documents).toHaveLength(1)
  await form.getByTestId('personnel-employee').selectOption('employee-test')
  const kind=form.getByLabel('Kündigungsart',{exact:true})
@@ -149,6 +144,7 @@ test('administrator targets a specific employee and sees the personnel form',asy
  await form.getByRole('checkbox').check()
  await expect(address).toHaveValue('Teststraße 1\n12345 Teststadt')
  await expect(form.getByText(/hiermit kündigen wir.*ordentlich und fristgerecht/)).toBeVisible()
+ await expect(form.getByText(/Arbeitsuchendmeldung.*Agentur für Arbeit/)).toBeVisible()
  await kind.selectOption('probation')
  await expect(form.getByRole('checkbox')).not.toBeChecked()
  await form.getByLabel('Beendigungsdatum',{exact:true}).fill('2026-12-31')
