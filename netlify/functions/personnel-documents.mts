@@ -13,7 +13,7 @@ import { readCompanySettings } from './_shared/company-settings.mts'
 import { readPdfLogoBytes } from './_shared/pdf-branding.mts'
 import { sendPushToUsers } from './_shared/push-core.mts'
 import { notifyPortalAdmins, notifyPortalUsers } from './_shared/portal-notification-service.mts'
-import { ACK_TEXT, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS, makePersonnelText, dateValid, canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel } from './_shared/personnel-document-policy.mjs'
+import { ACK_TEXT, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS, makePersonnelText, dateValid, normalizePersonnelAddress, validTerminationAddress, canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel } from './_shared/personnel-document-policy.mjs'
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 const SIGNER_FUNCTIONS = new Set(['Inhaber', 'Geschäftsführer', 'Personalverantwortlicher', 'Einsatzleiter', 'Bevollmächtigter'])
@@ -73,7 +73,7 @@ async function renderPdf(input: { title: string; paragraphs: string[]; employeeN
     page.drawText(text,{x:margin,y,size,font:f,color:rgb(.1,.1,.1)})
     y-=size+5
   }
-  function paragraph(text:string,size=11,strong=false) {
+  function paragraph(text:string,size=11,strong=false,after=10) {
     const f=strong?bold:font
     checkText(text,strong)
     for(const block of text.split('\n')){
@@ -92,13 +92,13 @@ async function renderPdf(input: { title: string; paragraphs: string[]; employeeN
       }
       if(current)line(current,size,strong)
     }
-    y-=10
+    y-=after
   }
   pageHeader()
-  if(!input.notice)paragraph(input.employeeName,12,true)
-  if(input.address)paragraph(input.address,10)
+  if(!input.notice)paragraph(input.employeeName,12,true,input.address?0:10)
+  if(input.address)paragraph(input.address,11)
   paragraph('Hannover, '+dateLabel(input.issued),10)
-  paragraph(input.title,18,true)
+  paragraph(input.title,16,true)
   for(const p of input.paragraphs)paragraph(p)
   if(input.notice){pdf.setTitle(input.title);return Buffer.from(await pdf.save())}
   if(y<150){page=pdf.addPage([595.28,841.89]);y=page.getHeight()-60}
@@ -178,8 +178,8 @@ export default async function personnel(request: Request, context: Context) {
       if(!creatorName||!employeeName)return json({message:'Der Name des Admins oder Mitarbeiters fehlt im Kontoprofil.'},409)
       const content=makePersonnelText(body,employeeName)
       const signatureBytes=body.kind==='warning'&&action==='create'?signature(body.signature):undefined
-      const address=typeof body.address==='string'?body.address.trim().slice(0,400):''
-      if(body.kind==='termination'&&!address)return json({message:'Bitte die geprüfte Empfängeranschrift eintragen.'},400)
+      const address=normalizePersonnelAddress(body.address)
+      if(body.kind==='termination'&&!validTerminationAddress(address))return json({message:'Bitte vollständige Empfängeranschrift mit Straße und Hausnummer sowie Postleitzahl und Ort eintragen; bei Auslandsanschriften zusätzlich das Land.'},400)
       const issued=new Date()
       const bytes=await renderPdf({...content,employeeName,address,signerName:creatorName,signerFunction:body.signerFunction,issued,signatureBytes,reference:body.id,showReference:body.kind!=='termination'})
       if(action==='preview')return pdfResponse(bytes,'Vorschau.pdf')
