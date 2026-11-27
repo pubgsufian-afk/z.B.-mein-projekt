@@ -43,6 +43,22 @@ const val = (v, max) => {
   if (s.length > max) throw new TypeError('Ein Textfeld ist zu lang.')
   return s
 }
+// Preserve postal lines; accept a common single-line German address without guessing missing data.
+export function normalizePersonnelAddress(value) {
+  const address = val(value, 400).replace(/\r/g, '\n')
+  const lines = address.replace(/,\s*(?=\d{5}\s+\S)/g, '\n').split('\n').map(line=>line.trim().replace(/[ \t]+/g,' ')).filter(Boolean)
+  return lines.join('\n')
+}
+export function validTerminationAddress(value) {
+  try {
+    const lines=normalizePersonnelAddress(value).split('\n')
+    if(lines.length<2 || !/\p{L}/u.test(lines[0]))return false
+    // German addresses: separate postcode and locality; international addresses
+    // may use another postal format if a separate country line is supplied.
+    if(lines.slice(1).some(line=>/^\d{5}\s+\p{L}/u.test(line)))return true
+    return lines.length>=3 && /\p{L}/u.test(lines.at(-2)) && /^[\p{L}][\p{L} .'-]{1,60}$/u.test(lines.at(-1)) && !/^(Deutschland|Germany)$/i.test(lines.at(-1))
+  } catch { return false }
+}
 const de = (v) => v.split('-').reverse().join('.')
 export function canManagePersonnel(role) { return role === 'owner' || role === 'admin' }
 export function canReadPersonnel(actor, row) {
@@ -82,13 +98,22 @@ export function makePersonnelText(input, employeeName) {
   if (input.legalReviewed !== true) throw new TypeError('Kündigungsvoraussetzungen und Frist müssen geprüft sein.')
   const extra = val(input.terminationText, 900)
   return { title: TERMINATION_TYPES[input.reason], reason: TERMINATION_TYPES[input.reason], paragraphs: [
-    'Sehr geehrte/r ' + name + ',',
-    extraordinary
-      ? 'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis außerordentlich und fristlos.'
-      : 'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis ordentlich und fristgerecht zum ' + de(endDate) + ', hilfsweise zum nächstzulässigen Termin.',
-    ...(extra ? [extra] : []),
-    'Bitte stimmen Sie die Rückgabe der Ihnen überlassenen Arbeitsmittel, Dienstkleidung, Schlüssel und betrieblichen Unterlagen mit der zuständigen Verwaltung ab.',
-    'Die Abwicklung des Arbeitsverhältnisses erfolgt nach den geltenden arbeitsvertraglichen, tariflichen und gesetzlichen Bestimmungen.',
+    'Guten Tag ' + name + ',',
+    ...(extraordinary ? [
+      'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis aus wichtigem Grund außerordentlich und fristlos mit Wirkung ab Zugang dieses Schreibens.',
+      ...(extra ? [extra] : []),
+      'Bitte stimmen Sie die unverzügliche Rückgabe der Ihnen überlassenen Arbeitsmittel, Dienstkleidung, Schlüssel und betrieblichen Unterlagen mit unserer Verwaltung ab.',
+    ] : input.reason === 'probation' ? [
+      'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis während der vereinbarten Probezeit ordentlich unter Einhaltung der maßgeblichen Kündigungsfrist zum ' + de(endDate) + ', hilfsweise zum nächstzulässigen Termin.',
+      ...(extra ? [extra] : []),
+      'Bitte vereinbaren Sie mit unserer Verwaltung die ordnungsgemäße Übergabe Ihrer betrieblichen Arbeitsmittel und Schlüssel bis zur Beendigung des Arbeitsverhältnisses.',
+      'Wir wünschen Ihnen für Ihren weiteren beruflichen Weg alles Gute.',
+    ] : [
+      'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis ordentlich und fristgerecht zum ' + de(endDate) + ', hilfsweise zum nächstzulässigen Termin.',
+      ...(extra ? [extra] : []),
+      'Bitte stimmen Sie die Übergabe Ihrer laufenden Aufgaben sowie die Rückgabe der Ihnen überlassenen Arbeitsmittel, Dienstkleidung, Schlüssel und betrieblichen Unterlagen mit unserer Verwaltung ab.',
+    ]),
+    'Die abschließende Abwicklung des Arbeitsverhältnisses erfolgt nach den maßgeblichen arbeitsvertraglichen, tariflichen und gesetzlichen Bestimmungen.',
     'Mit freundlichen Grüßen',
   ] }
 }
