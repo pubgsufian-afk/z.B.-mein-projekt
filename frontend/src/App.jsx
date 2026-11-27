@@ -282,6 +282,7 @@ function PendingScreen({ session, onLogout }) {
 
 function PortalShell({ session, page, setPage, onLogout, privateAuditAccess = false, children }) {
   const [drawer, setDrawer] = useState(false)
+  const secureLogout = async () => { await disconnectPushDevice().catch(() => {}); await onLogout() }
   const items = NAVIGATION.filter((item) => item.key === 'private-audit' ? privateAuditAccess : item.roles.includes(session.role))
   const title = items.find((item) => item.key === page)?.label || 'Übersicht'
   const navigate = (key) => { setPage(key); setDrawer(false); window.scrollTo({ top: 0, behavior: 'smooth' }) }
@@ -292,7 +293,7 @@ function PortalShell({ session, page, setPage, onLogout, privateAuditAccess = fa
         <header className="employee-kiosk-header">
           <Brand />
           <NotificationsBell accountId={session.userId || session.id} onClick={() => navigate('notifications')} />
-          <button className="secondary-button compact" type="button" onClick={onLogout}>Abmelden</button>
+          <button className="secondary-button compact" type="button" onClick={secureLogout}>Abmelden</button>
         </header>
         <nav className="employee-kiosk-nav" aria-label="Mitarbeiterbereiche">
           <button type="button" className={page === 'attendance' ? 'active' : ''} onClick={() => navigate('attendance')}>Stempeluhr</button>
@@ -315,7 +316,7 @@ function PortalShell({ session, page, setPage, onLogout, privateAuditAccess = fa
         <nav aria-label="Hauptnavigation">
           {items.map((item) => <button key={item.key} className={page === item.key ? 'active' : ''} onClick={() => navigate(item.key)}><span className="nav-dot" />{item.label}</button>)}
         </nav>
-        <div className="sidebar-footer"><Status tone="gold">{ROLE_LABELS[session.role]}</Status><button className="text-button light" onClick={onLogout}>Abmelden</button></div>
+        <div className="sidebar-footer"><Status tone="gold">{ROLE_LABELS[session.role]}</Status><button className="text-button light" onClick={secureLogout}>Abmelden</button></div>
       </aside>
       <main className="app-main">
         <header className="topbar">
@@ -1135,7 +1136,7 @@ export default function App() {
     return () => unsubscribe()
   }, [loadSession])
 
-  async function signOut() { await disconnectPushDevice().catch(() => {}); await logout(); setIdentityUser(null); setSession(null) }
+  async function signOut() { await logout(); setIdentityUser(null); setSession(null) }
   if (loading) return <div className="loading-screen"><Brand /><span>Portal wird sicher geladen …</span></div>
   if (!identityUser || !session) return <AuthScreen notice={notice} setNotice={setNotice} />
   if (session.role === 'pending') return <PendingScreen session={session} onLogout={signOut} />
