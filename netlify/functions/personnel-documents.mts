@@ -13,7 +13,7 @@ import { readCompanySettings } from './_shared/company-settings.mts'
 import { readPdfLogoBytes } from './_shared/pdf-branding.mts'
 import { sendPushToUsers } from './_shared/push-core.mts'
 import { notifyPortalAdmins, notifyPortalUsers } from './_shared/portal-notification-service.mts'
-import { ACK_TEXT, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS, makePersonnelText, makeReceiptText, dateValid, normalizePersonnelAddress, validTerminationAddress, canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel } from './_shared/personnel-document-policy.mjs'
+import { ACK_TEXT, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS, makePersonnelText, makeReceiptText, dateValid, normalizePersonnelAddress, validTerminationAddress, recipientNameValid, addressMatchesOtherAccount, defaultSignerFunction, canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel } from './_shared/personnel-document-policy.mjs'
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 const SIGNER_FUNCTIONS = new Set(['Inhaber', 'Geschäftsführer', 'Personalverantwortlicher', 'Einsatzleiter', 'Bevollmächtigter'])
@@ -194,10 +194,13 @@ export default async function personnel(request: Request, context: Context) {
       const u=actor.user as unknown as Record<string,any>
       const creatorName=await accountName(db,actor.userId,own,clean(u.userMetadata?.fullName||u.userMetadata?.full_name||u.userMetadata?.name))
       if(!creatorName||!employeeName)return json({message:'Der Name des Admins oder Mitarbeiters fehlt im Kontoprofil.'},409)
+      if(body.signerFunction==='Inhaber'&&defaultSignerFunction(creatorName)!=='Inhaber')return json({message:'Inhaber ist ausschließlich die im Briefkopf genannte Person. Bitte die tatsächliche Unterzeichnerfunktion auswählen.'},400)
+      if(body.kind==='termination'&&!recipientNameValid(employeeName))return json({message:'Bitte den vollständigen Mitarbeiternamen im Profil hinterlegen.'},400)
+      if(body.kind==='termination'&&addressMatchesOtherAccount(body.address,employeeName,creatorName))return json({message:'Die Empfängeranschrift enthält den Namen des angemeldeten Kontos. Bitte den ausgewählten Mitarbeiter und seine Anschrift prüfen.'},400)
       const content=makePersonnelText(body,employeeName)
       if(body.kind==='termination'&&body.reason==='confirmation'&&body.resignationDate>new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()))return json({message:'Das Datum der Eigenkündigung darf nicht in der Zukunft liegen.'},400)
       const signatureBytes=body.kind==='warning'&&action==='create'?signature(body.signature):undefined
-      const address=normalizePersonnelAddress(body.address)
+      const address=normalizePersonnelAddress(body.address,employeeName)
       if(body.kind==='termination'&&!validTerminationAddress(address))return json({message:'Bitte vollständige Empfängeranschrift mit Straße und Hausnummer sowie Postleitzahl und Ort eintragen; bei Auslandsanschriften zusätzlich das Land.'},400)
       const issued=new Date()
       const bytes=await renderPdf({...content,employeeName,address,signerName:creatorName,signerFunction:body.signerFunction,issued,signatureBytes,reference:body.id,showReference:body.kind!=='termination',letter:body.kind==='termination',salutation:body.salutation})
