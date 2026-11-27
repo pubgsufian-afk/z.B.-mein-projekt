@@ -13,7 +13,7 @@ import { readCompanySettings } from './_shared/company-settings.mts'
 import { readPdfLogoBytes } from './_shared/pdf-branding.mts'
 import { sendPushToUsers } from './_shared/push-core.mts'
 import { notifyPortalAdmins, notifyPortalUsers } from './_shared/portal-notification-service.mts'
-import { ACK_TEXT, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS, makePersonnelText, dateValid, normalizePersonnelAddress, validTerminationAddress, canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel } from './_shared/personnel-document-policy.mjs'
+import { ACK_TEXT, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS, makePersonnelText, makeReceiptText, dateValid, normalizePersonnelAddress, validTerminationAddress, canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel } from './_shared/personnel-document-policy.mjs'
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 const SIGNER_FUNCTIONS = new Set(['Inhaber', 'Geschäftsführer', 'Personalverantwortlicher', 'Einsatzleiter', 'Bevollmächtigter'])
@@ -142,7 +142,7 @@ export default async function personnel(request: Request, context: Context) {
       if(!canReadPersonnel(actor,row))return json({message:'Dokument nicht gefunden.'},404)
       if(action==='receipt'){
         if(!row.receipt_at||!row.receipt_signature)return json({message:'Keine Empfangsbestätigung vorhanden.'},404)
-        const bytes=await renderPdf({title:'Empfangsbestätigung',paragraphs:[ACK_TEXT,'Dokument: '+row.title,'Dokument-ID: '+row.id,'SHA-256: '+row.receipt_document_sha256,'Bestätigung: '+new Date(row.receipt_at).toISOString()],employeeName:row.employee_name,signerName:row.employee_name,signerFunction:'Empfänger/in',issued:new Date(row.receipt_at),signatureBytes:signature(row.receipt_signature),reference:row.id,receipt:true})
+        const bytes=await renderPdf({title:'Empfangsbestätigung',paragraphs:makeReceiptText({title:row.title,createdAt:row.created_at,receiptAt:row.receipt_at}),employeeName:row.employee_name,signerName:row.employee_name,signerFunction:'Empfänger/in',issued:new Date(row.receipt_at),signatureBytes:signature(row.receipt_signature),reference:row.id,receipt:true,showReference:false})
         return pdfResponse(bytes,'Empfangsbestaetigung.pdf')
       }
       if(action!=='download')return json({message:'Unbekannte Aktion.'},400)
