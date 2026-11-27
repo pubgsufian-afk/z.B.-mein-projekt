@@ -24,6 +24,13 @@ export const TERMINATION_TYPES = {
   probation: 'Ordentliche Kündigung während der Probezeit',
   extraordinary: 'Außerordentliche fristlose Kündigung',
 }
+export const TERMINATION_NOTICE_TITLE = 'Merkblatt zur Beendigung des Arbeitsverhältnisses'
+export const TERMINATION_NOTICE_PARAGRAPHS = [
+  'Arbeitsuchendmeldung (§ 38 Abs. 1 SGB III): Melden Sie sich spätestens drei Monate vor dem Ende Ihres Arbeitsverhältnisses bei der Agentur für Arbeit arbeitsuchend. Erfahren Sie weniger als drei Monate vorher von der Beendigung, melden Sie sich innerhalb von drei Tagen nach Kenntnis.',
+  'Die Meldepflicht gilt auch dann, wenn Sie gegen die Kündigung vorgehen oder eine Weiterbeschäftigung in Aussicht gestellt wird. Eine verspätete Meldung kann Nachteile beim Arbeitslosengeld verursachen.',
+  'Bemühen Sie sich frühzeitig eigenständig um eine neue Beschäftigung. Falls Sie arbeitslos werden, ist zusätzlich eine gesonderte Arbeitslosmeldung erforderlich. Informationen und Online-Dienste: www.arbeitsagentur.de.',
+  'Dieses Merkblatt dient der Information. Es ist keine Kündigung und ersetzt weder das unterschriebene Kündigungsschreiben noch eine individuelle Beratung.',
+]
 export const ACK_TEXT = 'Ich bestätige ausschließlich den Erhalt dieses Dokuments im Portal. Die Bestätigung bedeutet keine Zustimmung zum Inhalt und keinen Verzicht auf Rechte.'
 export function dateValid(v) {
   if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false
@@ -80,8 +87,8 @@ export function makePersonnelText(input, employeeName) {
       ? 'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis außerordentlich und fristlos.'
       : 'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis ordentlich und fristgerecht zum ' + de(endDate) + ', hilfsweise zum nächstzulässigen Termin.',
     ...(extra ? [extra] : []),
-    'Bitte geben Sie sämtliche überlassenen Arbeitsmittel, Schlüssel und Unterlagen nach Absprache zurück.',
-    'Bitte beachten Sie die Pflicht zur rechtzeitigen Arbeitsuchendmeldung bei der Agentur für Arbeit nach § 38 SGB III.',
+    'Bitte stimmen Sie die Rückgabe der Ihnen überlassenen Arbeitsmittel, Dienstkleidung, Schlüssel und betrieblichen Unterlagen mit der zuständigen Verwaltung ab.',
+    'Die Abwicklung des Arbeitsverhältnisses erfolgt nach den geltenden arbeitsvertraglichen, tariflichen und gesetzlichen Bestimmungen.',
     'Mit freundlichen Grüßen',
   ] }
 }

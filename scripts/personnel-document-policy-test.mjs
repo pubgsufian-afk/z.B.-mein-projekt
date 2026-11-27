@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel, makePersonnelText, dateValid, WARNING_REASONS } from '../netlify/functions/_shared/personnel-document-policy.mjs'
+import { canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel, makePersonnelText, dateValid, WARNING_REASONS, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS } from '../netlify/functions/_shared/personnel-document-policy.mjs'
 const employee={userId:'e1',role:'employee'}, other={userId:'e2',role:'employee'}, admin={userId:'a1',role:'admin'}
 const row={employee_user_id:'e1',kind:'warning',published_at:null}
 assert.equal(canManagePersonnel('manager'),false)
@@ -31,3 +31,13 @@ const quick=makePersonnelText({kind:'warning',reason:'late',incidentDate:'2026-1
 assert.ok(quick.paragraphs.join(' ').includes('06:25'))
 assert.ok(!quick.paragraphs.join(' ').includes('Einsatzort: .'))
 assert.throws(()=>makePersonnelText({kind:'warning',reason:'late',incidentDate:'2026-11-27',facts:'zu spät'},'Testperson'))
+
+for(const reason of ['ordinary','probation','extraordinary']){
+ const result=makePersonnelText({kind:'termination',reason,endDate:'2026-12-31',legalReviewed:true},'Testperson')
+ assert.doesNotMatch(result.paragraphs.join(' '),/Arbeitsuchendmeldung|Agentur für Arbeit|§ 38 SGB III/)
+ assert.match(result.paragraphs.join(' '),reason==='extraordinary'?/außerordentlich und fristlos/:/31\.12\.2026/)
+}
+assert.match(TERMINATION_NOTICE_TITLE,/Merkblatt/)
+assert.match(TERMINATION_NOTICE_PARAGRAPHS.join(' '),/drei Monate/)
+assert.match(TERMINATION_NOTICE_PARAGRAPHS.join(' '),/drei Tagen/)
+assert.match(TERMINATION_NOTICE_PARAGRAPHS.join(' '),/§ 38/)

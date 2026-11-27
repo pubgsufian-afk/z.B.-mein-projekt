@@ -34,6 +34,7 @@ async function login(page,role){
   }
   if(p==='/api/personnel-documents'){
    const action=u.searchParams.get('action')
+   if(action==='termination-notice')return route.fulfill({status:200,contentType:'application/pdf',body:Buffer.from('%PDF-1.7\n%%EOF')})
    if(action==='preview')return route.fulfill({status:200,contentType:'application/pdf',body:Buffer.from('%PDF-1.7\n%%EOF')})
    if(action==='create'){const payload=request.postDataJSON();documents.push({...payload,title:'Abmahnung',employeeName:employee.user_metadata.full_name,creatorName:user.user_metadata.full_name,creatorFunction:payload.signerFunction,createdAt:new Date().toISOString(),publishedAt:null,canPublish:true});return fulfill(route,{id:payload.id},201)}
    if(action==='publish'){const d=documents.find(d=>d.id===request.postDataJSON().id);if(d){d.publishedAt=new Date().toISOString();d.canPublish=false}return fulfill(route,{ok:true})}
@@ -80,7 +81,7 @@ test('employee gets own notice, opens mailbox, sends text and a PDF attachment',
  await expect(page.getByRole('button',{name:'Anhang herunterladen: Test.pdf'})).toBeVisible()
 })
 test('administrator targets a specific employee and sees the personnel form',async({page})=>{
- const {received}=await login(page,'admin')
+ const {received,documents}=await login(page,'admin')
  await page.getByRole('button',{name:/^Benachrichtigungen \(1 ungelesen\)$/}).click()
  await page.getByRole('button',{name:'Öffnen',exact:true}).click()
  await expect(page.getByRole('heading',{name:'Nachrichten und Anhänge'})).toBeVisible()
@@ -127,4 +128,13 @@ test('administrator targets a specific employee and sees the personnel form',asy
  await send.click()
  await expect(page.getByText('Abmahnung im persönlichen Postfach zugestellt.')).toBeVisible()
  await expect(page.getByText('Im Postfach bereitgestellt',{exact:false}).last()).toBeVisible()
+ const notice=form.getByRole('button',{name:'Merkblatt herunterladen / drucken'})
+ await expect(notice).toHaveCount(0)
+ await page.getByRole('button',{name:'Kündigung',exact:true}).click()
+ await checkFits(page,notice)
+ const download=page.waitForEvent('download')
+ await notice.click()
+ expect((await download).suggestedFilename()).toBe('Merkblatt-zur-Kuendigung.pdf')
+ await expect(form.getByRole('status')).toContainText('Merkblatt separat heruntergeladen')
+ expect(documents).toHaveLength(1)
 })
