@@ -55,14 +55,14 @@ export function makePersonnelText(input, employeeName) {
     if (!Object.hasOwn(WARNING_REASONS, input.reason) || !reason) throw new TypeError('Bitte einen Abmahnungsgrund auswählen.')
     const date = val(input.incidentDate, 10), time = val(input.incidentTime, 5)
     const location = val(input.location, 180), facts = val(input.facts, 1800), duty = val(input.duty, 650)
-    if (!dateValid(date) || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time) || !location || facts.length < 20 || !duty)
-      throw new TypeError('Datum, Uhrzeit, Einsatzort, konkreter Vorfall (mind. 20 Zeichen) und verletzte Pflicht sind erforderlich.')
+    if (!dateValid(date) || (time && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) || facts.length < 12)
+      throw new TypeError('Datum und konkrete Beschreibung des Vorfalls sind erforderlich. Bitte Uhrzeit, Ort und Verhalten soweit bekannt in der Beschreibung angeben.')
     const expected = val(input.expected, 450) || reason[1]
     return { title: 'Abmahnung', reason: reason[0], paragraphs: [
       'Sehr geehrte/r ' + name + ',',
       'hiermit mahnen wir Sie wegen des nachfolgend konkret beschriebenen Verhaltens ab. Grund: ' + reason[0] + '.',
-      'Vorfall am ' + de(date) + ' um ' + time + ' Uhr, Einsatzort: ' + location + '.',
-      facts, 'Verletzte arbeitsvertragliche Pflicht / Anweisung: ' + duty,
+      'Vorfall am ' + de(date) + (time ? ' um ' + time + ' Uhr' : '') + (location ? ', Einsatzort: ' + location : '') + '.',
+      facts, ...(duty ? ['Verletzte arbeitsvertragliche Pflicht / Anweisung: ' + duty] : []),
       'Wir beanstanden dieses Verhalten ausdrücklich und fordern Sie auf, Ihre arbeitsvertraglichen Pflichten künftig ordnungsgemäß zu erfüllen. ' + expected,
       'Im Wiederholungsfall müssen Sie mit weiteren arbeitsrechtlichen Maßnahmen bis hin zur Kündigung des Arbeitsverhältnisses rechnen.',
       'Mit freundlichen Grüßen',

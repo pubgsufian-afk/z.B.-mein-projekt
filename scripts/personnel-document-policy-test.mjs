@@ -26,3 +26,8 @@ for(const reason of Object.keys(WARNING_REASONS)){
 }
 assert.ok(makePersonnelText({kind:'termination',reason:'ordinary',endDate:'2026-12-31',legalReviewed:true},'Testperson').paragraphs.join(' ').includes('31.12.2026'))
 console.log('Personnel policy tests passed')
+
+const quick=makePersonnelText({kind:'warning',reason:'late',incidentDate:'2026-11-27',facts:'Um 06:25 statt 06:00 Uhr am Testobjekt erschienen.'},'Testperson')
+assert.ok(quick.paragraphs.join(' ').includes('06:25'))
+assert.ok(!quick.paragraphs.join(' ').includes('Einsatzort: .'))
+assert.throws(()=>makePersonnelText({kind:'warning',reason:'late',incidentDate:'2026-11-27',facts:'zu spät'},'Testperson'))
