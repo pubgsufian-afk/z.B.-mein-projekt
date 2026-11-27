@@ -88,7 +88,7 @@ export default function PersonnelDocuments({session,embedded=false}){
     if(mode==='send'){
       await request('publish',{id:result.id});await reload();setOk('Abmahnung im persönlichen Postfach zugestellt.')
     }else{
-      await pdf(result.id);setOk('Dokument gespeichert. PDF zum Ausdrucken heruntergeladen.')
+      await pdf(result.id);setOk(form.kind==='termination'&&!confirmation&&sign?'Digital unterschriebene interne Kopie gespeichert. Das Papieroriginal bitte separat eigenhändig unterschreiben und zustellen.':'Dokument gespeichert. PDF zum Ausdrucken heruntergeladen.')
     }
   })
   const confirmAndSubmit=(mode)=>{
@@ -123,7 +123,7 @@ export default function PersonnelDocuments({session,embedded=false}){
           <small>Straße und Hausnummer sowie PLZ und Ort; eine vollständige einzeilige deutsche Anschrift wird automatisch formatiert. Bitte nur die Anschrift des ausgewählten Mitarbeiters eintragen.</small>
           {confirmation&&<label className="personnel-check"><input aria-label="Eigenkündigung liegt vor" type="checkbox" checked={form.employeeResignationConfirmed} onChange={e=>change('employeeResignationConfirmed',e.target.checked)}/><span>Die Kündigung des Mitarbeiters liegt tatsächlich vor.</span></label>}
           <label className="personnel-check"><input aria-label="Rechtliche Voraussetzungen geprüft" type="checkbox" checked={form.legalReviewed} onChange={e=>change('legalReviewed',e.target.checked)} required/><span>{confirmation?'Die Eigenkündigung und das tatsächliche Beendigungsdatum wurden geprüft.':form.reason==='extraordinary'?'Wichtiger Grund, Erklärungsfrist und Kündigungsschutz sowie erforderliche Beteiligungen sind geprüft.':form.reason==='probation'?'Vereinbarte Probezeit, maßgebliche Kündigungsfrist, Kündigungsschutz und erforderliche Beteiligungen sind geprüft.':'Kündigungsfrist, Kündigungsschutz und erforderliche Beteiligungen sind geprüft.'}</span></label>
-          <p>{confirmation?'Die Bestätigung dokumentiert die Eigenkündigung. Sie ersetzt nicht die Kündigung des Mitarbeiters und wird zum Unterschreiben ausgedruckt.':'Die Kündigung wird als druckfertiges PDF erstellt. Das Papieroriginal muss eigenhändig unterschrieben und zugestellt werden (§ 623 BGB).'}</p>
+          <p>{confirmation?'Die Bestätigung dokumentiert die Eigenkündigung und kann digital unterschrieben werden. Sie ersetzt nicht die Kündigung des Mitarbeiters.':'Die Kündigung wird als druckfertiges PDF erstellt. Das Papieroriginal muss eigenhändig unterschrieben und zugestellt werden (§ 623 BGB).'}</p>
           {!confirmation&&<label>Hinweis zur Agentur für Arbeit<select aria-label="Hinweis zur Agentur für Arbeit" value={form.includeEmploymentNotice?'letter':'separate'} onChange={e=>change('includeEmploymentNotice',e.target.value==='letter')}><option value="separate">Nur separates Merkblatt</option><option value="letter">Zusätzlich im Kündigungsschreiben</option></select></label>}
           {!confirmation&&<div className="personnel-auto"><strong>Separates Mitarbeitermerkblatt</strong><span>Bitte informieren Sie den Mitarbeiter rechtzeitig über die Arbeitsuchendmeldung (§ 2 Abs. 2 Nr. 3 SGB III). Das Merkblatt kann unabhängig von der Kündigung ausgedruckt und übergeben werden. Es wird nicht automatisch gespeichert oder versendet.</span><button type="button" className="secondary-button" disabled={busy} onClick={downloadNotice}>Merkblatt herunterladen / drucken</button></div>}
         </>}
@@ -133,14 +133,15 @@ export default function PersonnelDocuments({session,embedded=false}){
           <label>Funktion der unterzeichnenden Person<select value={form.signerFunction} onChange={e=>change('signerFunction',e.target.value)}>{funcs.filter(x=>x!=='Inhaber'||defaultSignerFunction(session.fullName)==='Inhaber').map(x=><option key={x}>{x}</option>)}</select></label>
         </details>
         {draft&&<details className="personnel-extra" open><summary>Fertiger Text – bitte prüfen</summary><div className="personnel-draft"><strong>{draft.title}</strong>{draft.paragraphs.map((p,i)=><p key={i}>{p}</p>)}</div></details>}
-        {form.kind==='warning'&&<><Signature value={sign} onChange={setSign} label="Unterschrift"/><small>Bitte nach dem Ausfüllen unterschreiben. Änderungen an den Angaben setzen die Unterschrift aus Sicherheitsgründen zurück.</small></>}
+        <Signature value={sign} onChange={setSign} label={form.kind==='warning'?'Unterschrift':'Digitale Unterschrift des Unterzeichners'}/><small>Bitte nach dem Ausfüllen unterschreiben. Änderungen an den Angaben setzen die Unterschrift aus Sicherheitsgründen zurück.</small>
+        {form.kind==='termination'&&!confirmation&&<small>Die digital unterschriebene PDF ist eine interne Kopie. Für die wirksame Kündigung bitte die PDF-Vorschau ohne Unterschrift ausdrucken, eigenhändig unterschreiben und das Original zustellen (§ 623 BGB).</small>}
         <div className="personnel-readiness" aria-live="polite">
           {missing.length>0?<><strong>Für das PDF fehlt noch:</strong><span>{missing.join(' · ')}</span></>:<strong>PDF ist bereit. {form.kind==='warning'&&!sign?'Zum Versenden oder endgültigen Speichern bitte unterschreiben.':''}</strong>}
         </div>
         <div className="personnel-actions personnel-quick-actions">
           <button type="button" className="secondary-button" data-direct-pdf-download="true" disabled={busy} onClick={preview}>PDF-Vorschau (ohne Unterschrift)</button>
           {form.kind==='warning'&&<button type="button" className="primary-button" disabled={busy||!draft||!sign} onClick={()=>confirmAndSubmit('send')}>Unterschreiben &amp; senden</button>}
-          <button type="button" className={form.kind==='warning'?'secondary-button':'primary-button'} disabled={busy||!draft||(form.kind==='warning'&&!sign)} onClick={()=>confirmAndSubmit('print')}>PDF speichern / drucken</button>
+          <button type="button" className={form.kind==='warning'?'secondary-button':'primary-button'} disabled={busy||!draft||(form.kind==='warning'&&!sign)} onClick={()=>confirmAndSubmit('print')}>{form.kind==='termination'&&sign?'Digital unterschreiben & PDF speichern':'PDF speichern / drucken'}</button>
           {pdfLink&&<a className="secondary-button personnel-pdf-link" href={pdfLink.url} target="_blank" rel="noopener noreferrer">PDF öffnen / drucken</a>}
           {pdfLink&&<a className="secondary-button personnel-pdf-link" href={pdfLink.url} download={pdfLink.name}>PDF herunterladen</a>}
         </div>
