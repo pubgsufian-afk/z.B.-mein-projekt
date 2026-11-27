@@ -13,7 +13,7 @@ import { readCompanySettings } from './_shared/company-settings.mts'
 import { readPdfLogoBytes } from './_shared/pdf-branding.mts'
 import { sendPushToUsers } from './_shared/push-core.mts'
 import { notifyPortalAdmins, notifyPortalUsers } from './_shared/portal-notification-service.mts'
-import { ACK_TEXT, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS, makePersonnelText, makeReceiptText, dateValid, normalizePersonnelAddress, validTerminationAddress, canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel } from './_shared/personnel-document-policy.mjs'
+import { ACK_TEXT, makePersonnelText, makeReceiptText, dateValid, normalizePersonnelAddress, validTerminationAddress, recipientNameValid, addressMatchesOtherAccount, defaultSignerFunction, canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel } from './_shared/personnel-document-policy.mjs'
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 const SIGNER_FUNCTIONS = new Set(['Inhaber', 'Geschäftsführer', 'Personalverantwortlicher', 'Einsatzleiter', 'Bevollmächtigter'])
@@ -41,7 +41,7 @@ function pdfResponse(bytes: Uint8Array, filename: string) {
   return new Response(Buffer.from(bytes), {headers:{...headers,'Content-Type':'application/pdf','Content-Disposition':'attachment; filename="'+filename+'"','Content-Security-Policy':'sandbox'}})
 }
 const dateLabel = (d: Date) => new Intl.DateTimeFormat('de-DE',{dateStyle:'long',timeZone:'Europe/Berlin'}).format(d)
-async function renderPdf(input: { title: string; paragraphs: string[]; employeeName: string; address?: string; signerName: string; signerFunction: string; issued: Date; signatureBytes?: Buffer; reference: string; receipt?: boolean; notice?: boolean; showReference?: boolean }) {
+async function renderPdf(input: { title: string; paragraphs: string[]; employeeName: string; address?: string; signerName: string; signerFunction: string; issued: Date; signatureBytes?: Buffer; reference: string; receipt?: boolean; showReference?: boolean; letter?: boolean; salutation?: string; internalSignedCopy?: boolean }) {
   const settings = await readCompanySettings()
   const pdf = await PDFDocument.create()
   pdf.registerFontkit(fontkit)
@@ -59,12 +59,23 @@ async function renderPdf(input: { title: string; paragraphs: string[]; employeeN
   const width=475, margin=60
   function pageHeader() {
     const image=logo.scaleToFit(115,55)
-    page.drawImage(logo,{x:margin,y:page.getHeight()-48-image.height,width:image.width,height:image.height})
-    y=page.getHeight()-120
-    line(settings.companyName,11,true)
-    line(settings.address,10)
-    line(settings.email,10)
-    y-=17
+    page.drawImage(logo,{x:input.letter?margin+width-image.width:margin,y:page.getHeight()-48-image.height,width:image.width,height:image.height})
+    y=page.getHeight()-(input.letter?58:120)
+    if(input.letter){
+      paragraph(settings.companyName,11,true,2)
+      line('Inh. Marwan Ziad',10)
+      paragraph(normalizePersonnelAddress(settings.address),10,false,2)
+      line(settings.email,10)
+      if(settings.phone)line('Tel.: '+settings.phone,10)
+      y=Math.min(y-9,page.getHeight()-152)
+      page.drawLine({start:{x:margin,y},end:{x:margin+width,y},thickness:0.6,color:rgb(.25,.25,.25)})
+      y-=27
+    }else{
+      line(settings.companyName,11,true)
+      line(settings.address,10)
+      line(settings.email,10)
+      y-=17
+    }
   }
   function line(text: string, size=11, strong=false) {
     const f=strong?bold:font
@@ -95,13 +106,19 @@ async function renderPdf(input: { title: string; paragraphs: string[]; employeeN
     y-=after
   }
   pageHeader()
-  if(!input.notice)paragraph(input.employeeName,12,true,input.address?0:10)
+  if(input.letter&&['herr','frau'].includes(input.salutation||''))line(input.salutation==='herr'?'Herrn':'Frau',11)
+  paragraph(input.employeeName,12,true,input.address?0:10)
   if(input.address)paragraph(input.address,11)
-  paragraph('Hannover, '+dateLabel(input.issued),10)
-  paragraph(input.title,16,true)
+  if(input.letter){
+    const date='Hannover, '+dateLabel(input.issued)
+    checkText(date,false)
+    if(y<100){page=pdf.addPage([595.28,841.89]);y=page.getHeight()-60}
+    page.drawText(date,{x:margin+width-font.widthOfTextAtSize(date,10),y,size:10,font,color:rgb(.1,.1,.1)})
+    y-=32
+  }else paragraph('Hannover, '+dateLabel(input.issued),10)
+  paragraph(input.title,input.letter?14:16,true)
   for(const p of input.paragraphs)paragraph(p)
-  if(input.notice){pdf.setTitle(input.title);return Buffer.from(await pdf.save())}
-  if(y<150){page=pdf.addPage([595.28,841.89]);y=page.getHeight()-60}
+  if(y<(input.internalSignedCopy?185:150)){page=pdf.addPage([595.28,841.89]);y=page.getHeight()-60}
   if(input.signatureBytes){
     const sign=await pdf.embedPng(input.signatureBytes)
     const size=sign.scaleToFit(175,68)
@@ -112,6 +129,7 @@ async function renderPdf(input: { title: string; paragraphs: string[]; employeeN
   }
   paragraph(input.signerName,11,true)
   paragraph(input.signerFunction,10)
+  if(input.internalSignedCopy)paragraph('Digital unterschriebene interne Kopie – kein eigenhändig unterschriebenes Original. Für die Kündigung ist die Schriftform nach § 623 BGB erforderlich.',9,false,4)
   if(input.showReference!==false)paragraph('Dokumentreferenz: '+input.reference,9)
   pdf.setTitle(input.title)
   return Buffer.from(await pdf.save())
@@ -127,11 +145,6 @@ export default async function personnel(request: Request, context: Context) {
   try {
     if(request.method==='GET'){
       const id=url.searchParams.get('id')||'', action=url.searchParams.get('action')||'list'
-      if(action==='termination-notice'){
-        if(!admin)return json({message:'Keine Berechtigung.'},403)
-        const bytes=await renderPdf({title:TERMINATION_NOTICE_TITLE,paragraphs:TERMINATION_NOTICE_PARAGRAPHS,employeeName:'',signerName:'',signerFunction:'',issued:new Date(),reference:'',notice:true})
-        return pdfResponse(bytes,'Merkblatt-zur-Kuendigung.pdf')
-      }
       if(action==='list'||action==='mine'){
         const all=admin&&action==='list'
         const result=await db.pool.query('SELECT '+metadata+' FROM personnel_documents '+(all?'':'WHERE employee_user_id=$1 AND published_at IS NOT NULL ')+'ORDER BY created_at DESC LIMIT 200',all?[]:[actor.userId])
@@ -150,7 +163,7 @@ export default async function personnel(request: Request, context: Context) {
       const bytes=Buffer.from(usePaper?row.paper_copy_base64:row.pdf_base64,'base64')
       if(sha(bytes)!==(usePaper?row.paper_copy_sha256:row.pdf_sha256))return json({message:'Dokument konnte nicht sicher geprüft werden.'},500)
       if(row.employee_user_id===actor.userId&&row.published_at)await db.pool.query('UPDATE personnel_documents SET first_opened_at=COALESCE(first_opened_at,now()) WHERE id=$1',[id])
-      return pdfResponse(bytes,row.kind==='warning'?'Abmahnung.pdf':'Kuendigung.pdf')
+      return pdfResponse(bytes,row.kind==='warning'?'Abmahnung.pdf':row.title==='Kündigungsbestätigung'?'Kuendigungsbestaetigung.pdf':'Kuendigung.pdf')
     }
     if(request.method!=='POST')return json({message:'Methode nicht erlaubt.'},405)
     try {verifyRequestOrigin(request)}catch{return json({message:'Ungültige Anfragequelle.'},403)}
@@ -176,12 +189,16 @@ export default async function personnel(request: Request, context: Context) {
       const u=actor.user as unknown as Record<string,any>
       const creatorName=await accountName(db,actor.userId,own,clean(u.userMetadata?.fullName||u.userMetadata?.full_name||u.userMetadata?.name))
       if(!creatorName||!employeeName)return json({message:'Der Name des Admins oder Mitarbeiters fehlt im Kontoprofil.'},409)
+      if(body.signerFunction==='Inhaber'&&defaultSignerFunction(creatorName)!=='Inhaber')return json({message:'Inhaber ist ausschließlich die im Briefkopf genannte Person. Bitte die tatsächliche Unterzeichnerfunktion auswählen.'},400)
+      if(body.kind==='termination'&&!recipientNameValid(employeeName))return json({message:'Bitte den vollständigen Mitarbeiternamen im Profil hinterlegen.'},400)
+      if(body.kind==='termination'&&addressMatchesOtherAccount(body.address,employeeName,creatorName))return json({message:'Die Empfängeranschrift enthält den Namen des angemeldeten Kontos. Bitte den ausgewählten Mitarbeiter und seine Anschrift prüfen.'},400)
       const content=makePersonnelText(body,employeeName)
-      const signatureBytes=body.kind==='warning'&&action==='create'?signature(body.signature):undefined
-      const address=normalizePersonnelAddress(body.address)
+      if(body.kind==='termination'&&body.reason==='confirmation'&&body.resignationDate>new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()))return json({message:'Das Datum der Eigenkündigung darf nicht in der Zukunft liegen.'},400)
+      const signatureBytes=action==='create'&&(body.kind==='warning'||Boolean(body.signature))?signature(body.signature):undefined
+      const address=normalizePersonnelAddress(body.address,employeeName)
       if(body.kind==='termination'&&!validTerminationAddress(address))return json({message:'Bitte vollständige Empfängeranschrift mit Straße und Hausnummer sowie Postleitzahl und Ort eintragen; bei Auslandsanschriften zusätzlich das Land.'},400)
       const issued=new Date()
-      const bytes=await renderPdf({...content,employeeName,address,signerName:creatorName,signerFunction:body.signerFunction,issued,signatureBytes,reference:body.id,showReference:body.kind!=='termination'})
+      const bytes=await renderPdf({...content,employeeName,address,signerName:creatorName,signerFunction:body.signerFunction,issued,signatureBytes,reference:body.id,showReference:body.kind!=='termination',letter:body.kind==='termination',salutation:body.salutation,internalSignedCopy:body.kind==='termination'&&body.reason!=='confirmation'&&Boolean(signatureBytes)})
       if(action==='preview')return pdfResponse(bytes,'Vorschau.pdf')
       const result=await db.pool.query('INSERT INTO personnel_documents(id,employee_user_id,employee_name,creator_user_id,creator_name,creator_function,kind,title,reason,pdf_base64,pdf_sha256) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(id) DO NOTHING RETURNING id',[body.id,recipientId,employeeName,actor.userId,creatorName,body.signerFunction,body.kind,content.title,content.reason,bytes.toString('base64'),sha(bytes)])
       return result.rows.length?json({id:body.id},201):json({message:'Dieses Dokument wurde bereits gespeichert. Bitte Archiv aktualisieren.'},409)

@@ -23,13 +23,19 @@ export const TERMINATION_TYPES = {
   ordinary: 'Ordentliche Kündigung',
   probation: 'Ordentliche Kündigung während der Probezeit',
   extraordinary: 'Außerordentliche fristlose Kündigung',
+  confirmation: 'Kündigungsbestätigung',
 }
-export const TERMINATION_NOTICE_TITLE = 'Merkblatt zur Beendigung des Arbeitsverhältnisses'
+export const TERMINATION_GROUNDS = {
+  none: 'Keine Begründung im Schreiben',
+  operational: 'Betriebsbedingte Gründe',
+  personal: 'Personenbedingte Gründe',
+  conduct: 'Verhaltensbedingte Gründe',
+  other: 'Sonstiger rechtlich geprüfter Grund',
+}
 export const TERMINATION_NOTICE_PARAGRAPHS = [
   'Arbeitsuchendmeldung (§ 38 Abs. 1 SGB III): Melden Sie sich spätestens drei Monate vor dem Ende Ihres Arbeitsverhältnisses bei der Agentur für Arbeit arbeitsuchend. Erfahren Sie weniger als drei Monate vorher von der Beendigung, melden Sie sich innerhalb von drei Tagen nach Kenntnis.',
   'Die Meldepflicht gilt auch dann, wenn Sie gegen die Kündigung vorgehen oder eine Weiterbeschäftigung in Aussicht gestellt wird. Eine verspätete Meldung kann Nachteile beim Arbeitslosengeld verursachen.',
   'Bemühen Sie sich frühzeitig eigenständig um eine neue Beschäftigung. Falls Sie arbeitslos werden, ist zusätzlich eine gesonderte Arbeitslosmeldung erforderlich. Informationen und Online-Dienste: www.arbeitsagentur.de.',
-  'Dieses Merkblatt dient der Information. Es ist keine Kündigung und ersetzt weder das unterschriebene Kündigungsschreiben noch eine individuelle Beratung.',
 ]
 export const ACK_TEXT = 'Ich bestätige ausschließlich den Erhalt dieses Dokuments im Portal. Die Bestätigung bedeutet keine Zustimmung zum Inhalt und keinen Verzicht auf Rechte.'
 export function makeReceiptText({title,createdAt,receiptAt}) {
@@ -53,23 +59,60 @@ const val = (v, max) => {
   return s
 }
 // Preserve postal lines; accept a common single-line German address without guessing missing data.
-export function normalizePersonnelAddress(value) {
-  const address = val(value, 400).replace(/\r/g, '\n')
-  const lines = address.replace(/,\s*(?=\d{5}\s+\S)/g, '\n').split('\n').map(line=>line.trim().replace(/[ \t]+/g,' ')).filter(Boolean)
-  return lines.join('\n')
+export function addressStartsWithName(value,name) {
+  const cleanName=typeof name==='string'?name.trim().replace(/\s+/g,' '):''
+  if(!cleanName||!/\p{L}/u.test(cleanName))return false
+  const address=typeof value==='string'?value.trim().replace(/\s+/g,' '):''
+  const prefix=address.slice(0,cleanName.length).toLocaleLowerCase('de-DE')
+  return prefix===cleanName.toLocaleLowerCase('de-DE')&&/^[\s,]/.test(address.slice(cleanName.length))
 }
-export function validTerminationAddress(value) {
+export function normalizePersonnelAddress(value,employeeName='') {
+  let address = val(value, 400).replace(/\r/g, '\n').trim()
+  // The PDF has a separate recipient name. Remove only an exact, known name,
+  // never infer a stranger's name or silently transfer their address.
+  if(addressStartsWithName(address,employeeName)){
+    const parts=employeeName.trim().split(/\s+/)
+    const words=parts.map(x=>x.replace(/[.*+?^\x24{}()|[\]\\]/g,'\\$&'))
+    address=address.replace(new RegExp('^'+words.join('\\s+')+'[\\s,]+','iu'),'')
+  }
+  const lines=address.split('\n').map(line=>line.trim().replace(/[ \t]+/g,' ')).filter(Boolean)
+  const normalized=lines.map(line=>{
+    // Split only at a five-digit postcode preceded by an existing house or
+    // postbox number. Keep the actual street and locality exactly as entered.
+    if(/^\d{5}\s+\p{L}/u.test(line))return line
+    const match=/^(.+?\d[\p{L}]?(?:\s*[-/]\s*\d[\p{L}]?)?)[,; ]+\s*(\d{5}\s+\p{L}.*)$/u.exec(line)
+    return match?match[1].trim()+'\n'+match[2].trim():line
+  })
+  return normalized.join('\n')
+}
+export function validTerminationAddress(value,employeeName='') {
   try {
-    const lines=normalizePersonnelAddress(value).split('\n')
+    const lines=normalizePersonnelAddress(value,employeeName).split('\n')
     if(lines.length<2 || !/\p{L}/u.test(lines[0]))return false
-    // German addresses: separate postcode and locality; international addresses
-    // may use another postal format if a separate country line is supplied.
     const postcodeIndex=lines.findIndex((line,i)=>i>0&&/^\d{5}\s+\p{L}/u.test(line))
     if(postcodeIndex>0)return lines.slice(0,postcodeIndex).some(line=>/\p{L}/u.test(line)&&/\d/.test(line))
     return lines.length>=3 && /\p{L}/u.test(lines.at(-2)) && /^[\p{L}][\p{L} .'-]{1,60}$/u.test(lines.at(-1)) && !/^(Deutschland|Germany)$/i.test(lines.at(-1))
   } catch { return false }
 }
+export function recipientNameValid(value) {
+  return typeof value==='string' && /\p{L}/u.test(value.trim())
+}
+export function addressMatchesOtherAccount(value,employeeName,accountName) {
+  return Boolean(accountName&&employeeName&&accountName.trim().toLocaleLowerCase('de-DE')!==employeeName.trim().toLocaleLowerCase('de-DE')&&addressStartsWithName(value,accountName))
+}
+export function defaultSignerFunction(name) {
+  return String(name||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('de-DE')==='marwan ziad'?'Inhaber':'Bevollmächtigter'
+}
 const de = (v) => v.split('-').reverse().join('.')
+const longDate = v => new Intl.DateTimeFormat('de-DE',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(v+'T12:00:00Z'))
+export function terminationSalutation(input,name) {
+  const mode=input.salutation||'neutral'
+  if(!['neutral','herr','frau'].includes(mode))throw new TypeError('Ungültige Anrede.')
+  if(mode==='neutral')return 'Guten Tag '+name+','
+  const surname=val(input.surname,120)
+  if(!surname||/[\r\n]/.test(surname))throw new TypeError('Bitte den Nachnamen für die persönliche Anrede prüfen und eintragen.')
+  return (mode==='herr'?'Sehr geehrter Herr ':'Sehr geehrte Frau ')+surname+','
+}
 export function canManagePersonnel(role) { return role === 'owner' || role === 'admin' }
 export function canReadPersonnel(actor, row) {
   return Boolean(actor?.userId && row && (canManagePersonnel(actor.role) || (row.employee_user_id === actor.userId && row.published_at)))
@@ -103,27 +146,38 @@ export function makePersonnelText(input, employeeName) {
   }
   if (input.kind !== 'termination' || !Object.hasOwn(TERMINATION_TYPES, input.reason)) throw new TypeError('Ungültige Dokumentart.')
   const extraordinary = input.reason === 'extraordinary'
+  const confirmation = input.reason === 'confirmation'
   const endDate = val(input.endDate, 10)
   if (!extraordinary && !dateValid(endDate)) throw new TypeError('Bitte das geprüfte Beendigungsdatum angeben.')
-  if (input.legalReviewed !== true) throw new TypeError('Kündigungsvoraussetzungen und Frist müssen geprüft sein.')
-  const extra = val(input.terminationText, 900)
-  return { title: TERMINATION_TYPES[input.reason], reason: TERMINATION_TYPES[input.reason], paragraphs: [
-    'Guten Tag ' + name + ',',
-    ...(extraordinary ? [
-      'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis aus wichtigem Grund außerordentlich und fristlos mit Wirkung ab Zugang dieses Schreibens.',
-      ...(extra ? [extra] : []),
-      'Bitte stimmen Sie die unverzügliche Rückgabe der Ihnen überlassenen Arbeitsmittel, Dienstkleidung, Schlüssel und betrieblichen Unterlagen mit unserer Verwaltung ab.',
-    ] : input.reason === 'probation' ? [
-      'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis während der vereinbarten Probezeit ordentlich unter Einhaltung der maßgeblichen Kündigungsfrist zum ' + de(endDate) + ', hilfsweise zum nächstzulässigen Termin.',
-      ...(extra ? [extra] : []),
-      'Bitte vereinbaren Sie mit unserer Verwaltung die ordnungsgemäße Übergabe Ihrer betrieblichen Arbeitsmittel und Schlüssel bis zur Beendigung des Arbeitsverhältnisses.',
-      'Wir wünschen Ihnen für Ihren weiteren beruflichen Weg alles Gute.',
-    ] : [
-      'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis ordentlich und fristgerecht zum ' + de(endDate) + ', hilfsweise zum nächstzulässigen Termin.',
-      ...(extra ? [extra] : []),
-      'Bitte stimmen Sie die Übergabe Ihrer laufenden Aufgaben sowie die Rückgabe der Ihnen überlassenen Arbeitsmittel, Dienstkleidung, Schlüssel und betrieblichen Unterlagen mit unserer Verwaltung ab.',
-    ]),
-    'Die abschließende Abwicklung des Arbeitsverhältnisses erfolgt nach den maßgeblichen arbeitsvertraglichen, tariflichen und gesetzlichen Bestimmungen.',
+  if (input.legalReviewed !== true) throw new TypeError('Die Angaben und rechtlichen Voraussetzungen müssen geprüft sein.')
+  const greeting=terminationSalutation(input,name)
+  if(confirmation){
+    const resignationDate=val(input.resignationDate,10)
+    if(!dateValid(resignationDate)||resignationDate>endDate)throw new TypeError('Bitte das Datum der Eigenkündigung und das Beendigungsdatum prüfen.')
+    if(input.employeeResignationConfirmed!==true)throw new TypeError('Bitte bestätigen, dass die Eigenkündigung des Mitarbeiters tatsächlich vorliegt.')
+    return {title:'Kündigungsbestätigung',reason:TERMINATION_TYPES.confirmation,paragraphs:[
+      greeting,
+      'hiermit bestätigen wir den Eingang Ihrer Kündigung vom '+de(resignationDate)+', mit der Sie das Arbeitsverhältnis zum '+longDate(endDate)+' beenden.',
+      'Wir nehmen Ihre Kündigung zur Kenntnis und bestätigen, dass das Arbeitsverhältnis mit Ablauf des '+longDate(endDate)+' endet.',
+      'Wir danken Ihnen für die Zusammenarbeit und wünschen Ihnen für Ihre berufliche und persönliche Zukunft alles Gute.',
+      'Mit freundlichen Grüßen',
+    ]}
+  }
+  const ground=input.terminationGround||'none'
+  if(!Object.hasOwn(TERMINATION_GROUNDS,ground))throw new TypeError('Ungültiger Kündigungsgrund.')
+  const extra=val(input.terminationText,900)
+  if(ground==='other'&&!extra)throw new TypeError('Bitte den sonstigen Kündigungsgrund konkret angeben.')
+  const groundText={operational:' aus betriebsbedingten Gründen',personal:' aus personenbedingten Gründen',conduct:' aus verhaltensbedingten Gründen'}[ground]||''
+  const first=extraordinary
+    ? 'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis aus wichtigem Grund außerordentlich und fristlos mit Wirkung ab Zugang dieses Schreibens.'
+    : input.reason==='probation'
+      ? 'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis während der vereinbarten Probezeit fristgerecht zum '+longDate(endDate)+', hilfsweise zum nächstzulässigen Termin'+groundText+'.'
+      : 'hiermit kündigen wir das mit Ihnen bestehende Arbeitsverhältnis ordentlich und fristgerecht zum '+longDate(endDate)+', hilfsweise zum nächstzulässigen Termin'+groundText+'.'
+  return {title:input.reason==='probation'?'Kündigung des Arbeitsverhältnisses in der Probezeit':TERMINATION_TYPES[input.reason],reason:TERMINATION_TYPES[input.reason],paragraphs:[
+    greeting,first,
+    ...(extraordinary&&groundText?['Kündigungsgrund: '+TERMINATION_GROUNDS[ground]+'.']:[]),
+    ...(extra?[extra]:[]),
+    ...TERMINATION_NOTICE_PARAGRAPHS,
     'Mit freundlichen Grüßen',
-  ] }
+  ]}
 }

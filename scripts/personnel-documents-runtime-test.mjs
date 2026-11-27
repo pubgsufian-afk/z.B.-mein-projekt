@@ -75,12 +75,8 @@ select('a');assert.equal((await call('create',warning,'deploy-preview',true)).st
 assert.equal((await call('create',{...warning,employeeUserId:'inactive'})).status,409)
 assert.equal((await call('create',{...warning,signature:''})).status,400)
 const preview=await call('preview',warning);assert.equal(preview.status,200);assert.ok((await PDFDocument.load(await preview.arrayBuffer())).getPageCount()>0);assert.equal(state.rows.size,0)
-// A general printable notice is admin-only and never creates a personnel record.
-select('e1');assert.equal((await call('termination-notice')).status,403)
-select('manager');assert.equal((await call('termination-notice')).status,403)
-select('a');const notice=await call('termination-notice');assert.equal(notice.status,200)
-assert.match(notice.headers.get('content-disposition'),/Merkblatt-zur-Kuendigung\.pdf/)
-assert.equal((await PDFDocument.load(await notice.arrayBuffer())).getPageCount(),1)
+// Removed standalone notice route must not expose a PDF.
+select('a');assert.notEqual((await call('termination-notice')).status,200)
 assert.equal(state.rows.size,0);assert.equal(state.push.length,0)
 const created=await call('create',warning);assert.equal(created.status,201,await created.clone().text())
 assert.equal(state.rows.get(id).creator_name,'Verwaltung Test')
@@ -105,7 +101,7 @@ try {
  assert.deepEqual(await drawingStreams(await call('receipt&id='+id)),originalReceipt)
 } finally {confirmed.receipt_document_sha256=originalHash;confirmed.id=originalId}
 select('e2');assert.equal((await call('receipt&id='+id)).status,404)
-select('a');const tid=randomUUID(), termination={id:tid,kind:'termination',employeeUserId:'e1',reason:'ordinary',endDate:'2026-12-31',address:'Teststraße 1, 12345 Teststadt',signerFunction:'Inhaber',authorized:true,legalReviewed:true}
+select('a');const tid=randomUUID(), termination={id:tid,kind:'termination',employeeUserId:'e1',reason:'ordinary',endDate:'2026-12-31',address:'Teststraße 1, 12345 Teststadt',signerFunction:'Bevollmächtigter',authorized:true,legalReviewed:true}
 assert.equal((await call('create',{...termination,legalReviewed:false})).status,400)
 assert.equal((await call('preview',{...termination,address:'Kksks'})).status,400)
 for(const reason of ['ordinary','probation','extraordinary']){
@@ -113,6 +109,17 @@ for(const reason of ['ordinary','probation','extraordinary']){
  assert.equal(response.status,200)
  assert.equal((await PDFDocument.load(await response.arrayBuffer())).getPageCount(),1)
 }
+assert.equal((await call('preview',{...termination,signerFunction:'Inhaber'})).status,400)
+assert.equal((await call('preview',{...termination,address:'Verwaltung Test Teststraße 1 12345 Teststadt'})).status,400)
+assert.equal((await call('preview',{...termination,address:'Teststraße 1 12345 Teststadt'})).status,200)
+const confirmationInput={...termination,id:randomUUID(),reason:'confirmation',resignationDate:'2026-01-01',employeeResignationConfirmed:true,salutation:'frau',surname:'Çelik'}
+assert.equal((await call('preview',{...confirmationInput,employeeResignationConfirmed:false})).status,400)
+const confirmationPreview=await call('preview',confirmationInput)
+assert.equal(confirmationPreview.status,200)
+assert.equal((await PDFDocument.load(await confirmationPreview.arrayBuffer())).getPageCount(),1)
+const withNotice=await call('preview',{...termination,reason:'probation',terminationGround:'operational',includeEmploymentNotice:true,salutation:'herr',surname:'Çelik'})
+assert.equal(withNotice.status,200)
+assert.equal((await PDFDocument.load(await withNotice.arrayBuffer())).getPageCount(),1)
 assert.equal(state.rows.size,1)
 // Compare actual PDF drawing streams, not metadata: a different internal ID
 // must not affect the visible termination PDF. Warning references remain visible.
@@ -127,6 +134,15 @@ async function drawingStreams(response){
 }
 assert.notDeepEqual(await drawingStreams(await call('preview',warning)),await drawingStreams(await call('preview',{...warning,id:randomUUID()})))
 assert.deepEqual(await drawingStreams(await call('preview',termination)),await drawingStreams(await call('preview',{...termination,id:randomUUID()})))
+assert.equal((await call('create',{...termination,signature:'invalid'})).status,400)
+const signedId=randomUUID()
+const signed=await call('create',{...termination,id:signedId,signature:sig})
+assert.equal(signed.status,201,await signed.clone().text())
+assert.notDeepEqual(await drawingStreams(await call('download&id='+signedId)),await drawingStreams(await call('preview',termination)))
+assert.equal((await call('publish',{id:signedId})).status,409)
+const signedConfirmation=await call('create',{...confirmationInput,signature:sig})
+assert.equal(signedConfirmation.status,201,await signedConfirmation.clone().text())
+assert.notDeepEqual(await drawingStreams(await call('download&id='+confirmationInput.id)),await drawingStreams(await call('preview',confirmationInput)))
 const tc=await call('create',termination);assert.equal(tc.status,201,await tc.clone().text())
 assert.equal(state.rows.get(tid).id,tid)
 assert.match(state.rows.get(tid).pdf_sha256,/^[a-f0-9]{64}$/)
