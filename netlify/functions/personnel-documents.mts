@@ -41,7 +41,7 @@ function pdfResponse(bytes: Uint8Array, filename: string) {
   return new Response(Buffer.from(bytes), {headers:{...headers,'Content-Type':'application/pdf','Content-Disposition':'attachment; filename="'+filename+'"','Content-Security-Policy':'sandbox'}})
 }
 const dateLabel = (d: Date) => new Intl.DateTimeFormat('de-DE',{dateStyle:'long',timeZone:'Europe/Berlin'}).format(d)
-async function renderPdf(input: { title: string; paragraphs: string[]; employeeName: string; address?: string; signerName: string; signerFunction: string; issued: Date; signatureBytes?: Buffer; reference: string; receipt?: boolean; notice?: boolean; showReference?: boolean; letter?: boolean; salutation?: string }) {
+async function renderPdf(input: { title: string; paragraphs: string[]; employeeName: string; address?: string; signerName: string; signerFunction: string; issued: Date; signatureBytes?: Buffer; reference: string; receipt?: boolean; notice?: boolean; showReference?: boolean; letter?: boolean; salutation?: string; internalSignedCopy?: boolean }) {
   const settings = await readCompanySettings()
   const pdf = await PDFDocument.create()
   pdf.registerFontkit(fontkit)
@@ -119,7 +119,7 @@ async function renderPdf(input: { title: string; paragraphs: string[]; employeeN
   paragraph(input.title,input.letter?14:16,true)
   for(const p of input.paragraphs)paragraph(p)
   if(input.notice){pdf.setTitle(input.title);return Buffer.from(await pdf.save())}
-  if(y<150){page=pdf.addPage([595.28,841.89]);y=page.getHeight()-60}
+  if(y<(input.internalSignedCopy?185:150)){page=pdf.addPage([595.28,841.89]);y=page.getHeight()-60}
   if(input.signatureBytes){
     const sign=await pdf.embedPng(input.signatureBytes)
     const size=sign.scaleToFit(175,68)
@@ -130,6 +130,7 @@ async function renderPdf(input: { title: string; paragraphs: string[]; employeeN
   }
   paragraph(input.signerName,11,true)
   paragraph(input.signerFunction,10)
+  if(input.internalSignedCopy)paragraph('Digital unterschriebene interne Kopie – kein eigenhändig unterschriebenes Original. Für die Kündigung ist die Schriftform nach § 623 BGB erforderlich.',9,false,4)
   if(input.showReference!==false)paragraph('Dokumentreferenz: '+input.reference,9)
   pdf.setTitle(input.title)
   return Buffer.from(await pdf.save())
@@ -199,11 +200,11 @@ export default async function personnel(request: Request, context: Context) {
       if(body.kind==='termination'&&addressMatchesOtherAccount(body.address,employeeName,creatorName))return json({message:'Die Empfängeranschrift enthält den Namen des angemeldeten Kontos. Bitte den ausgewählten Mitarbeiter und seine Anschrift prüfen.'},400)
       const content=makePersonnelText(body,employeeName)
       if(body.kind==='termination'&&body.reason==='confirmation'&&body.resignationDate>new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Berlin',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()))return json({message:'Das Datum der Eigenkündigung darf nicht in der Zukunft liegen.'},400)
-      const signatureBytes=body.kind==='warning'&&action==='create'?signature(body.signature):undefined
+      const signatureBytes=action==='create'&&(body.kind==='warning'||Boolean(body.signature))?signature(body.signature):undefined
       const address=normalizePersonnelAddress(body.address,employeeName)
       if(body.kind==='termination'&&!validTerminationAddress(address))return json({message:'Bitte vollständige Empfängeranschrift mit Straße und Hausnummer sowie Postleitzahl und Ort eintragen; bei Auslandsanschriften zusätzlich das Land.'},400)
       const issued=new Date()
-      const bytes=await renderPdf({...content,employeeName,address,signerName:creatorName,signerFunction:body.signerFunction,issued,signatureBytes,reference:body.id,showReference:body.kind!=='termination',letter:body.kind==='termination',salutation:body.salutation})
+      const bytes=await renderPdf({...content,employeeName,address,signerName:creatorName,signerFunction:body.signerFunction,issued,signatureBytes,reference:body.id,showReference:body.kind!=='termination',letter:body.kind==='termination',salutation:body.salutation,internalSignedCopy:body.kind==='termination'&&body.reason!=='confirmation'&&Boolean(signatureBytes)})
       if(action==='preview')return pdfResponse(bytes,'Vorschau.pdf')
       const result=await db.pool.query('INSERT INTO personnel_documents(id,employee_user_id,employee_name,creator_user_id,creator_name,creator_function,kind,title,reason,pdf_base64,pdf_sha256) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(id) DO NOTHING RETURNING id',[body.id,recipientId,employeeName,actor.userId,creatorName,body.signerFunction,body.kind,content.title,content.reason,bytes.toString('base64'),sha(bytes)])
       return result.rows.length?json({id:body.id},201):json({message:'Dieses Dokument wurde bereits gespeichert. Bitte Archiv aktualisieren.'},409)
