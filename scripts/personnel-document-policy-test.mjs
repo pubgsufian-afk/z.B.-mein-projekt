@@ -24,7 +24,7 @@ for(const reason of Object.keys(WARNING_REASONS)){
  assert.equal(result.title,'Abmahnung')
  assert.ok(result.paragraphs.join(' ').includes('27.11.2026'))
 }
-assert.ok(makePersonnelText({kind:'termination',reason:'ordinary',endDate:'2026-12-31',legalReviewed:true},'Testperson').paragraphs.join(' ').includes('31.12.2026'))
+assert.ok(makePersonnelText({kind:'termination',reason:'ordinary',endDate:'2026-12-31',legalReviewed:true},'Testperson').paragraphs.join(' ').includes('31. Dezember 2026'))
 console.log('Personnel policy tests passed')
 
 const quick=makePersonnelText({kind:'warning',reason:'late',incidentDate:'2026-11-27',facts:'Um 06:25 statt 06:00 Uhr am Testobjekt erschienen.'},'Testperson')
@@ -35,7 +35,7 @@ assert.throws(()=>makePersonnelText({kind:'warning',reason:'late',incidentDate:'
 for(const reason of ['ordinary','probation','extraordinary']){
  const result=makePersonnelText({kind:'termination',reason,endDate:'2026-12-31',legalReviewed:true},'Testperson')
  assert.doesNotMatch(result.paragraphs.join(' '),/Arbeitsuchendmeldung|Agentur für Arbeit|§ 38 SGB III/)
- assert.match(result.paragraphs.join(' '),reason==='extraordinary'?/außerordentlich und fristlos/:/31\.12\.2026/)
+ assert.match(result.paragraphs.join(' '),reason==='extraordinary'?/außerordentlich und fristlos/:/31\. Dezember 2026/)
 }
 assert.match(TERMINATION_NOTICE_TITLE,/Merkblatt/)
 assert.match(TERMINATION_NOTICE_PARAGRAPHS.join(' '),/drei Monate/)
@@ -64,3 +64,19 @@ assert.deepEqual(receiptText.slice(1),['Dokument: Abmahnung','Dokument erstellt 
 assert.doesNotMatch(receiptText.join(' '),/SHA-256|Dokument-ID|Dokumentreferenz|internal-id|private-hash/)
 assert.match(receiptText[0],/keine Zustimmung/)
 assert.match(makeReceiptText({title:'Abmahnung',createdAt:'2026-07-01T10:00:00Z',receiptAt:'2026-07-01T10:00:00Z'}).at(-1),/12:00 Uhr/)
+
+const letter=makePersonnelText({...example,reason:'probation',salutation:'herr',surname:'Testperson',terminationGround:'operational',includeEmploymentNotice:true},'Max Testperson')
+assert.equal(letter.title,'Kündigung des Arbeitsverhältnisses in der Probezeit')
+assert.equal(letter.paragraphs[0],'Sehr geehrter Herr Testperson,')
+assert.match(letter.paragraphs[1],/aus betriebsbedingten Gründen/)
+assert.match(letter.paragraphs.join(' '),/Agentur für Arbeit/)
+const confirmInput={...example,reason:'confirmation',resignationDate:'2026-11-27',employeeResignationConfirmed:true,salutation:'frau',surname:'Testperson'}
+const confirmation=makePersonnelText(confirmInput,'Eva Testperson')
+assert.equal(confirmation.title,'Kündigungsbestätigung')
+assert.equal(confirmation.paragraphs[0],'Sehr geehrte Frau Testperson,')
+assert.match(confirmation.paragraphs[1],/Eingang Ihrer Kündigung vom 27.11.2026/)
+assert.doesNotMatch(confirmation.paragraphs.join(' '),/hiermit kündigen|Agentur für Arbeit/)
+assert.throws(()=>makePersonnelText({...confirmInput,employeeResignationConfirmed:false},'Eva Testperson'))
+assert.throws(()=>makePersonnelText({...confirmInput,resignationDate:'2027-01-01'},'Eva Testperson'))
+assert.throws(()=>makePersonnelText({...example,reason:'ordinary',salutation:'herr',surname:''},'Testperson'))
+assert.throws(()=>makePersonnelText({...example,reason:'ordinary',terminationGround:'other'},'Testperson'))
