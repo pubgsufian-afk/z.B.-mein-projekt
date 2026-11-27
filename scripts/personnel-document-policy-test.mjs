@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel, makePersonnelText, dateValid, WARNING_REASONS, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS } from '../netlify/functions/_shared/personnel-document-policy.mjs'
+import { canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel, makePersonnelText, dateValid, WARNING_REASONS, TERMINATION_NOTICE_TITLE, TERMINATION_NOTICE_PARAGRAPHS, normalizePersonnelAddress, validTerminationAddress } from '../netlify/functions/_shared/personnel-document-policy.mjs'
 const employee={userId:'e1',role:'employee'}, other={userId:'e2',role:'employee'}, admin={userId:'a1',role:'admin'}
 const row={employee_user_id:'e1',kind:'warning',published_at:null}
 assert.equal(canManagePersonnel('manager'),false)
@@ -41,3 +41,17 @@ assert.match(TERMINATION_NOTICE_TITLE,/Merkblatt/)
 assert.match(TERMINATION_NOTICE_PARAGRAPHS.join(' '),/drei Monate/)
 assert.match(TERMINATION_NOTICE_PARAGRAPHS.join(' '),/drei Tagen/)
 assert.match(TERMINATION_NOTICE_PARAGRAPHS.join(' '),/§ 38/)
+
+const example={kind:'termination',endDate:'2026-12-31',legalReviewed:true}
+const ordinary=makePersonnelText({...example,reason:'ordinary'},'Testperson')
+const probation=makePersonnelText({...example,reason:'probation'},'Testperson')
+const extraordinary=makePersonnelText({...example,reason:'extraordinary',endDate:''},'Testperson')
+assert.notDeepEqual(ordinary.paragraphs,probation.paragraphs)
+assert.match(probation.paragraphs.join(' '),/während der vereinbarten Probezeit/)
+assert.doesNotMatch(ordinary.paragraphs.join(' '),/Probezeit/)
+assert.match(extraordinary.paragraphs.join(' '),/wichtige[mn] Grund.*ab Zugang/)
+assert.equal(normalizePersonnelAddress('Teststraße 1, 12345 Teststadt'),'Teststraße 1\n12345 Teststadt')
+assert.equal(normalizePersonnelAddress(' Teststraße 1\r\n 12345 Teststadt '),'Teststraße 1\n12345 Teststadt')
+assert.equal(validTerminationAddress('Kksks'),false)
+assert.equal(validTerminationAddress('Teststraße 1\n12345 Teststadt'),true)
+assert.equal(validTerminationAddress('Teststraße 1\nTeststadt\nDeutschland'),false)
