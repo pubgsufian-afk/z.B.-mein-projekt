@@ -2,10 +2,11 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import './apply-full-portal-berlin-date-fix.mjs'
 
-const [app, timesheet, cache] = await Promise.all([
+const [app, timesheet, cache, live] = await Promise.all([
   readFile('frontend/src/App.jsx', 'utf8'),
   readFile('frontend/src/TimesheetPage.jsx', 'utf8'),
   readFile('frontend/src/read-cache.js', 'utf8'),
+  readFile('frontend/src/LiveAttendanceOverview.jsx', 'utf8'),
 ])
 
 // Global render efficiency.
@@ -32,7 +33,10 @@ assert.doesNotMatch(app, /const calls = \[apiJson\('\/api\/schedule-v2\?resource
 // Dynamic reads are in-flight only, never completed-value cached.
 assert.match(cache, /export async function dedupeInflightJson/)
 assert.match(app, /dedupeInflightJson\('\/api\/attendance\?resource=state'/)
-assert.match(app, /dedupeInflightJson\('\/api\/attendance\?resource=live'/)
+assert.match(attendanceBlock, /<LiveAttendanceOverview loadJson=\{apiJson\} \/>/)
+assert.match(live, /const path='\/api\/attendance\?resource=live&date='\+encodeURIComponent\(date\)/)
+assert.match(live, /dedupeInflightJson\(path,\(\)=>loadJson\(path\)\)/)
+assert.doesNotMatch(live, /refreshCachedJson|localStorage|sessionStorage|indexedDB/i)
 assert.doesNotMatch(cache, /primeCachedJson\(cacheKey, value[^\n]*dedupeInflightJson/)
 
 // Stable directories/configuration use cached-then-fresh behavior.

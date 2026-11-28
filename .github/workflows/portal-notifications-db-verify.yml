@@ -34,7 +34,7 @@ jobs:
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
         run: |
           set -euo pipefail
-          for migration in 20260806123000_create-attendance-schema 20260807160500_create-schedule-schema 20260816132000_create-schedule-push-reminders 20260817193000_add-attendance-automation 20261127140000_personnel_documents 20261127153000_portal_messages_notifications; do
+          for migration in 20260806123000_create-attendance-schema 20260807160500_create-schedule-schema 20260816132000_create-schedule-push-reminders 20260817193000_add-attendance-automation 20261127140000_personnel_documents 20261127153000_portal_messages_notifications 20261128110000_personnel_lifecycle; do
             docker exec -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 -U habun_ci -d habun_ci < "netlify/database/migrations/$migration/migration.sql"
           done
       - name: Test production reminder SQL and message isolation
@@ -43,3 +43,9 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/portal-notifications-db-verify.mjs | docker exec -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 -U habun_ci -d habun_ci
+
+      - name: Verify personnel lifecycle constraints in disposable database
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec -i "$POSTGRES_CONTAINER" psql -v ON_ERROR_STOP=1 -U habun_ci -d habun_ci < scripts/personnel-lifecycle-db-test.sql

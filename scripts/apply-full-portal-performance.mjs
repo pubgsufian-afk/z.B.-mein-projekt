@@ -103,12 +103,19 @@ if (app.includes('<DigitalClock now={now} />')) {
 {
   const { start, end, block: original } = blockBetween(app, 'function AttendancePage({ session }) {', '\nfunction EmployeesPage', 'AttendancePage')
   let block = original
+  if (block.includes('<LiveAttendanceOverview')) {
+    block = replaceInBlock(block,
+      "const data = await apiJson('/api/attendance?resource=state')",
+      "const data = await dedupeInflightJson('/api/attendance?resource=state', () => apiJson('/api/attendance?resource=state'))",
+      'Attendance state inflight deduplication')
+  } else {
   block = replaceInBlock(
     block,
     "      const calls = [apiJson('/api/attendance?resource=state')]\n      if (MANAGEMENT.has(session.role)) calls.push(apiJson('/api/attendance?resource=live'))",
     "      const calls = [dedupeInflightJson('/api/attendance?resource=state', () => apiJson('/api/attendance?resource=state'))]\n      if (MANAGEMENT.has(session.role)) calls.push(dedupeInflightJson('/api/attendance?resource=live', () => apiJson('/api/attendance?resource=live')))",
     'Attendance Inflight-Deduplizierung',
   )
+  }
   app = app.slice(0, start) + block + app.slice(end)
 }
 
