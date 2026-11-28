@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { adjacentDay, berlinDay, groupLiveAttendance } from './live-attendance-overview.mjs'
 import './live-attendance-overview.css'
+import { useDataRefresh } from './use-data-refresh.js'
 
 const clock = new Intl.DateTimeFormat('de-DE',{timeZone:'Europe/Berlin',hour:'2-digit',minute:'2-digit',hourCycle:'h23'})
 const fullClock = new Intl.DateTimeFormat('de-DE',{timeZone:'Europe/Berlin',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'})
@@ -12,6 +13,7 @@ const locations = {inside:'Im Bereich',outside:'Außerhalb',unavailable:'Nicht v
 export default function LiveAttendanceOverview({loadJson,now}){
   const today=berlinDay(now), [day,setDay]=useState(today), [query,setQuery]=useState(''), [filter,setFilter]=useState('all')
   const [revision,setRevision]=useState(0), [result,setResult]=useState(null), [error,setError]=useState(null)
+  useDataRefresh(()=>setRevision(r=>r+1))
   useEffect(()=>{
     let cancelled=false, running=false
     const load=async()=>{
@@ -25,8 +27,7 @@ export default function LiveAttendanceOverview({loadJson,now}){
       finally{running=false}
     }
     load()
-    const timer=day===today?setInterval(load,30000):null
-    return()=>{cancelled=true;if(timer)clearInterval(timer)}
+    return()=>{cancelled=true}
   },[day,today,revision,loadJson])
   const loaded=result?.day===day
   const failed=error?.day===day
@@ -41,7 +42,7 @@ export default function LiveAttendanceOverview({loadJson,now}){
       <label>Status<select value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">Alle</option>{Object.entries(names).map(([v,n])=><option key={v} value={v}>{n}</option>)}</select></label>
       <button className="secondary-button compact" onClick={()=>setDay(today)}>Heute</button><button className="secondary-button compact" onClick={()=>setRevision(r=>r+1)}>Aktualisieren</button>
     </div>
-    {loaded&&<small>Letzte Abfrage: {fullClock.format(result.at)} · {shown.length} von {people.length} Mitarbeitern mit Buchungen. Laufende Zeiten sind vorläufig.</small>}
+    {loaded&&<small>Letzte Abfrage: {fullClock.format(result.at)} · {shown.length} von {people.length} Mitarbeitern mit Buchungen. Status entspricht der letzten Abfrage; laufende Zeiten sind vorläufig.</small>}
     {failed&&<p role="alert">Aktualisierung fehlgeschlagen: {error.text}{loaded?' · Letzter bekannter Stand.':''}</p>}
     {!loaded&&!failed&&<p role="status">Buchungen werden geladen …</p>}
     {loaded&&!shown.length&&<p>Keine passenden Buchungen vorhanden.</p>}
