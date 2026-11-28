@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { adjacentDay, berlinDay, groupLiveAttendance } from './live-attendance-overview.mjs'
 import './live-attendance-overview.css'
 import { useDataRefresh } from './use-data-refresh.js'
+import { dedupeInflightJson } from './read-cache.js'
 
 const clock = new Intl.DateTimeFormat('de-DE',{timeZone:'Europe/Berlin',hour:'2-digit',minute:'2-digit',hourCycle:'h23'})
 const fullClock = new Intl.DateTimeFormat('de-DE',{timeZone:'Europe/Berlin',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'})
@@ -10,7 +11,9 @@ const duration = n => n === null || n === undefined ? '–' : n+' Min.'
 const names = {working:'Arbeitet',paused:'In Pause',completed:'Beendet',check:'Buchungen prüfen'}
 const labels = {'clock-in':'Arbeitsbeginn','clock-out':'Arbeitsende','break-start':'Pause begonnen','break-end':'Pause beendet'}
 const locations = {inside:'Im Bereich',outside:'Außerhalb',unavailable:'Nicht verfügbar'}
-export default function LiveAttendanceOverview({loadJson,now}){
+export default function LiveAttendanceOverview({loadJson}){
+  const [now,setNow]=useState(()=>new Date())
+  useEffect(()=>{const timer=window.setInterval(()=>setNow(new Date()),15000);return()=>window.clearInterval(timer)},[])
   const today=berlinDay(now), [day,setDay]=useState(today), [query,setQuery]=useState(''), [filter,setFilter]=useState('all')
   const [revision,setRevision]=useState(0), [result,setResult]=useState(null), [error,setError]=useState(null)
   useDataRefresh(()=>setRevision(r=>r+1))
@@ -21,7 +24,10 @@ export default function LiveAttendanceOverview({loadJson,now}){
       running=true
       try{
         const dates=[adjacentDay(day,-1),day,...(day<today?[adjacentDay(day,1)]:[])]
-        const pages=await Promise.all(dates.map(date=>loadJson('/api/attendance?resource=live&date='+encodeURIComponent(date))))
+        const pages=await Promise.all(dates.map(date=>{
+          const path='/api/attendance?resource=live&date='+encodeURIComponent(date)
+          return dedupeInflightJson(path,()=>loadJson(path))
+        }))
         if(!cancelled){setResult({day,entries:pages.flatMap(p=>p.entries||[]),at:new Date()});setError(null)}
       }catch(e){if(!cancelled)setError({day,text:e.message||'Buchungen konnten nicht geladen werden.'})}
       finally{running=false}
