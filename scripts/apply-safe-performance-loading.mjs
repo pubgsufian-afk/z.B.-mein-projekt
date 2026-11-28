@@ -48,11 +48,22 @@ replaceOnce(
   'Overview registrations request',
 )
 
+// The new management overview loads date-scoped live requests independently of the clock controls.
+if (source.includes('<LiveAttendanceOverview loadJson={apiJson} now={now} />')) {
+  const overview = await readFile('frontend/src/LiveAttendanceOverview.jsx', 'utf8')
+  assert.ok(source.includes("const data = await apiJson('/api/attendance?resource=state')"), 'Attendance state request missing')
+  assert.ok(source.includes("MANAGEMENT.has(session.role) && <LiveAttendanceOverview"), 'Management-only live overview missing')
+  assert.ok(overview.includes('await Promise.all(dates.map(date=>loadJson('), 'Parallel date-scoped attendance requests missing')
+  assert.ok(overview.includes('/api/attendance?resource=live&date='), 'Live endpoint missing')
+  assert.ok(!overview.includes('refreshCachedJson'), 'Live attendance may not be cached')
+} else {
 replaceOnce(
   `  const load = useCallback(async () => {\n    try {\n      const data = await apiJson('/api/attendance?resource=state')\n      setState(data)\n      if (MANAGEMENT.has(session.role)) {\n        const liveData = await apiJson('/api/attendance?resource=live')\n        setLive(liveData.entries || [])\n      }\n      setNotice(null)\n    } catch (error) { setNotice({ tone: 'error', text: error.message }) }\n  }, [session.role])`,
   `  const load = useCallback(async () => {\n    try {\n      const calls = [apiJson('/api/attendance?resource=state')]\n      if (MANAGEMENT.has(session.role)) calls.push(apiJson('/api/attendance?resource=live'))\n      const [data, liveData] = await Promise.all(calls)\n      setState(data)\n      if (MANAGEMENT.has(session.role)) setLive(liveData?.entries || [])\n      setNotice(null)\n    } catch (error) { setNotice({ tone: 'error', text: error.message }) }\n  }, [session.role])`,
   'Attendance parallel reads',
 )
+
+}
 
 replaceOnce(
   `  const canManage = ADMINISTRATION.has(session.role)\n  const load = useCallback(async () => {\n    try { setData(await apiJson('/api/registrations')); setNotice(null) }\n    catch (error) { setNotice({ tone: 'error', text: error.message }) }\n  }, [])`,
