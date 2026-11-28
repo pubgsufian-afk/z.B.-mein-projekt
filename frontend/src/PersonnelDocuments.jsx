@@ -38,6 +38,7 @@ function PaperRecord({id,onSaved,run,busy}){
 export default function PersonnelDocuments({session,embedded=false}){
   const admin=['owner','admin'].includes(session.role)&&!embedded
   const [form,setForm]=useState(()=>fresh(session.fullName)),[sign,setSign]=useState(''),[employees,setEmployees]=useState([]),[docs,setDocs]=useState([]),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[ok,setOk]=useState(''),[selected,setSelected]=useState(''),[ackSign,setAckSign]=useState(''),[ack,setAck]=useState(false),[paper,setPaper]=useState(''),[pdfLink,setPdfLink]=useState(null)
+  const [archiveFeedback,setArchiveFeedback]=useState(null)
   const reload=useCallback(async()=>{const result=await request(embedded?'mine':'list');setDocs(result.documents||[])},[embedded])
   useEffect(()=>{reload().catch(e=>setMessage(e.message));if(admin)fetch('/api/registrations',{credentials:'same-origin',cache:'no-store'}).then(r=>{if(!r.ok)throw Error('Mitarbeiterliste konnte nicht geladen werden.');return r.json()}).then(r=>setEmployees((r.employees||[]).filter(e=>e.status==='active'&&(e.userId||e.id)))).catch(e=>setMessage(e.message))},[admin,reload])
   async function run(fn){if(busy)return;setBusy(true);setMessage('');setOk('');try{await fn()}catch(e){setMessage(e.message)}finally{setBusy(false)}}
@@ -109,7 +110,7 @@ export default function PersonnelDocuments({session,embedded=false}){
           <small>Beispiel: Dienstbeginn 06:00 Uhr, am Objekt X erst um 06:25 Uhr erschienen.</small>
         </>:<>
           <label>Anrede<select aria-label="Anrede" value={form.salutation} onChange={e=>change('salutation',e.target.value)}><option value="neutral">Neutral – Guten Tag</option><option value="herr">Herr</option><option value="frau">Frau</option></select></label>
-          {form.salutation!=='neutral'&&<>{field('surname','Nachname für die Anrede (automatisch vorgeschlagen)')}<small>Bitte den übernommenen Nachnamen prüfen. Bei mehrteiligen Namen kannst du ihn direkt korrigieren.</small></>}
+          {form.salutation!=='neutral'&&<>{field('surname','Nachname für die Anrede')}<small>Bitte den übernommenen Nachnamen prüfen. Bei mehrteiligen Namen kannst du ihn direkt korrigieren.</small></>}
           {confirmation&&<label>Datum der Eigenkündigung<input aria-label="Datum der Eigenkündigung" type="date" required max={today()} value={form.resignationDate} onChange={e=>change('resignationDate',e.target.value)}/></label>}
           {form.reason!=='extraordinary'&&field('endDate','Beendigungsdatum','date')}
           {!confirmation&&<label>Kündigungsgrund (optional)<select aria-label="Kündigungsgrund (optional)" value={form.terminationGround} onChange={e=>change('terminationGround',e.target.value)}>{Object.entries(TERMINATION_GROUNDS).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>}
@@ -145,7 +146,7 @@ export default function PersonnelDocuments({session,embedded=false}){
     <section className="panel"><h2>{admin?'Personalunterlagen – Archiv':'Meine Personalunterlagen'}</h2>
       {!admin&&<p>Abmahnungen und weitere persönliche Dokumente. Die Unterschrift bestätigt nur den Erhalt, nicht den Inhalt.</p>}
       {!admin&&message&&<p role="alert" className="personnel-warning">{message}</p>}{!admin&&ok&&<p role="status">{ok}</p>}
-      {admin&&message&&<p role="alert" className="personnel-warning">{message}</p>}{admin&&ok&&<p role="status">{ok}</p>}
+      {admin&&archiveFeedback&&<p role={archiveFeedback.error?'alert':'status'} className={archiveFeedback.error?'personnel-warning':undefined}>{archiveFeedback.text}</p>}
       <button className="secondary-button compact" type="button" disabled={busy} onClick={()=>run(reload)}>Aktualisieren</button>
       {docs.map(doc=><article key={doc.id} className="personnel-entry"><strong>{doc.title}{admin?' · '+doc.employeeName:''}</strong><span>Erstellt: {new Date(doc.createdAt).toLocaleString('de-DE')} · {doc.creatorName} ({doc.creatorFunction})</span>{admin&&<span>{doc.reason} · {doc.lifecycleAction==='withdraw'?'Zurückgezogen':doc.lifecycleAction==='cancel'?'Storniert':doc.publishedAt?'Im Postfach bereitgestellt':'Noch nicht versendet'}</span>}<span>{doc.openedAt?'Geöffnet: '+new Date(doc.openedAt).toLocaleString('de-DE'):'Noch nicht geöffnet'} · {doc.acknowledgedAt?'Empfang bestätigt':'Empfang nicht bestätigt'}</span>
       {doc.lifecycleAction&&<span className="personnel-warning">{doc.lifecycleAction==='withdraw'?'Dokument zurückgezogen':'Dokument im Portal storniert – keine automatische rechtliche Aufhebung'} · {new Date(doc.lifecycleAt).toLocaleString('de-DE')}{admin&&doc.lifecycleBy?' · '+doc.lifecycleBy:''}{admin&&doc.lifecycleReason?' · '+doc.lifecycleReason:''}</span>}
@@ -159,7 +160,7 @@ export default function PersonnelDocuments({session,embedded=false}){
         if(!window.confirm(label+'? '+doc.title+' · '+doc.employeeName+'\n'+explanation))return
         const reason=window.prompt('Grund für diese Aktion (mindestens 3 Zeichen):')
         if(reason===null)return
-        run(async()=>{await request(action,{id:doc.id,confirmed:true,reason});setPaper('');await reload();setOk(action==='delete'?'Dokument gelöscht.':action==='withdraw'?'Dokument zurückgezogen.':'Dokument im Portal storniert.')})
+        run(async()=>{setArchiveFeedback(null);try{await request(action,{id:doc.id,confirmed:true,reason});setPaper('');await reload();setArchiveFeedback({text:action==='delete'?'Dokument gelöscht.':action==='withdraw'?'Dokument zurückgezogen.':'Dokument im Portal storniert.'})}catch(e){setArchiveFeedback({error:true,text:e.message})}})
       }}>{doc.nextLifecycleAction==='delete'?'Dokument löschen':doc.nextLifecycleAction==='withdraw'?'Dokument zurückziehen':'Dokument stornieren'}</button>}
       {!admin&&doc.canAcknowledge&&<button type="button" className="secondary-button compact" disabled={busy} onClick={()=>{setSelected(selected===doc.id?'':doc.id);setAck(false);setAckSign('')}}>Empfang bestätigen</button>}</div>
       {admin&&paper===doc.id&&<PaperRecord id={doc.id} run={run} busy={busy} onSaved={async()=>{setPaper('');await reload();setOk('Papierzustellung dokumentiert. Die Kopie kann jetzt ins Postfach gesendet werden.')}}/>}
