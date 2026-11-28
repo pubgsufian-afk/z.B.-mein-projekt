@@ -114,14 +114,23 @@ export function terminationSalutation(input,name) {
   return (mode==='herr'?'Sehr geehrter Herr ':'Sehr geehrte Frau ')+surname+','
 }
 export function canManagePersonnel(role) { return role === 'owner' || role === 'admin' }
+export function personnelLifecycleAction(row) {
+  if (!row || row.lifecycle_action) return null
+  if (row.receipt_at || row.paper_delivered_on) return 'cancel'
+  return row.published_at ? 'withdraw' : 'delete'
+}
+export function suggestedSurname(fullName) {
+  const parts=String(fullName||'').trim().split(/\s+/)
+  return parts.length>1 ? parts.at(-1) : ''
+}
 export function canReadPersonnel(actor, row) {
-  return Boolean(actor?.userId && row && (canManagePersonnel(actor.role) || (row.employee_user_id === actor.userId && row.published_at)))
+  return Boolean(actor?.userId && row && row.lifecycle_action !== 'delete' && (canManagePersonnel(actor.role) || (row.employee_user_id === actor.userId && row.published_at)))
 }
 export function canAcknowledgePersonnel(actor, row) {
-  return Boolean(actor?.userId && row && row.employee_user_id === actor.userId && row.published_at && !row.receipt_at)
+  return Boolean(actor?.userId && row && row.employee_user_id === actor.userId && row.published_at && !row.receipt_at && !row.lifecycle_action)
 }
 export function canPublishPersonnel(row) {
-  return Boolean(row && !row.published_at && (row.kind === 'warning' || (row.kind === 'termination' && row.paper_delivered_on && row.paper_copy_sha256)))
+  return Boolean(row && !row.lifecycle_action && !row.published_at && (row.kind === 'warning' || (row.kind === 'termination' && row.paper_delivered_on && row.paper_copy_sha256)))
 }
 export function makePersonnelText(input, employeeName) {
   const name = val(employeeName, 160)

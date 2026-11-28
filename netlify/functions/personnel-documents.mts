@@ -13,11 +13,11 @@ import { readCompanySettings } from './_shared/company-settings.mts'
 import { readPdfLogoBytes } from './_shared/pdf-branding.mts'
 import { sendPushToUsers } from './_shared/push-core.mts'
 import { notifyPortalAdmins, notifyPortalUsers } from './_shared/portal-notification-service.mts'
-import { ACK_TEXT, makePersonnelText, makeReceiptText, dateValid, normalizePersonnelAddress, validTerminationAddress, recipientNameValid, addressMatchesOtherAccount, defaultSignerFunction, canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel } from './_shared/personnel-document-policy.mjs'
+import { ACK_TEXT, makePersonnelText, makeReceiptText, dateValid, normalizePersonnelAddress, validTerminationAddress, recipientNameValid, addressMatchesOtherAccount, defaultSignerFunction, canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel, personnelLifecycleAction } from './_shared/personnel-document-policy.mjs'
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 const SIGNER_FUNCTIONS = new Set(['Inhaber', 'Geschäftsführer', 'Personalverantwortlicher', 'Einsatzleiter', 'Bevollmächtigter'])
-const metadata = 'id, employee_user_id, employee_name, creator_user_id, creator_name, creator_function, kind, title, reason, created_at, published_at, first_opened_at, paper_delivered_on, paper_copy_sha256, receipt_at'
+const metadata = 'id, employee_user_id, employee_name, creator_user_id, creator_name, creator_function, kind, title, reason, created_at, published_at, first_opened_at, paper_delivered_on, paper_copy_sha256, receipt_at, lifecycle_action, lifecycle_at, lifecycle_by_name, lifecycle_reason'
 const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
 const headers = { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex' }
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers })
@@ -135,7 +135,7 @@ async function renderPdf(input: { title: string; paragraphs: string[]; employeeN
   return Buffer.from(await pdf.save())
 }
 function publicRow(row: Record<string,unknown>, admin: boolean, actor: {userId:string;role:string}) {
-  return {id:row.id, employeeName:row.employee_name, creatorName:row.creator_name, creatorFunction:row.creator_function, kind:row.kind, title:row.title, ...(admin?{reason:row.reason}:{}), createdAt:row.created_at, publishedAt:row.published_at, openedAt:row.first_opened_at, paperDeliveredOn:row.paper_delivered_on, acknowledgedAt:row.receipt_at, canPublish:admin&&canPublishPersonnel(row),canAcknowledge:canAcknowledgePersonnel(actor,row)}
+  return {id:row.id, employeeName:row.employee_name, creatorName:row.creator_name, creatorFunction:row.creator_function, kind:row.kind, title:row.title, ...(admin?{reason:row.reason}:{}), createdAt:row.created_at, publishedAt:row.published_at, openedAt:row.first_opened_at, paperDeliveredOn:row.paper_delivered_on, acknowledgedAt:row.receipt_at, lifecycleAction:row.lifecycle_action, lifecycleAt:row.lifecycle_at, ...(admin?{lifecycleBy:row.lifecycle_by_name,lifecycleReason:row.lifecycle_reason,nextLifecycleAction:personnelLifecycleAction(row)}:{}), canPublish:admin&&canPublishPersonnel(row),canAcknowledge:canAcknowledgePersonnel(actor,row)}
 }
 export default async function personnel(request: Request, context: Context) {
   return withDeploymentContext(context, async()=>{
@@ -147,7 +147,7 @@ export default async function personnel(request: Request, context: Context) {
       const id=url.searchParams.get('id')||'', action=url.searchParams.get('action')||'list'
       if(action==='list'||action==='mine'){
         const all=admin&&action==='list'
-        const result=await db.pool.query('SELECT '+metadata+' FROM personnel_documents '+(all?'':'WHERE employee_user_id=$1 AND published_at IS NOT NULL ')+'ORDER BY created_at DESC LIMIT 200',all?[]:[actor.userId])
+        const result=await db.pool.query('SELECT '+metadata+' FROM personnel_documents '+(all?"WHERE lifecycle_action IS DISTINCT FROM 'delete' ":"WHERE employee_user_id=$1 AND published_at IS NOT NULL AND lifecycle_action IS DISTINCT FROM 'delete' ")+'ORDER BY created_at DESC LIMIT 200',all?[]:[actor.userId])
         return json({documents:result.rows.map(row=>publicRow(row,all,actor))})
       }
       if(!UUID.test(id))return json({message:'Dokument nicht gefunden.'},404)
@@ -159,6 +159,7 @@ export default async function personnel(request: Request, context: Context) {
         return pdfResponse(bytes,'Empfangsbestaetigung.pdf')
       }
       if(action!=='download')return json({message:'Unbekannte Aktion.'},400)
+      if(!admin&&row.lifecycle_action==='withdraw')return json({message:'Dokument wurde zurückgezogen.'},409)
       const usePaper=Boolean(row.paper_copy_base64)
       const bytes=Buffer.from(usePaper?row.paper_copy_base64:row.pdf_base64,'base64')
       if(sha(bytes)!==(usePaper?row.paper_copy_sha256:row.pdf_sha256))return json({message:'Dokument konnte nicht sicher geprüft werden.'},500)
@@ -175,7 +176,7 @@ export default async function personnel(request: Request, context: Context) {
       signature(body.signature)
       const row=(await db.pool.query('SELECT * FROM personnel_documents WHERE id=$1',[body.id])).rows[0]
       if(!canAcknowledgePersonnel(actor,row))return json({message:'Keine offene Empfangsbestätigung für dieses Konto.'},409)
-      const updated=await db.pool.query('UPDATE personnel_documents SET receipt_at=now(), receipt_signature=$3, receipt_document_sha256=COALESCE(paper_copy_sha256,pdf_sha256), first_opened_at=COALESCE(first_opened_at,now()) WHERE id=$1 AND employee_user_id=$2 AND published_at IS NOT NULL AND receipt_at IS NULL RETURNING id',[body.id,actor.userId,body.signature])
+      const updated=await db.pool.query('UPDATE personnel_documents SET receipt_at=now(), receipt_signature=$3, receipt_document_sha256=COALESCE(paper_copy_sha256,pdf_sha256), first_opened_at=COALESCE(first_opened_at,now()) WHERE id=$1 AND employee_user_id=$2 AND published_at IS NOT NULL AND receipt_at IS NULL AND lifecycle_action IS NULL RETURNING id',[body.id,actor.userId,body.signature])
       if(updated.rows.length)await notifyPortalAdmins({eventKey:'personnel-receipt:'+body.id,title:'HABUN – Empfangsbestätigung',body:'Eine neue Empfangsbestätigung liegt in den Personalunterlagen vor.',url:'/?view=personnel'},actor.userId)
       return updated.rows.length?json({ok:true}):json({message:'Bereits bestätigt.'},409)
     }
@@ -204,12 +205,24 @@ export default async function personnel(request: Request, context: Context) {
       return result.rows.length?json({id:body.id},201):json({message:'Dieses Dokument wurde bereits gespeichert. Bitte Archiv aktualisieren.'},409)
     }
     if(!UUID.test(body.id||''))return json({message:'Dokument nicht gefunden.'},404)
+    if(action==='delete'||action==='withdraw'||action==='cancel'){
+      const reason=clean(body.reason,300)
+      if(body.confirmed!==true||reason.length<3)return json({message:'Bitte Aktion bestätigen und einen Grund angeben.'},400)
+      const row=(await db.pool.query('SELECT '+metadata+' FROM personnel_documents WHERE id=$1',[body.id])).rows[0]
+      if(personnelLifecycleAction(row)!==action)return json({message:'Dokumentstatus hat sich geändert. Bitte Archiv aktualisieren.'},409)
+      const own=await accessRecord(actor.userId)
+      const u=actor.user as unknown as Record<string,any>
+      const name=await accountName(db,actor.userId,own,clean(u.userMetadata?.fullName||u.userMetadata?.full_name||u.userMetadata?.name))
+      if(!name)return json({message:'Der Name des Admins fehlt im Kontoprofil.'},409)
+      const updated=await db.pool.query("UPDATE personnel_documents SET lifecycle_action=$2,lifecycle_at=now(),lifecycle_by=$3,lifecycle_by_name=$4,lifecycle_reason=$5,pdf_base64=CASE WHEN $2='delete' THEN '' ELSE pdf_base64 END,pdf_sha256=CASE WHEN $2='delete' THEN $6 ELSE pdf_sha256 END WHERE id=$1 AND lifecycle_action IS NULL AND (($2='delete' AND published_at IS NULL AND paper_delivered_on IS NULL AND receipt_at IS NULL) OR ($2='withdraw' AND published_at IS NOT NULL AND paper_delivered_on IS NULL AND receipt_at IS NULL) OR ($2='cancel' AND (paper_delivered_on IS NOT NULL OR receipt_at IS NOT NULL))) RETURNING id",[body.id,action,actor.userId,name,reason,sha(Buffer.alloc(0))])
+      return updated.rows.length?json({ok:true}):json({message:'Dokumentstatus hat sich geändert. Bitte Archiv aktualisieren.'},409)
+    }
     if(action==='record-paper'){
       if(!dateValid(body.deliveredOn)||new Date(body.deliveredOn+'T00:00:00Z')>new Date()||body.paperConfirmed!==true||clean(body.deliveryNote,300).length<5)return json({message:'Tatsächliche Papierzustellung, Datum und Zustellnachweis angeben.'},400)
       if(typeof body.copy!=='string'||body.copy.length>4000000)return json({message:'Bitte einen PDF-Scan bis 3 MB auswählen.'},400)
       const copy=Buffer.from(body.copy,'base64')
       if(copy.length<5||copy.length>3000000||copy.subarray(0,5).toString()!=='%PDF-')return json({message:'Ungültiger PDF-Scan.'},400)
-      const result=await db.pool.query("UPDATE personnel_documents SET paper_delivered_on=$2,paper_delivery_note=$3,paper_copy_base64=$4,paper_copy_sha256=$5,paper_recorded_by=$6 WHERE id=$1 AND kind='termination' AND published_at IS NULL AND paper_delivered_on IS NULL RETURNING id",[body.id,body.deliveredOn,clean(body.deliveryNote,300),copy.toString('base64'),sha(copy),actor.userId])
+      const result=await db.pool.query("UPDATE personnel_documents SET paper_delivered_on=$2,paper_delivery_note=$3,paper_copy_base64=$4,paper_copy_sha256=$5,paper_recorded_by=$6 WHERE id=$1 AND kind='termination' AND published_at IS NULL AND paper_delivered_on IS NULL AND lifecycle_action IS NULL RETURNING id",[body.id,body.deliveredOn,clean(body.deliveryNote,300),copy.toString('base64'),sha(copy),actor.userId])
       return result.rows.length?json({ok:true}):json({message:'Papierzustellung bereits erfasst oder Dokument ungültig.'},409)
     }
     if(action==='publish'){
@@ -217,7 +230,7 @@ export default async function personnel(request: Request, context: Context) {
       if(!canPublishPersonnel(row))return json({message:'Dokument bereits versendet oder Papierzustellung fehlt.'},409)
       const recipient=await accessRecord(row.employee_user_id)
       if(recipient?.status!=='active'||recipient.role==='pending')return json({message:'Empfängerkonto ist nicht aktiv.'},409)
-      const result=await db.pool.query("UPDATE personnel_documents SET published_at=now(),published_by=$2 WHERE id=$1 AND published_at IS NULL AND (kind='warning' OR (paper_delivered_on IS NOT NULL AND paper_copy_sha256 IS NOT NULL)) RETURNING id",[body.id,actor.userId])
+      const result=await db.pool.query("UPDATE personnel_documents SET published_at=now(),published_by=$2 WHERE id=$1 AND lifecycle_action IS NULL AND published_at IS NULL AND (kind='warning' OR (paper_delivered_on IS NOT NULL AND paper_copy_sha256 IS NOT NULL)) RETURNING id",[body.id,actor.userId])
       if(!result.rows.length)return json({message:'Dokument bereits versendet.'},409)
       if(isProduction(context))try{await sendPushToUsers({userIds:[row.employee_user_id],eventKey:'personnel-published:'+body.id,title:'HABUN Mitarbeiterportal',body:'Ein neues Dokument ist in deinem persönlichen Postfach verfügbar.',url:'/?view=mailbox'})}catch{console.error('Personnel document push failed')}
       else await notifyPortalUsers([row.employee_user_id],{eventKey:'personnel-published:'+body.id,title:'HABUN Mitarbeiterportal',body:'Ein neues Dokument ist in deinem persönlichen Postfach verfügbar.',url:'/?view=mailbox'})

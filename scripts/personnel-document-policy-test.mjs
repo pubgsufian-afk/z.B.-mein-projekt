@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel, makePersonnelText, makeReceiptText, dateValid, WARNING_REASONS, TERMINATION_NOTICE_PARAGRAPHS, normalizePersonnelAddress, validTerminationAddress, recipientNameValid, addressMatchesOtherAccount, defaultSignerFunction } from '../netlify/functions/_shared/personnel-document-policy.mjs'
+import { canManagePersonnel, canReadPersonnel, canAcknowledgePersonnel, canPublishPersonnel, makePersonnelText, makeReceiptText, dateValid, WARNING_REASONS, TERMINATION_NOTICE_PARAGRAPHS, normalizePersonnelAddress, validTerminationAddress, recipientNameValid, addressMatchesOtherAccount, defaultSignerFunction, personnelLifecycleAction, suggestedSurname } from '../netlify/functions/_shared/personnel-document-policy.mjs'
 const employee={userId:'e1',role:'employee'}, other={userId:'e2',role:'employee'}, admin={userId:'a1',role:'admin'}
 const row={employee_user_id:'e1',kind:'warning',published_at:null}
 assert.equal(canManagePersonnel('manager'),false)
@@ -92,3 +92,15 @@ assert.equal(recipientNameValid('12'),false)
 assert.equal(addressMatchesOtherAccount('Anderer Name Teststraße 16 30880 Teststadt','Max Test','Anderer Name'),true)
 assert.equal(defaultSignerFunction('Verwaltung Test'),'Bevollmächtigter')
 assert.equal(defaultSignerFunction('Marwan Ziad'),'Inhaber')
+
+assert.equal(suggestedSurname('Şivan Çelik'),'Çelik')
+assert.equal(suggestedSurname('  Person   Zwei  '),'Zwei')
+assert.equal(suggestedSurname('Einname'),'')
+assert.equal(personnelLifecycleAction({}), 'delete')
+assert.equal(personnelLifecycleAction({published_at:'now'}), 'withdraw')
+assert.equal(personnelLifecycleAction({published_at:'now',receipt_at:'now'}), 'cancel')
+assert.equal(personnelLifecycleAction({paper_delivered_on:'2026-01-01'}), 'cancel')
+assert.equal(personnelLifecycleAction({lifecycle_action:'withdraw'}), null)
+assert.equal(canPublishPersonnel({kind:'warning',lifecycle_action:'delete'}), false)
+assert.equal(canReadPersonnel(admin,{lifecycle_action:'delete'}),false)
+assert.equal(canAcknowledgePersonnel(employee,{...row,lifecycle_action:'withdraw'}),false)

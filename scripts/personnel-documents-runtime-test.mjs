@@ -20,8 +20,8 @@ function query(sql,p=[]){
  if(q.startsWith('select full_name from schedule_employees'))return {rows:[]}
  if(q.startsWith('select ')&&q.includes(' from personnel_documents')){
   if(q.includes(' where id=$1'))return ok(row)
-  if(q.includes(' where employee_user_id=$1'))return {rows:[...state.rows.values()].filter(r=>r.employee_user_id===p[0]&&r.published_at)}
-  return {rows:[...state.rows.values()]}
+  if(q.includes(' where employee_user_id=$1'))return {rows:[...state.rows.values()].filter(r=>r.employee_user_id===p[0]&&r.published_at&&r.lifecycle_action!=='delete')}
+  return {rows:[...state.rows.values()].filter(r=>r.lifecycle_action!=='delete')}
  }
  if(q.startsWith('insert into personnel_documents')){
   if(row)return ok(null)
@@ -34,16 +34,24 @@ function query(sql,p=[]){
   return ok(null)
  }
  if(q.startsWith('update personnel_documents set receipt_at')){
-  if(!row||row.employee_user_id!==p[1]||!row.published_at||row.receipt_at)return ok(null)
+  if(!row||row.employee_user_id!==p[1]||!row.published_at||row.receipt_at||row.lifecycle_action)return ok(null)
   row.receipt_at=new Date().toISOString();row.receipt_signature=p[2];row.receipt_document_sha256=row.paper_copy_sha256||row.pdf_sha256
   return ok({id:row.id})
  }
  if(q.startsWith('update personnel_documents set paper_delivered_on')){
-  if(!row||row.kind!=='termination'||row.published_at||row.paper_delivered_on)return ok(null)
+  if(!row||row.kind!=='termination'||row.published_at||row.paper_delivered_on||row.lifecycle_action)return ok(null)
   Object.assign(row,{paper_delivered_on:p[1],paper_delivery_note:p[2],paper_copy_base64:p[3],paper_copy_sha256:p[4],paper_recorded_by:p[5]});return ok({id:row.id})
  }
+ if(q.startsWith('update personnel_documents set lifecycle_action')){
+  const [,action,by,name,reason,emptyHash]=p
+  const expected=row&&!row.lifecycle_action&&(row.receipt_at||row.paper_delivered_on?'cancel':row.published_at?'withdraw':'delete')
+  if(expected!==action)return ok(null)
+  Object.assign(row,{lifecycle_action:action,lifecycle_at:new Date().toISOString(),lifecycle_by:by,lifecycle_by_name:name,lifecycle_reason:reason})
+  if(action==='delete'){row.pdf_base64='';row.pdf_sha256=emptyHash}
+  return ok({id:row.id})
+ }
  if(q.startsWith('update personnel_documents set published_at')){
-  if(!row||row.published_at||(row.kind==='termination'&&(!row.paper_delivered_on||!row.paper_copy_sha256)))return ok(null)
+  if(!row||row.published_at||row.lifecycle_action||(row.kind==='termination'&&(!row.paper_delivered_on||!row.paper_copy_sha256)))return ok(null)
   row.published_at=new Date().toISOString();row.published_by=p[1];return ok({id:row.id})
  }
  throw Error('Unhandled test SQL: '+sql)
@@ -153,4 +161,43 @@ assert.equal((await call('publish',{id:tid},'production')).status,200)
 assert.deepEqual(state.push.map(p=>p.userIds),[['e1']]);assert.ok(!state.push[0].body.includes('Kündigung'))
 select('e2');assert.equal((await call('download&id='+tid)).status,404)
 select('e1');assert.equal((await call('download&id='+tid)).status,200)
-console.log('Personnel documents API, PDF, access and receipt tests passed')
+// Lifecycle: synthetic records only.
+const draftId=randomUUID(), withdrawnId=randomUUID()
+const change=(action,id)=>call(action,{id,confirmed:true,reason:'Fiktiver Testgrund'})
+select('a');assert.equal((await call('create',{...warning,id:draftId})).status,201)
+assert.equal((await call('create',{...warning,id:withdrawnId})).status,201)
+select('e1');assert.equal((await change('delete',draftId)).status,403)
+select('manager');assert.equal((await change('delete',draftId)).status,403)
+select('a');assert.equal((await call('delete',{id:draftId,confirmed:false,reason:'Test'})).status,400)
+assert.equal((await call('delete',{id:draftId,confirmed:true,reason:'Test'},'deploy-preview',true)).status,403)
+assert.equal((await change('delete',draftId)).status,200)
+assert.equal(state.rows.get(draftId).pdf_base64,'')
+assert.equal(state.rows.get(draftId).lifecycle_by,'a')
+assert.equal(state.rows.get(draftId).lifecycle_by_name,'Verwaltung Test')
+assert.ok(state.rows.get(draftId).lifecycle_at)
+assert.equal((await call('download&id='+draftId)).status,404)
+assert.equal((await call('publish',{id:draftId})).status,409)
+assert.equal((await change('delete',draftId)).status,409)
+assert.ok(!(await (await call()).json()).documents.some(d=>d.id===draftId))
+assert.equal((await call('publish',{id:withdrawnId})).status,200)
+assert.equal((await change('delete',withdrawnId)).status,409)
+const retained=state.rows.get(withdrawnId).pdf_base64
+assert.equal((await change('withdraw',withdrawnId)).status,200)
+assert.equal(state.rows.get(withdrawnId).pdf_base64,retained)
+assert.equal((await call('download&id='+withdrawnId)).status,200)
+assert.equal((await change('delete',id)).status,409)
+assert.equal((await change('withdraw',id)).status,409)
+assert.equal((await change('cancel',id)).status,200)
+assert.equal(state.rows.get(id).receipt_signature,sig)
+assert.equal((await call('receipt&id='+id)).status,200)
+assert.equal((await change('delete',tid)).status,409)
+assert.equal((await change('cancel',tid)).status,200)
+select('e1');assert.equal((await call('download&id='+withdrawnId)).status,409)
+assert.equal((await call('acknowledge',{id:withdrawnId,accepted:true,signature:sig})).status,409)
+assert.equal((await call('receipt&id='+id)).status,200)
+const mine=(await (await call()).json()).documents
+assert.equal(mine.find(d=>d.id===withdrawnId).lifecycleAction,'withdraw')
+assert.equal(mine.find(d=>d.id===id).lifecycleAction,'cancel')
+assert.ok(!('lifecycleReason' in mine.find(d=>d.id===id)))
+select('e2');assert.equal((await call('download&id='+withdrawnId)).status,404)
+console.log('Personnel documents API, PDF, access, receipt and lifecycle tests passed')
