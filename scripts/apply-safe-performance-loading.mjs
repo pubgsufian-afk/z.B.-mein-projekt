@@ -49,11 +49,11 @@ replaceOnce(
 )
 
 // The new management overview loads date-scoped live requests independently of the clock controls.
-if (source.includes('<LiveAttendanceOverview loadJson={apiJson} now={now} />')) {
+if (source.includes('<LiveAttendanceOverview loadJson={apiJson} />')) {
   const overview = await readFile('frontend/src/LiveAttendanceOverview.jsx', 'utf8')
   assert.ok(source.includes("const data = await apiJson('/api/attendance?resource=state')"), 'Attendance state request missing')
   assert.ok(source.includes("MANAGEMENT.has(session.role) && <LiveAttendanceOverview"), 'Management-only live overview missing')
-  assert.ok(overview.includes('await Promise.all(dates.map(date=>loadJson('), 'Parallel date-scoped attendance requests missing')
+  assert.ok(overview.includes('await Promise.all(dates.map(date=>{') && overview.includes('dedupeInflightJson(path,()=>loadJson(path))'), 'Parallel date-scoped attendance requests missing')
   assert.ok(overview.includes('/api/attendance?resource=live&date='), 'Live endpoint missing')
   assert.ok(!overview.includes('refreshCachedJson'), 'Live attendance may not be cached')
 } else {
