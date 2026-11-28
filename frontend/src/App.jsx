@@ -479,7 +479,7 @@ function AttendancePage({ session }) {
       <PageHeader title="Heutige Buchungen" subtitle="Alle Aktionen in zeitlicher Reihenfolge." action={<button className="secondary-button compact" onClick={load}>Aktualisieren</button>} />
       {(state.events || []).length ? <div className="timeline">{state.events.map((event) => <div key={event.id || event.clientEventId}><span className={`timeline-dot ${event.action}`} /><div><strong>{actionLabel(event.action)}</strong><small>{formatDateTime(event.clientOccurredAt)}</small></div><Status tone={event.locationStatus === 'inside' ? 'success' : event.locationStatus === 'outside' ? 'warning' : 'neutral'}>{event.action.startsWith('break') ? 'ohne Standort' : event.locationStatus === 'inside' ? 'am Einsatzort' : event.locationStatus === 'outside' ? 'außerhalb' : 'Standort nicht verfügbar'}</Status></div>)}</div> : <Empty>Noch keine Buchung für heute.</Empty>}
     </section>}
-    {MANAGEMENT.has(session.role) && <LiveAttendanceOverview loadJson={apiJson} now={now} />}
+    {MANAGEMENT.has(session.role) && <LiveAttendanceOverview loadJson={apiJson} />}
   </>
 }
 
