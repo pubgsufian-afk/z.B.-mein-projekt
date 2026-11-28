@@ -24,3 +24,4 @@ jobs:
       - run: node scripts/data-refresh-source-test.mjs
       - run: node --experimental-strip-types scripts/attendance-automation-policy-test.mjs
       - run: node --experimental-strip-types scripts/attendance-auto-shift-test.mjs
+      - run: node scripts/live-attendance-overview-test.mjs
