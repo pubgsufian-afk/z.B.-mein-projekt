@@ -4,6 +4,7 @@ import { plannedNetMinutes } from './timesheet-utils.js'
 import { EmployeeTimesheetPage, EmployeeMailboxPage } from './EmployeeSelfService.jsx'
 import EmployeeDailyReports from './EmployeeDailyReports.jsx'
 import PersonnelDocuments from './PersonnelDocuments.jsx'
+import LiveAttendanceOverview from './LiveAttendanceOverview.jsx'
 import { NotificationsBell, NotificationsPage } from './PortalNotifications.jsx'
 import { disconnectPushDevice } from './push-notifications.js'
 import PrivateOwnerAudit from './PrivateOwnerAudit.jsx'
@@ -397,7 +398,6 @@ function AttendancePage({ session }) {
   const employeeOnly = session.role === 'employee'
   const [now, setNow] = useState(new Date())
   const [state, setState] = useState({ phase: 'idle', events: [], schedule: null })
-  const [live, setLive] = useState([])
   const [busy, setBusy] = useState('')
   const [notice, setNotice] = useState(null)
 
@@ -405,10 +405,6 @@ function AttendancePage({ session }) {
     try {
       const data = await apiJson('/api/attendance?resource=state')
       setState(data)
-      if (MANAGEMENT.has(session.role)) {
-        const liveData = await apiJson('/api/attendance?resource=live')
-        setLive(liveData.entries || [])
-      }
       setNotice(null)
     } catch (error) { setNotice({ tone: 'error', text: error.message }) }
   }, [session.role])
@@ -483,7 +479,7 @@ function AttendancePage({ session }) {
       <PageHeader title="Heutige Buchungen" subtitle="Alle Aktionen in zeitlicher Reihenfolge." action={<button className="secondary-button compact" onClick={load}>Aktualisieren</button>} />
       {(state.events || []).length ? <div className="timeline">{state.events.map((event) => <div key={event.id || event.clientEventId}><span className={`timeline-dot ${event.action}`} /><div><strong>{actionLabel(event.action)}</strong><small>{formatDateTime(event.clientOccurredAt)}</small></div><Status tone={event.locationStatus === 'inside' ? 'success' : event.locationStatus === 'outside' ? 'warning' : 'neutral'}>{event.action.startsWith('break') ? 'ohne Standort' : event.locationStatus === 'inside' ? 'am Einsatzort' : event.locationStatus === 'outside' ? 'außerhalb' : 'Standort nicht verfügbar'}</Status></div>)}</div> : <Empty>Noch keine Buchung für heute.</Empty>}
     </section>}
-    {MANAGEMENT.has(session.role) && <section className="panel"><PageHeader title="Live-Übersicht" subtitle="Aktuelle Buchungen der Mitarbeiter – keine dauerhafte Ortung." />{live.length ? <div className="responsive-table"><table><thead><tr><th>Mitarbeiter</th><th>Aktion</th><th>Zeit</th><th>Einsatzort</th><th>Status</th></tr></thead><tbody>{live.map((entry) => <tr key={entry.id}><td>{entry.employeeName || 'Mitarbeiter'}</td><td>{actionLabel(entry.action)}</td><td>{formatDateTime(entry.clientOccurredAt)}</td><td>{entry.workSiteName || '–'}</td><td><Status tone={entry.locationStatus === 'inside' ? 'success' : 'warning'}>{entry.locationStatus === 'inside' ? 'Im Bereich' : entry.locationStatus === 'outside' ? 'Außerhalb' : 'Nicht verfügbar'}</Status></td></tr>)}</tbody></table></div> : <Empty>Heute liegen noch keine Buchungen vor.</Empty>}</section>}
+    {MANAGEMENT.has(session.role) && <LiveAttendanceOverview loadJson={apiJson} now={now} />}
   </>
 }
 
