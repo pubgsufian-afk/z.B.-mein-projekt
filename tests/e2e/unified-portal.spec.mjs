@@ -932,3 +932,64 @@ test('Dienstplan: automatic free only in a published week, never the next unpubl
   await expect(page.getByText('Automatisch frei · keine Schicht im freigegebenen Wochenplan')).toHaveCount(0)
   await expect(page.getByText('Für diese Woche ist noch kein freigegebener Dienst eingetragen.')).toBeVisible()
 })
+
+ 
+test('grouped live attendance shows actual breaks and net time on desktop and mobile', async ({ page }) => {
+  await login(page, 'admin')
+  const day = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date())
+  const entries = [
+    ['clock-in','06:00'], ['break-start','09:00'], ['break-end','09:30'], ['clock-out','12:00'],
+  ].map(([action,time],i)=>({id:'grouped-'+i,userId:'employee-anna',employeeName:'Anna Beispiel',workSiteName:'Objekt Nord',action,eventDate:day,clientOccurredAt:day+'T'+time+':00Z'}))
+  await page.route('**/api/attendance?resource=live**', async route=>{
+    const date=new URL(route.request().url()).searchParams.get('date')
+    await route.fulfill({json:{entries:date===day?entries:[]}})
+  })
+  await navigate(page,'Zeiterfassung')
+  const overview=page.getByRole('region',{name:'Live-Übersicht'})
+  const person=overview.locator('.habun-live-person')
+  await expect(person).toHaveCount(1)
+  await expect(person.getByText('Anna Beispiel',{exact:true})).toBeVisible()
+  await expect(person.getByText('Beendet',{exact:true})).toBeVisible()
+  await expect(person.getByText('5 Std. 30 Min.',{exact:true})).toBeVisible()
+  await expect(person.locator('.habun-live-metrics').getByText('30 Min.',{exact:true})).toBeVisible()
+  await overview.getByLabel('Mitarbeiter suchen').fill('Unbekannt')
+  await expect(person).toHaveCount(0)
+  await overview.getByLabel('Mitarbeiter suchen').fill('Anna')
+  await expect(person).toHaveCount(1)
+  await expectNoHorizontalPageOverflow(page)
+})
+
+test('personnel surname and document lifecycle actions on desktop and mobile with mocked APIs', async ({page})=>{
+  await login(page,'admin')
+  await page.route('**/api/registrations',route=>route.fulfill({json:{employees:employees.map(e=>({...e,status:'active'})),requests:[]}}))
+  const base={kind:'warning',employeeName:'Anna Beispiel',creatorName:'Test Admin',creatorFunction:'Einsatzleiter',reason:'Test',createdAt:'2026-08-06T09:00:00Z'}
+  let docs=['delete','withdraw','cancel'].map(action=>({...base,id:action,title:'Test '+action,nextLifecycleAction:action,publishedAt:action==='delete'?null:base.createdAt,acknowledgedAt:action==='cancel'?base.createdAt:null}))
+  const actions=[]
+  await page.route('**/api/personnel-documents?**',async route=>{
+    const action=new URL(route.request().url()).searchParams.get('action')
+    if(action==='list')return route.fulfill({json:{documents:docs}})
+    const body=route.request().postDataJSON()
+    actions.push({action,body})
+    if(action==='delete')docs=docs.filter(d=>d.id!==body.id)
+    else docs=docs.map(d=>d.id===body.id?{...d,nextLifecycleAction:null,lifecycleAction:action}:d)
+    return route.fulfill({json:{ok:true}})
+  })
+  await navigate(page,'Personalunterlagen')
+  await page.getByRole('button',{name:'Kündigung',exact:true}).click()
+  await page.getByTestId('personnel-employee').selectOption('employee-anna')
+  await page.getByLabel('Anrede',{exact:true}).selectOption('frau')
+  await expect(page.getByLabel('Nachname für die Anrede')).toHaveValue('Beispiel')
+  await page.getByLabel('Nachname für die Anrede').fill('Muster-Beispiel')
+  await expect(page.getByLabel('Nachname für die Anrede')).toHaveValue('Muster-Beispiel')
+  page.on('dialog',dialog=>dialog.type()==='prompt'?dialog.accept('Synthetischer Test'):dialog.accept())
+  for(const [action,label] of [['delete','Dokument löschen'],['withdraw','Dokument zurückziehen'],['cancel','Dokument stornieren']]){
+    await page.getByRole('button',{name:label,exact:true}).click()
+    await expect.poll(()=>actions.length).toBe(['delete','withdraw','cancel'].indexOf(action)+1)
+    expect(actions.at(-1)).toEqual({action,body:{id:action,confirmed:true,reason:'Synthetischer Test'}})
+    await expect(page.getByRole('button',{name:label,exact:true})).toHaveCount(0)
+  }
+  await expect(page.getByText('Test delete',{exact:false})).toHaveCount(0)
+  await expect(page.getByText('Zurückgezogen',{exact:false})).toBeVisible()
+  await expect(page.getByText('Storniert',{exact:false}).first()).toBeVisible()
+  await expectNoHorizontalPageOverflow(page)
+})
